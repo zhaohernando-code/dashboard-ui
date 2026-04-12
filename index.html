@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Codex Control Plane</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="bg-grid" aria-hidden="true"></div>
+    <main class="shell">
+      <section class="hero">
+        <div>
+          <p class="eyebrow">Codex Control Plane</p>
+          <h1>Task orchestration for autonomous local Codex workers.</h1>
+          <p class="lede">
+            Publish projects, create tasks, review approvals, and inspect usage from a GitHub Pages dashboard.
+          </p>
+        </div>
+        <form id="settings-form" class="card settings-card">
+          <div class="section-head">
+            <h2>Connection</h2>
+          </div>
+          <label for="api-base">API Base URL</label>
+          <input id="api-base" name="apiBase" placeholder="http://localhost:8787" />
+          <button type="submit">Save endpoint</button>
+          <p id="connection-status" class="hint">Waiting for health check.</p>
+          <div class="auth-box">
+            <div id="auth-status" class="hint">Auth status unknown.</div>
+            <button type="button" id="login-button" class="ghost">Login with GitHub</button>
+            <button type="button" id="logout-button" class="ghost">Logout</button>
+          </div>
+        </form>
+      </section>
+
+      <nav class="tabs" aria-label="Primary">
+        <button class="tab active" data-tab="quest-center">Quest Center</button>
+        <button class="tab" data-tab="tools">Tools</button>
+        <button class="tab" data-tab="usage">Usage</button>
+      </nav>
+
+      <section id="quest-center" class="tab-panel active">
+        <div class="grid two">
+          <article class="card">
+            <div class="section-head">
+              <h2>Projects</h2>
+              <button id="refresh-projects" class="ghost">Refresh</button>
+            </div>
+            <div id="project-list" class="stack"></div>
+          </article>
+
+          <article class="card">
+            <div class="section-head">
+              <h2>Create</h2>
+            </div>
+            <form id="project-form" class="stack compact">
+              <h3>New project</h3>
+              <input name="name" placeholder="project name" required />
+              <textarea name="description" rows="3" placeholder="goal / scope / notes"></textarea>
+              <input name="repository" placeholder="GitHub repo URL (optional)" />
+              <select name="visibility">
+                <option value="private">Private GitHub repo</option>
+                <option value="public">Public GitHub repo</option>
+              </select>
+              <label><input type="checkbox" name="autoCreateRepo" /> Auto-create GitHub repository</label>
+              <button type="submit">Create project plan</button>
+            </form>
+            <form id="task-form" class="stack compact">
+              <h3>New task</h3>
+              <select name="projectId" id="task-project-select"></select>
+              <select name="type">
+                <option value="task">Direct task</option>
+                <option value="composite_task">Fuzzy / composite task</option>
+              </select>
+              <input name="title" placeholder="task title" required />
+              <textarea name="description" rows="4" placeholder="what should Codex do?" required></textarea>
+              <button type="submit">Create task</button>
+            </form>
+          </article>
+        </div>
+
+        <div class="grid two">
+          <article class="card">
+            <div class="section-head">
+              <h2>Tasks</h2>
+              <button id="refresh-tasks" class="ghost">Refresh</button>
+            </div>
+            <div id="task-list" class="stack"></div>
+          </article>
+
+          <article class="card">
+            <div class="section-head">
+              <h2>Task details</h2>
+            </div>
+            <div id="task-detail" class="detail-empty">
+              Select a task to inspect logs, approvals, and summary.
+            </div>
+          </article>
+        </div>
+
+        <article class="card">
+          <div class="section-head">
+            <h2>Pending approvals</h2>
+            <button id="refresh-approvals" class="ghost">Refresh</button>
+          </div>
+          <div id="approval-list" class="stack"></div>
+        </article>
+      </section>
+
+      <section id="tools" class="tab-panel">
+        <article class="card">
+          <div class="section-head">
+            <h2>Tool Routes</h2>
+          </div>
+          <div id="tools-list" class="stack"></div>
+        </article>
+      </section>
+
+      <section id="usage" class="tab-panel">
+        <article class="card">
+          <div class="section-head">
+            <h2>Usage Snapshot</h2>
+            <button id="refresh-usage" class="ghost">Refresh</button>
+          </div>
+          <div id="usage-panel" class="usage-grid"></div>
+        </article>
+      </section>
+    </main>
+
+    <template id="project-template">
+      <button class="project-item">
+        <span class="title"></span>
+        <span class="meta"></span>
+      </button>
+    </template>
+
+    <template id="task-template">
+      <button class="task-item">
+        <span class="title"></span>
+        <span class="meta"></span>
+        <span class="badge"></span>
+      </button>
+    </template>
+
+    <script src="./app.js" type="module"></script>
+  </body>
+</html>
