@@ -310,6 +310,7 @@ export default function App() {
   const [notice, setNotice] = useState("");
   const [copyState, setCopyState] = useState<CopyState>("idle");
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
+  const [isMobileViewDrawerOpen, setIsMobileViewDrawerOpen] = useState(false);
   const pollTokenRef = useRef(0);
   const selectedProjectIdRef = useRef(selectedProjectId);
   const selectedTaskIdRef = useRef(selectedTaskId);
@@ -352,6 +353,14 @@ export default function App() {
         taskDetails: locale === "zh-CN" ? "任务详情" : "Task details",
         pendingApprovals: locale === "zh-CN" ? "待处理审批" : "Pending approvals",
         noTask: locale === "zh-CN" ? "请选择任务查看详情" : "Select one task to inspect",
+        mobileControlTitle: locale === "zh-CN" ? "控制中心" : "Control center",
+        mobileControlMeta: locale === "zh-CN" ? "设置与账户" : "Settings & account",
+        mobileViewDrawerTitle: locale === "zh-CN" ? "工作区视图" : "Workspace views",
+        openViewDrawer: locale === "zh-CN" ? "切换工作区视图" : "Switch workspace view",
+        themeSetting: locale === "zh-CN" ? "主题色" : "Theme",
+        themeSettingHint: locale === "zh-CN" ? "切换浅色与深色界面" : "Switch between light and dark mode",
+        languageSetting: locale === "zh-CN" ? "界面语言" : "Language",
+        languageSettingHint: locale === "zh-CN" ? "切换中文与 English" : "Switch between Chinese and English",
       }) satisfies Record<string, string>,
     [locale],
   );
@@ -375,6 +384,7 @@ export default function App() {
 
   useEffect(() => {
     setIsMobileNavOpen(false);
+    setIsMobileViewDrawerOpen(false);
   }, [activeTab, locale, theme]);
 
   useEffect(() => {
@@ -1194,16 +1204,6 @@ export default function App() {
     setWorkspaceLevel("detail");
   }
 
-  function handleBack() {
-    if (workspaceLevel === "detail") {
-      setWorkspaceLevel("tasks");
-      return;
-    }
-    if (workspaceLevel === "tasks") {
-      setWorkspaceLevel("projects");
-    }
-  }
-
   const breadcrumbs = [
     { key: "projects", label: locale === "zh-CN" ? "项目" : "Projects", active: workspaceLevel === "projects", onClick: () => setWorkspaceLevel("projects") },
     ...(selectedProject
@@ -1275,7 +1275,7 @@ export default function App() {
           <div className="brand-mark" aria-hidden="true">
             C
           </div>
-          <div>
+          <div className="brand-copy">
             <div className="brand-title">{t.title}</div>
             <div className="brand-subtitle">{t.subtitle}</div>
           </div>
@@ -1335,14 +1335,16 @@ export default function App() {
           </button>
         ))}
         <div className="spacer" />
-        <button
-          type="button"
-          className="ghost"
-          onClick={() => void loginWithGithub()}
-          disabled={runtimeMode === "github-direct" ? Boolean(authConfig?.user) : !authConfig?.enabled || Boolean(authConfig?.user)}
-        >
-          {t.loginButton}
-        </button>
+        {!authConfig?.user ? (
+          <button
+            type="button"
+            className="ghost"
+            onClick={() => void loginWithGithub()}
+            disabled={runtimeMode === "github-direct" ? false : !authConfig?.enabled}
+          >
+            {t.loginButton}
+          </button>
+        ) : null}
         <button type="button" className="ghost" onClick={() => void logout()} disabled={!authConfig?.user}>
           {t.logoutButton}
         </button>
@@ -1356,8 +1358,8 @@ export default function App() {
           aria-controls="mobile-nav-sheet"
           onClick={() => setIsMobileNavOpen((open) => !open)}
         >
-          <span className="mobile-nav-trigger-label">{tabs.find((tab) => tab.id === activeTab)?.label[locale]}</span>
-          <span className="mobile-nav-trigger-meta">{locale === "zh-CN" ? "导航与账户" : "Nav & account"}</span>
+          <span className="mobile-nav-trigger-label">{t.mobileControlTitle}</span>
+          <span className="mobile-nav-trigger-meta">{t.mobileControlMeta}</span>
         </button>
       </div>
 
@@ -1368,12 +1370,87 @@ export default function App() {
             className="mobile-nav-sheet"
             role="dialog"
             aria-modal="true"
-            aria-label={locale === "zh-CN" ? "移动端导航" : "Mobile navigation"}
+            aria-label={t.mobileControlTitle}
             onClick={(event) => event.stopPropagation()}
           >
             <div className="section-head">
-              <h3>{locale === "zh-CN" ? "快速切换" : "Quick switch"}</h3>
+              <h3>{t.mobileControlTitle}</h3>
               <button type="button" className="ghost" onClick={() => setIsMobileNavOpen(false)}>
+                {locale === "zh-CN" ? "关闭" : "Close"}
+              </button>
+            </div>
+            <div className="mobile-nav-actions">
+              <button type="button" className="ghost mobile-nav-action-card" onClick={() => setIsMobileViewDrawerOpen(true)}>
+                <span className="mobile-nav-action-label">{t.openViewDrawer}</span>
+                <span className="mobile-nav-action-hint">{tabs.find((tab) => tab.id === activeTab)?.label[locale]}</span>
+              </button>
+              <button
+                type="button"
+                className={`switch-card ${theme === "dark" ? "is-on" : ""}`}
+                role="switch"
+                aria-checked={theme === "dark"}
+                onClick={() => {
+                  setTheme(theme === "dark" ? "light" : "dark");
+                }}
+              >
+                <span className="switch-copy">
+                  <span className="mobile-nav-action-label">{t.themeSetting}</span>
+                  <span className="mobile-nav-action-hint">{t.themeSettingHint}</span>
+                </span>
+                <span className="switch-track" aria-hidden="true">
+                  <span className="switch-thumb" />
+                  <span className="switch-state">{theme === "dark" ? "Dark" : "Light"}</span>
+                </span>
+              </button>
+              <button
+                type="button"
+                className={`switch-card ${locale === "en-US" ? "is-on" : ""}`}
+                role="switch"
+                aria-checked={locale === "en-US"}
+                onClick={() => {
+                  setLocale(locale === "zh-CN" ? "en-US" : "zh-CN");
+                }}
+              >
+                <span className="switch-copy">
+                  <span className="mobile-nav-action-label">{t.languageSetting}</span>
+                  <span className="mobile-nav-action-hint">{t.languageSettingHint}</span>
+                </span>
+                <span className="switch-track" aria-hidden="true">
+                  <span className="switch-thumb" />
+                  <span className="switch-state">{locale === "zh-CN" ? "中文" : "English"}</span>
+                </span>
+              </button>
+              {!authConfig?.user ? (
+                <button
+                  type="button"
+                  className="ghost mobile-nav-action-card"
+                  onClick={() => void loginWithGithub()}
+                  disabled={runtimeMode === "github-direct" ? false : !authConfig?.enabled}
+                >
+                  <span className="mobile-nav-action-label">{t.loginButton}</span>
+                  <span className="mobile-nav-action-hint">{locale === "zh-CN" ? "连接 CodeHub / GitHub 身份" : "Connect your CodeHub / GitHub identity"}</span>
+                </button>
+              ) : null}
+              <button type="button" className="ghost" onClick={() => void logout()} disabled={!authConfig?.user}>
+                {t.logoutButton}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {isMobileViewDrawerOpen ? (
+        <div className="mobile-drawer-backdrop" role="presentation" onClick={() => setIsMobileViewDrawerOpen(false)}>
+          <div
+            className="mobile-view-drawer"
+            role="dialog"
+            aria-modal="true"
+            aria-label={t.mobileViewDrawerTitle}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="section-head">
+              <h3>{t.mobileViewDrawerTitle}</h3>
+              <button type="button" className="ghost" onClick={() => setIsMobileViewDrawerOpen(false)}>
                 {locale === "zh-CN" ? "关闭" : "Close"}
               </button>
             </div>
@@ -1389,37 +1466,6 @@ export default function App() {
                 </button>
               ))}
             </div>
-            <div className="mobile-nav-actions">
-              <button
-                type="button"
-                className="ghost"
-                onClick={() => {
-                  setTheme(theme === "dark" ? "light" : "dark");
-                }}
-              >
-                {theme === "dark" ? (locale === "zh-CN" ? "浅色" : "Light") : locale === "zh-CN" ? "深色" : "Dark"}
-              </button>
-              <button
-                type="button"
-                className="ghost"
-                onClick={() => {
-                  setLocale(locale === "zh-CN" ? "en-US" : "zh-CN");
-                }}
-              >
-                {locale === "zh-CN" ? "English" : "中文"}
-              </button>
-              <button
-                type="button"
-                className="ghost"
-                onClick={() => void loginWithGithub()}
-                disabled={runtimeMode === "github-direct" ? Boolean(authConfig?.user) : !authConfig?.enabled || Boolean(authConfig?.user)}
-              >
-                {t.loginButton}
-              </button>
-              <button type="button" className="ghost" onClick={() => void logout()} disabled={!authConfig?.user}>
-                {t.logoutButton}
-              </button>
-            </div>
           </div>
         </div>
       ) : null}
@@ -1429,11 +1475,6 @@ export default function App() {
           <article className="card workspace-panel">
             <div className="workspace-toolbar">
               <div className="toolbar-left">
-                {workspaceLevel !== "projects" ? (
-                  <button type="button" className="ghost" onClick={handleBack}>
-                    {locale === "zh-CN" ? "返回" : "Back"}
-                  </button>
-                ) : null}
                 <div className="breadcrumb-row" aria-label="Breadcrumb">
                   {breadcrumbs.map((crumb) => (
                     <div key={crumb.key} className="breadcrumb-item">
