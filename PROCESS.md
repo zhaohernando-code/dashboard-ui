@@ -64,3 +64,10 @@
 - Resolution: reused the canonical repo dependency tree by linking the worktree `node_modules` to `/Users/hernando_zhao/codex/dashboard-ui/node_modules`, then reran the build successfully in the worktree.
 - Prevention: before validating a Node/Vite worktree in this environment, check whether the worktree has a local dependency tree; if not, reuse the canonical repo dependencies explicitly instead of assuming the scripts will resolve across worktrees.
 - Commit ID: N/A（当前环境未执行 git 提交）
+
+## 2026-04-13
+
+- Problem: task creation had no immediate success feedback, GitHub/local issue-backed tasks could disappear until the local poller imported them, and the dashboard did not show same-project queue order clearly enough to reduce uncertainty after submit.
+- Resolution: added typed in-app notices for creation/refresh/auth/task actions, inserted optimistic "待接管" tasks into the list immediately after successful creation, surfaced per-project queue hints on cards/detail views, and auto-closed the create dialog while keeping the new task visible in the current project list.
+- Prevention: any asynchronous task handoff that depends on later polling must render an immediate optimistic record plus explicit queue/capture copy instead of relying on a later refresh to prove success.
+- Commit ID: `e806aed`
