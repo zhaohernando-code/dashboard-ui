@@ -40,6 +40,6 @@
 ## 2026-04-12
 
 - Problem: GitHub Pages was still wired to `localhost:8787` for auth and task APIs, so mobile/outside access could open the page but could not log in or send work to the local machine.
-- Resolution: added a GitHub-direct runtime for Pages builds: browser-side GitHub device login, direct issue creation in `zhaohernando-code/dashboard-ui`, direct `/retry` `/stop` `/approve` `/reject` issue comments, and issue-based task/project views that no longer depend on the local API from mobile.
+- Resolution: added a GitHub-direct runtime for Pages builds: browser-side GitHub token connection, direct issue creation in `zhaohernando-code/dashboard-ui`, direct `/retry` `/stop` `/approve` `/reject` issue comments, and issue-based task/project views that no longer depend on the local API from mobile.
 - Prevention: any public/static control-plane UI must treat `localhost` as a local-only convenience path; remote/mobile operation must use a queue/backend the browser can reach directly.
 - Commit ID: pending dashboard-ui publish
