@@ -285,6 +285,7 @@ export default function App() {
   const [deviceLogin, setDeviceLogin] = useState<DeviceLoginSession | null>(null);
   const [notice, setNotice] = useState("");
   const [copyState, setCopyState] = useState<CopyState>("idle");
+  const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const pollTokenRef = useRef(0);
   const selectedProjectIdRef = useRef(selectedProjectId);
   const selectedTaskIdRef = useRef(selectedTaskId);
@@ -347,6 +348,10 @@ export default function App() {
   useEffect(() => {
     selectedTaskIdRef.current = selectedTaskId;
   }, [selectedTaskId]);
+
+  useEffect(() => {
+    setIsMobileNavOpen(false);
+  }, [activeTab, locale, theme]);
 
   useEffect(() => {
     void refreshAll();
@@ -1318,6 +1323,82 @@ export default function App() {
         </button>
       </nav>
 
+      <div className="mobile-nav-fab">
+        <button
+          type="button"
+          className="mobile-nav-trigger"
+          aria-expanded={isMobileNavOpen}
+          aria-controls="mobile-nav-sheet"
+          onClick={() => setIsMobileNavOpen((open) => !open)}
+        >
+          <span className="mobile-nav-trigger-label">{tabs.find((tab) => tab.id === activeTab)?.label[locale]}</span>
+          <span className="mobile-nav-trigger-meta">{locale === "zh-CN" ? "导航与账户" : "Nav & account"}</span>
+        </button>
+      </div>
+
+      {isMobileNavOpen ? (
+        <div className="mobile-nav-backdrop" role="presentation" onClick={() => setIsMobileNavOpen(false)}>
+          <div
+            id="mobile-nav-sheet"
+            className="mobile-nav-sheet"
+            role="dialog"
+            aria-modal="true"
+            aria-label={locale === "zh-CN" ? "移动端导航" : "Mobile navigation"}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="section-head">
+              <h3>{locale === "zh-CN" ? "快速切换" : "Quick switch"}</h3>
+              <button type="button" className="ghost" onClick={() => setIsMobileNavOpen(false)}>
+                {locale === "zh-CN" ? "关闭" : "Close"}
+              </button>
+            </div>
+            <div className="mobile-nav-tablist">
+              {tabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  className={tab.id === activeTab ? "tab active" : "tab"}
+                  onClick={() => setActiveTab(tab.id)}
+                  type="button"
+                >
+                  {tab.label[locale]}
+                </button>
+              ))}
+            </div>
+            <div className="mobile-nav-actions">
+              <button
+                type="button"
+                className="ghost"
+                onClick={() => {
+                  setTheme(theme === "dark" ? "light" : "dark");
+                }}
+              >
+                {theme === "dark" ? (locale === "zh-CN" ? "浅色" : "Light") : locale === "zh-CN" ? "深色" : "Dark"}
+              </button>
+              <button
+                type="button"
+                className="ghost"
+                onClick={() => {
+                  setLocale(locale === "zh-CN" ? "en-US" : "zh-CN");
+                }}
+              >
+                {locale === "zh-CN" ? "English" : "中文"}
+              </button>
+              <button
+                type="button"
+                className="ghost"
+                onClick={() => void loginWithGithub()}
+                disabled={runtimeMode === "github-direct" ? Boolean(authConfig?.user) : !authConfig?.enabled || Boolean(authConfig?.user)}
+              >
+                {t.loginButton}
+              </button>
+              <button type="button" className="ghost" onClick={() => void logout()} disabled={!authConfig?.user}>
+                {t.logoutButton}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {activeTab === "quest-center" && (
         <section className="workspace-shell">
           <article className="card workspace-panel">
@@ -1330,14 +1411,15 @@ export default function App() {
                 ) : null}
                 <div className="breadcrumb-row" aria-label="Breadcrumb">
                   {breadcrumbs.map((crumb) => (
-                    <button
-                      key={crumb.key}
-                      type="button"
-                      className={crumb.active ? "breadcrumb active" : "breadcrumb"}
-                      onClick={crumb.onClick}
-                    >
-                      {crumb.label}
-                    </button>
+                    <div key={crumb.key} className="breadcrumb-item">
+                      <button
+                        type="button"
+                        className={crumb.active ? "breadcrumb active" : "breadcrumb"}
+                        onClick={crumb.onClick}
+                      >
+                        {crumb.label}
+                      </button>
+                    </div>
                   ))}
                 </div>
               </div>
