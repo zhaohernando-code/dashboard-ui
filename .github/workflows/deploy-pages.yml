@@ -30,6 +30,9 @@ jobs:
       - name: Build
         env:
           VITE_DEFAULT_API_BASE: ${{ vars.VITE_DEFAULT_API_BASE }}
+          VITE_GITHUB_CLIENT_ID: ${{ vars.VITE_GITHUB_CLIENT_ID }}
+          VITE_GITHUB_TASK_REPO: ${{ vars.VITE_GITHUB_TASK_REPO }}
+          VITE_GITHUB_OAUTH_SCOPES: ${{ vars.VITE_GITHUB_OAUTH_SCOPES }}
         run: npm run build
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
