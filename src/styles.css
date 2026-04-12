@@ -233,6 +233,7 @@ h3 {
   gap: 0.5rem;
   align-items: center;
   margin: 0.8rem 0;
+  flex-wrap: wrap;
 }
 
 button,
@@ -301,12 +302,39 @@ button.primary:not(:disabled) {
 .breadcrumb-row {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
   gap: 0.45rem;
+  min-width: 0;
+  overflow-x: auto;
+  padding-bottom: 0.1rem;
+  scrollbar-width: none;
+}
+
+.breadcrumb-row::-webkit-scrollbar {
+  display: none;
+}
+
+.breadcrumb-item {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex: 0 0 auto;
+}
+
+.breadcrumb-item::after {
+  content: "/";
+  color: var(--text-dim);
+}
+
+.breadcrumb-item:last-child::after {
+  display: none;
 }
 
 .breadcrumb {
   padding: 0.42rem 0.72rem;
+  white-space: nowrap;
+  max-width: min(18rem, 72vw);
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .breadcrumb.active {
@@ -506,6 +534,77 @@ textarea {
   padding: 1rem;
 }
 
+.mobile-nav-fab,
+.mobile-nav-backdrop {
+  display: none;
+}
+
+.mobile-nav-fab {
+  position: fixed;
+  right: 0.85rem;
+  bottom: 0.95rem;
+  z-index: 32;
+}
+
+.mobile-nav-trigger {
+  min-width: 0;
+  padding: 0.72rem 0.9rem;
+  border-radius: 18px;
+  border-color: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  background:
+    linear-gradient(140deg, rgba(22, 36, 58, 0.95), rgba(31, 102, 255, 0.92)),
+    linear-gradient(135deg, var(--brand), var(--brand-2));
+  box-shadow: 0 18px 40px rgba(17, 30, 52, 0.28);
+}
+
+.mobile-nav-trigger-label,
+.mobile-nav-trigger-meta {
+  display: block;
+  text-align: left;
+}
+
+.mobile-nav-trigger-label {
+  font-weight: 700;
+}
+
+.mobile-nav-trigger-meta {
+  margin-top: 0.1rem;
+  font-size: 0.74rem;
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.mobile-nav-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 31;
+  background: rgba(8, 12, 18, 0.32);
+}
+
+.mobile-nav-sheet {
+  position: absolute;
+  right: 0.8rem;
+  bottom: 5rem;
+  width: min(22rem, calc(100vw - 1.2rem));
+  padding: 0.95rem;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: color-mix(in srgb, var(--surface) 92%, var(--surface-2) 8%);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(18px);
+}
+
+.mobile-nav-tablist,
+.mobile-nav-actions {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.mobile-nav-actions {
+  margin-top: 0.75rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .wrap-anywhere,
 .log-item,
 .info-card,
@@ -551,7 +650,7 @@ button:disabled {
 @media (max-width: 860px) {
   .app-root {
     width: min(100vw - 0.8rem, 1440px);
-    padding-top: 0.45rem;
+    padding: 0.45rem 0 5.8rem;
   }
 
   .topbar {
@@ -561,18 +660,12 @@ button:disabled {
   }
 
   .topbar-right,
-  .tabs,
   .workspace-toolbar,
   .detail-hero,
   .panel-intro {
     width: 100%;
     flex-direction: column;
     align-items: stretch;
-  }
-
-  .tabs {
-    overflow-x: auto;
-    padding-bottom: 0.15rem;
   }
 
   .entity-grid,
@@ -585,5 +678,93 @@ button:disabled {
   .tab,
   .breadcrumb {
     min-height: 42px;
+  }
+
+  .tabs {
+    display: none;
+  }
+
+  .mobile-nav-fab,
+  .mobile-nav-backdrop {
+    display: block;
+  }
+
+  .toolbar-left,
+  .toolbar-actions {
+    width: 100%;
+  }
+
+  .toolbar-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .toolbar-actions > button:only-child {
+    grid-column: 1 / -1;
+  }
+
+  .breadcrumb-row {
+    width: 100%;
+    max-width: 100%;
+    padding-right: 0.2rem;
+  }
+
+  .breadcrumb {
+    max-width: min(14rem, 62vw);
+  }
+
+  .panel-intro {
+    gap: 0.45rem;
+  }
+
+  .entity-card,
+  .tool-item,
+  .approval-item,
+  .info-card,
+  .usage-item,
+  .log-item {
+    padding: 0.82rem;
+  }
+
+  .detail-actions {
+    justify-content: stretch;
+  }
+
+  .detail-actions > button {
+    flex: 1 1 0;
+  }
+}
+
+@media (max-width: 560px) {
+  .brand-subtitle,
+  .api-pill {
+    font-size: 0.78rem;
+  }
+
+  .topbar-right {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .api-pill {
+    grid-column: 1 / -1;
+  }
+
+  .detail-hero {
+    gap: 0.75rem;
+  }
+
+  .mobile-nav-sheet {
+    right: 0.4rem;
+    bottom: 4.8rem;
+    width: calc(100vw - 0.8rem);
+  }
+
+  .mobile-nav-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .breadcrumb {
+    max-width: min(11.5rem, 56vw);
   }
 }
