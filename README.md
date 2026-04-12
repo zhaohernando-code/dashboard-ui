@@ -1,12 +1,16 @@
 # Dashboard UI
 
-Static control-plane frontend intended for GitHub Pages.
+React + TypeScript control-plane frontend intended for GitHub Pages.
 
 ## Local usage
 
-Open `index.html` directly in a browser, then set the API base URL if your local server is not on `http://localhost:8787`.
+```bash
+npm install
+npm run dev
+```
+
+Set the API base URL in the UI if your local server is not on `http://localhost:8787`.
 
 ## Publish
 
-Publish the contents of this directory to a GitHub Pages branch or Pages-enabled repository root.
-
+GitHub Actions builds the Vite app and publishes `dist/` to GitHub Pages.
