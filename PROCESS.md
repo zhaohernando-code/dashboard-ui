@@ -28,3 +28,18 @@
 - Resolution: stabilized selected project/task state against polling with refs, rebuilt the workspace into single-level navigation with breadcrumb + back flow and level-based create dialogs, added dark mode, and hardened detail/log cards with aggressive wrapping and responsive cards.
 - Prevention: any auto-refreshing selection UI must compare against current refs rather than interval-closure state, and hierarchical dashboards should expose one navigation level at a time with overflow-safe detail blocks.
 - Commit ID: N/A（当前沙箱禁止写入 worktree git 索引，无法在本环境提交）
+
+## 2026-04-12
+
+- Problem: task task-mnvxjw45-hsb8z8 (bug修复和体验优化) finished with status completed.
+- Resolution: Published via GitHub Contents API fallback.
+- Prevention: Finalization path now records and surfaces publish outcomes to avoid silent drift.
+- Commit ID: a3a9560
+- Context: project=dashboard-ui, source=issue #7
+
+## 2026-04-12
+
+- Problem: GitHub Pages was still wired to `localhost:8787` for auth and task APIs, so mobile/outside access could open the page but could not log in or send work to the local machine.
+- Resolution: added a GitHub-direct runtime for Pages builds: browser-side GitHub device login, direct issue creation in `zhaohernando-code/dashboard-ui`, direct `/retry` `/stop` `/approve` `/reject` issue comments, and issue-based task/project views that no longer depend on the local API from mobile.
+- Prevention: any public/static control-plane UI must treat `localhost` as a local-only convenience path; remote/mobile operation must use a queue/backend the browser can reach directly.
+- Commit ID: pending dashboard-ui publish
