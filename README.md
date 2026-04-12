@@ -15,7 +15,18 @@ Set the API base URL in the UI if your local server is not on `http://localhost:
 
 GitHub Actions builds the Vite app and publishes `dist/` to GitHub Pages.
 
-For multi-device usage, set repository variable `VITE_DEFAULT_API_BASE` (for example `https://api.example.com`) so the published UI uses that backend URL by default.
+For GitHub Pages / mobile usage, do not rely on `localhost`.
+Set these repository variables for Pages builds:
 
-If you use GitHub-issue queue mode, create tasks from repository issues with label `codex-task` (template: `.github/ISSUE_TEMPLATE/codex-task.md`).
-The dashboard "Create" forms also submit to issue queue mode via backend endpoint `/api/issue-tasks` when server reports `taskBackend=github-issues`.
+- `VITE_GITHUB_CLIENT_ID`: GitHub OAuth App client ID with device flow enabled
+- `VITE_GITHUB_TASK_REPO`: issue queue repository, for example `zhaohernando-code/dashboard-ui`
+- `VITE_GITHUB_OAUTH_SCOPES`: usually `read:user repo`
+
+In GitHub Pages, the UI runs in GitHub-direct mode:
+
+- sign in with GitHub device flow directly from the browser
+- create tasks by creating labeled issues in `VITE_GITHUB_TASK_REPO`
+- send `/retry`, `/stop`, `/approve`, `/reject` as issue comments
+- let the local control server keep polling GitHub and executing tasks
+
+On local development / local desktop usage, the app still talks to `http://localhost:8787` by default.
