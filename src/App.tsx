@@ -475,23 +475,23 @@ export default function App() {
     if (runtimeMode === "github-direct") {
       if (!GITHUB_CLIENT_ID) {
         setAuthConfig({
-          enabled: false,
-          mode: "github-device",
+          enabled: true,
+          mode: "github-token",
           provider: "github",
           hasClientId: false,
-          repoAutomationEnabled: false,
+          repoAutomationEnabled: true,
           taskBackend: "github-issues",
           githubTaskRepo: GITHUB_TASK_REPO,
           user: null,
         });
-        setAuthStatus(locale === "zh-CN" ? "未配置 GitHub Client ID，Pages 无法登录。" : "GitHub Client ID is missing for Pages login.");
+        setAuthStatus(locale === "zh-CN" ? "请连接可写入 issue 的 GitHub Token。" : "Connect a GitHub token with issue access.");
         return;
       }
 
       if (!githubToken) {
         setAuthConfig({
           enabled: true,
-          mode: "github-device",
+          mode: "github-token",
           provider: "github",
           hasClientId: true,
           repoAutomationEnabled: true,
@@ -499,7 +499,7 @@ export default function App() {
           githubTaskRepo: GITHUB_TASK_REPO,
           user: null,
         });
-        setAuthStatus(locale === "zh-CN" ? "请使用 GitHub 登录后直接提交 Issue 任务。" : "Sign in with GitHub to create and control issue tasks.");
+        setAuthStatus(locale === "zh-CN" ? "请连接 GitHub Token 后直接提交 Issue 任务。" : "Connect a GitHub token to create and control issue tasks.");
         return;
       }
 
@@ -507,7 +507,7 @@ export default function App() {
         const user = await githubRequest<{ login: string; name: string }>("/user");
         setAuthConfig({
           enabled: true,
-          mode: "github-device",
+          mode: "github-token",
           provider: "github",
           hasClientId: true,
           repoAutomationEnabled: true,
@@ -907,47 +907,32 @@ export default function App() {
 
   async function loginWithGithub() {
     if (runtimeMode === "github-direct") {
-      if (!GITHUB_CLIENT_ID) {
-        setTransientNotice(locale === "zh-CN" ? "GitHub Client ID 未配置" : "GitHub Client ID is missing");
+      const token = window.prompt(
+        locale === "zh-CN"
+          ? "输入一个可访问仓库 issue 的 GitHub Token。建议使用 fine-grained token，并授予 Issues 读写、Metadata 读取权限。"
+          : "Paste a GitHub token with repository issue access. A fine-grained token with Issues read/write and Metadata read is recommended.",
+        githubToken,
+      );
+      const normalized = String(token || "").trim();
+      if (!normalized) {
         return;
       }
 
       try {
-        const response = await fetch("https://github.com/login/device/code", {
-          method: "POST",
+        const response = await fetch("https://api.github.com/user", {
           headers: {
-            Accept: "application/json",
-            "Content-Type": "application/x-www-form-urlencoded",
+            Accept: "application/vnd.github+json",
+            Authorization: `Bearer ${normalized}`,
           },
-          body: new URLSearchParams({
-            client_id: GITHUB_CLIENT_ID,
-            scope: GITHUB_SCOPES,
-          }),
         });
-        const device = (await response.json()) as {
-          device_code: string;
-          user_code: string;
-          verification_uri: string;
-          expires_in: number;
-          interval: number;
-          error?: string;
-          error_description?: string;
-        };
-        if (!response.ok || device.error) {
-          throw new Error(device.error_description || device.error || "Unable to start GitHub device flow");
+        if (!response.ok) {
+          const payload = (await response.json().catch(() => ({}))) as { message?: string };
+          throw new Error(payload.message || "Invalid GitHub token");
         }
-        const session: DeviceLoginSession = {
-          deviceCode: device.device_code,
-          userCode: device.user_code,
-          verificationUri: device.verification_uri,
-          expiresAt: Date.now() + device.expires_in * 1000,
-          intervalSec: device.interval || 5,
-          status: locale === "zh-CN" ? "等待你在 GitHub 输入验证码..." : "Waiting for authorization on GitHub...",
-          error: "",
-        };
-        setDeviceLogin(session);
-        const myPollToken = ++pollTokenRef.current;
-        void pollDeviceLogin(session, myPollToken);
+        localStorage.setItem("codex.githubAccessToken", normalized);
+        setGithubToken(normalized);
+        setTransientNotice(locale === "zh-CN" ? "GitHub 已连接" : "GitHub connected");
+        await refreshAll();
       } catch (error) {
         setTransientNotice(summarizeError(error));
       }
@@ -1324,7 +1309,7 @@ export default function App() {
           type="button"
           className="ghost"
           onClick={() => void loginWithGithub()}
-          disabled={runtimeMode === "github-direct" ? !GITHUB_CLIENT_ID || Boolean(authConfig?.user) : !authConfig?.enabled || Boolean(authConfig?.user)}
+          disabled={runtimeMode === "github-direct" ? Boolean(authConfig?.user) : !authConfig?.enabled || Boolean(authConfig?.user)}
         >
           {t.loginButton}
         </button>
