@@ -43,3 +43,10 @@
 - Resolution: added a GitHub-direct runtime for Pages builds: browser-side GitHub token connection, direct issue creation in `zhaohernando-code/dashboard-ui`, direct `/retry` `/stop` `/approve` `/reject` issue comments, and issue-based task/project views that no longer depend on the local API from mobile.
 - Prevention: any public/static control-plane UI must treat `localhost` as a local-only convenience path; remote/mobile operation must use a queue/backend the browser can reach directly.
 - Commit ID: pending dashboard-ui publish
+
+## 2026-04-13
+
+- Problem: mobile view still allowed breadcrumb and top-level tab actions to wrap into multiple rows, which made the control path unstable and wasted vertical space during task navigation.
+- Resolution: replaced mobile top tabs with a floating quick-switch sheet, converted breadcrumbs into a single-line horizontally scrollable pill path, and tightened workspace action/layout spacing for phone screens while preserving the existing desktop control-plane style.
+- Prevention: any mobile control-plane navigation with more than two primary actions must default to a compact overlay/sheet pattern; breadcrumb trails on narrow screens should scroll horizontally instead of wrapping.
+- Commit ID: N/A（当前环境未执行 git 提交）
