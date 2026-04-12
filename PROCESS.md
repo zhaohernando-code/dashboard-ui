@@ -21,3 +21,10 @@
 - Prevention: Finalization path now records and surfaces publish outcomes to avoid silent drift.
 - Commit ID: 0379611
 - Context: project=dashboard-ui, source=issue #7
+
+## 2026-04-12
+
+- Problem: task switching could snap back to the first task after polling refreshes, while the workspace packed project/task/detail into one screen and task details could overflow on long text.
+- Resolution: stabilized selected project/task state against polling with refs, rebuilt the workspace into single-level navigation with breadcrumb + back flow and level-based create dialogs, added dark mode, and hardened detail/log cards with aggressive wrapping and responsive cards.
+- Prevention: any auto-refreshing selection UI must compare against current refs rather than interval-closure state, and hierarchical dashboards should expose one navigation level at a time with overflow-safe detail blocks.
+- Commit ID: N/A（当前沙箱禁止写入 worktree git 索引，无法在本环境提交）
