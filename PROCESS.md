@@ -74,14 +74,7 @@
 
 ## 2026-04-13
 
-- Problem: the phone header still mixed queue/auth text with duplicated theme/language controls, the back button overlapped with breadcrumb navigation, and the mobile floating menu mixed workspace tabs with settings in one layer.
-- Resolution: hid extra header/status content on mobile so only logo + title remain, removed the standalone back button in favor of breadcrumb-only navigation, converted theme/language actions into labeled switch-style controls, hid the login entry once authenticated, and moved the three primary tabs into a separate mobile drawer launched from the control center.
-- Prevention: mobile control surfaces should separate workspace navigation from account/settings actions, avoid duplicated controls across header and floating menus, and keep top-level phone headers limited to identity-only content unless the extra status is critical.
-- Commit ID: N/A（当前环境可执行代码修改与校验，但 git worktree 索引写入被沙箱拦截，无法在本环境完成 commit/push）
-
-## 2026-04-13
-
-- Problem: this validation run again started in a worktree without a local `node_modules`, which caused `npm run check` and `npm run build` to fail before the actual UI changes were exercised.
-- Resolution: temporarily linked the worktree `node_modules` to `/Users/hernando_zhao/codex/dashboard-ui/node_modules`, completed `npm run check` and `npm run build`, then removed the link so it would not leak into git status.
-- Prevention: for Node/Vite worktrees in this environment, verify dependency availability before validation and use a temporary link or install strategy that is explicitly cleaned up after checks.
-- Commit ID: N/A（当前环境未执行 git 提交）
+- Problem: after creating a task, the mobile dialog could stay open with no visible success feedback even though the backend had already started processing the task.
+- Resolution: cached the form element before the async submit path in both create handlers, so post-submit `reset()` and dialog close no longer depend on `event.currentTarget` remaining valid after `await`.
+- Prevention: in React async form handlers, never read `event.currentTarget` after an awaited request; capture the form element synchronously at the top of the handler and use that stable reference for cleanup.
+- Commit ID: N/A（当前沙箱禁止写入主仓库 `.git/worktrees/...` 索引，无法在本环境提交）
