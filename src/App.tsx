@@ -48,6 +48,8 @@ type Task = {
   branchName: string;
   logs: TaskLog[];
   children: TaskChild[];
+  issueNumber?: number;
+  issueUrl?: string;
 };
 
 type Approval = {
@@ -101,8 +103,29 @@ type Locale = "zh-CN" | "en-US";
 type CopyState = "idle" | "copied";
 type ThemeMode = "light" | "dark";
 type WorkspaceLevel = "projects" | "tasks" | "detail";
+type RuntimeMode = "local-api" | "github-direct";
 
-const DEFAULT_API_BASE = "http://localhost:8787";
+const DEFAULT_API_BASE = (import.meta.env.VITE_DEFAULT_API_BASE as string | undefined)?.trim() || "http://localhost:8787";
+const GITHUB_CLIENT_ID = (import.meta.env.VITE_GITHUB_CLIENT_ID as string | undefined)?.trim() || "";
+const GITHUB_TASK_REPO = (import.meta.env.VITE_GITHUB_TASK_REPO as string | undefined)?.trim() || "zhaohernando-code/dashboard-ui";
+const GITHUB_SCOPES = (import.meta.env.VITE_GITHUB_OAUTH_SCOPES as string | undefined)?.trim() || "read:user repo";
+const IS_GITHUB_PAGES = typeof window !== "undefined" && window.location.hostname.endsWith("github.io");
+const REMOTE_PROJECT_CATALOG = [
+  {
+    id: "dashboard-ui",
+    name: "dashboard-ui",
+    description: "GitHub Pages dashboard for project and issue-driven task dispatch.",
+    repository: "https://github.com/zhaohernando-code/dashboard-ui",
+    toolRoute: "/tools/dashboard-ui",
+  },
+  {
+    id: "local-control-server",
+    name: "local-control-server",
+    description: "Local poller/executor that consumes GitHub issue tasks.",
+    repository: "https://github.com/zhaohernando-code/local-control-server",
+    toolRoute: "/tools/local-control-server",
+  },
+] satisfies Array<Pick<Project, "id" | "name" | "description" | "repository" | "toolRoute">>;
 
 const tabs = [
   { id: "quest-center", label: { "zh-CN": "工作台", "en-US": "Workspace" } },
@@ -127,7 +150,113 @@ function slugify(value: string) {
     .slice(0, 64);
 }
 
+
+function parseTaskType(value: string) {
+  const raw = String(value || "task").trim().toLowerCase();
+  if (raw === "project_create" || raw === "composite_task" || raw === "task") {
+    return raw;
+  }
+  return "task";
+}
+
+function parseIssueBody(body: string) {
+  const embedded = body.match(/<!--\s*codex-task-payload\s*([\s\S]*?)\s*-->/i);
+  if (embedded) {
+    try {
+      const payload = JSON.parse(embedded[1]);
+      return {
+        projectId: String(payload.projectId || "dashboard-ui").trim() || "dashboard-ui",
+        type: parseTaskType(payload.type),
+        title: String(payload.title || "Untitled task").trim(),
+        description: String(payload.description || "").trim(),
+      };
+    } catch {
+      // Fall through to plain parsing.
+    }
+  }
+
+  const meta: Record<string, string> = {};
+  for (const line of String(body || "").split("\n").slice(0, 12)) {
+    const match = line.match(/^\s*([a-zA-Z_]+)\s*:\s*(.+)\s*$/);
+    if (match) meta[match[1].toLowerCase()] = match[2].trim();
+  }
+  return {
+    projectId: meta.project || meta.projectid || "dashboard-ui",
+    type: parseTaskType(meta.type || "task"),
+    title: "",
+    description: String(body || "").replace(/<!--[\s\S]*?-->/g, "").trim(),
+  };
+}
+
+function parseStatusFromComments(comments: Array<{ body: string }>, fallbackClosed: boolean): { status: TaskStatus; taskId: string; summary: string } {
+  let status: TaskStatus = fallbackClosed ? "completed" : "pending";
+  let taskId = "";
+  let summary = "";
+
+  for (const comment of comments) {
+    const body = String(comment.body || "");
+    const imported = body.match(/Task imported as\s+`([^`]+)`/i);
+    if (imported) {
+      taskId = imported[1];
+    }
+    const statusMatch = body.match(/Task\s+`([^`]+)`\s+status changed to\s+`([^`]+)`/i);
+    if (statusMatch) {
+      taskId = statusMatch[1];
+      const next = statusMatch[2].toLowerCase() as TaskStatus;
+      if (["pending", "running", "waiting_user", "failed", "completed", "stopped"].includes(next)) {
+        status = next;
+      }
+      const summaryMatch = body.match(/Summary:\s*([\s\S]+)/i);
+      if (summaryMatch) {
+        summary = summaryMatch[1].trim();
+      }
+    }
+  }
+
+  return { status, taskId, summary };
+}
+
+function buildRemoteProjects(tasks: Task[]) {
+  const projectMap = new Map(
+    REMOTE_PROJECT_CATALOG.map((project) => [
+      project.id,
+      {
+        ...project,
+        taskStats: {
+          total: 0,
+          running: 0,
+          failed: 0,
+          waitingUser: 0,
+          completed: 0,
+        },
+      },
+    ]),
+  );
+
+  for (const task of tasks) {
+    if (!projectMap.has(task.projectId)) {
+      projectMap.set(task.projectId, {
+        id: task.projectId,
+        name: task.projectId,
+        description: "",
+        repository: "",
+        toolRoute: `/tools/${task.projectId}`,
+        taskStats: { total: 0, running: 0, failed: 0, waitingUser: 0, completed: 0 },
+      });
+    }
+    const project = projectMap.get(task.projectId)!;
+    project.taskStats.total += 1;
+    if (task.status === "running") project.taskStats.running += 1;
+    if (task.status === "failed") project.taskStats.failed += 1;
+    if (task.status === "waiting_user") project.taskStats.waitingUser += 1;
+    if (task.status === "completed") project.taskStats.completed += 1;
+  }
+
+  return Array.from(projectMap.values());
+}
+
 export default function App() {
+  const runtimeMode: RuntimeMode = IS_GITHUB_PAGES ? "github-direct" : "local-api";
   const [locale, setLocale] = useState<Locale>(() => {
     const saved = localStorage.getItem("codex.locale");
     if (saved === "zh-CN" || saved === "en-US") return saved;
@@ -139,6 +268,7 @@ export default function App() {
     return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
   });
   const [sessionToken, setSessionToken] = useState(localStorage.getItem("codex.sessionToken") || "");
+  const [githubToken, setGithubToken] = useState(localStorage.getItem("codex.githubAccessToken") || "");
   const [activeTab, setActiveTab] = useState<(typeof tabs)[number]["id"]>("quest-center");
   const [projects, setProjects] = useState<Project[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -227,7 +357,7 @@ export default function App() {
       void refreshAuth();
     }, 5000);
     return () => window.clearInterval(interval);
-  }, [sessionToken]);
+  }, [sessionToken, githubToken]);
 
   useEffect(() => {
     return () => {
@@ -288,6 +418,25 @@ export default function App() {
     return (await response.json()) as T;
   }
 
+  async function githubRequest<T>(path: string, init?: RequestInit): Promise<T> {
+    if (!githubToken) {
+      throw new Error(locale === "zh-CN" ? "请先使用 GitHub 登录" : "Sign in with GitHub first");
+    }
+    const response = await fetch(`https://api.github.com${path}`, {
+      ...init,
+      headers: {
+        Accept: "application/vnd.github+json",
+        Authorization: `Bearer ${githubToken}`,
+        ...(init?.headers || {}),
+      },
+    });
+    if (!response.ok) {
+      const payload = (await response.json().catch(() => ({}))) as { message?: string };
+      throw new Error(payload.message || `GitHub API failed: ${response.status}`);
+    }
+    return (await response.json()) as T;
+  }
+
   function summarizeError(error: unknown) {
     return error instanceof Error ? error.message : String(error);
   }
@@ -302,6 +451,14 @@ export default function App() {
   }
 
   async function refreshHealth() {
+    if (runtimeMode === "github-direct") {
+      setConnectionStatus(
+        locale === "zh-CN"
+          ? `GitHub Issue 队列模式 · ${GITHUB_TASK_REPO}`
+          : `GitHub issue queue mode · ${GITHUB_TASK_REPO}`,
+      );
+      return;
+    }
     try {
       const payload = await api<{ serverName: string; host: string }>("/api/health");
       setConnectionStatus(
@@ -315,6 +472,60 @@ export default function App() {
   }
 
   async function refreshAuth() {
+    if (runtimeMode === "github-direct") {
+      if (!GITHUB_CLIENT_ID) {
+        setAuthConfig({
+          enabled: false,
+          mode: "github-device",
+          provider: "github",
+          hasClientId: false,
+          repoAutomationEnabled: false,
+          taskBackend: "github-issues",
+          githubTaskRepo: GITHUB_TASK_REPO,
+          user: null,
+        });
+        setAuthStatus(locale === "zh-CN" ? "未配置 GitHub Client ID，Pages 无法登录。" : "GitHub Client ID is missing for Pages login.");
+        return;
+      }
+
+      if (!githubToken) {
+        setAuthConfig({
+          enabled: true,
+          mode: "github-device",
+          provider: "github",
+          hasClientId: true,
+          repoAutomationEnabled: true,
+          taskBackend: "github-issues",
+          githubTaskRepo: GITHUB_TASK_REPO,
+          user: null,
+        });
+        setAuthStatus(locale === "zh-CN" ? "请使用 GitHub 登录后直接提交 Issue 任务。" : "Sign in with GitHub to create and control issue tasks.");
+        return;
+      }
+
+      try {
+        const user = await githubRequest<{ login: string; name: string }>("/user");
+        setAuthConfig({
+          enabled: true,
+          mode: "github-device",
+          provider: "github",
+          hasClientId: true,
+          repoAutomationEnabled: true,
+          taskBackend: "github-issues",
+          githubTaskRepo: GITHUB_TASK_REPO,
+          user: {
+            login: user.login,
+            name: user.name || user.login,
+          },
+        });
+        setAuthStatus(locale === "zh-CN" ? `当前用户：${user.name || user.login}` : `Signed in as ${user.name || user.login}`);
+      } catch (error) {
+        localStorage.removeItem("codex.githubAccessToken");
+        setGithubToken("");
+        setAuthStatus(summarizeError(error));
+      }
+      return;
+    }
     try {
       const payload = await api<AuthConfig>("/api/auth/config");
       setAuthConfig(payload);
@@ -332,6 +543,22 @@ export default function App() {
   }
 
   async function refreshProjects() {
+    if (runtimeMode === "github-direct") {
+      const nextProjects = buildRemoteProjects(tasks);
+      setProjects(nextProjects);
+      if (!nextProjects.length) {
+        setSelectedProjectId("");
+        return;
+      }
+      const currentProjectId = selectedProjectIdRef.current;
+      const nextProjectId = nextProjects.some((project) => project.id === currentProjectId)
+        ? currentProjectId
+        : nextProjects[0].id;
+      if (nextProjectId !== currentProjectId) {
+        setSelectedProjectId(nextProjectId);
+      }
+      return;
+    }
     try {
       const payload = await api<{ projects: Project[] }>("/api/projects");
       setProjects(payload.projects);
@@ -355,6 +582,97 @@ export default function App() {
   }
 
   async function refreshTasks() {
+    if (runtimeMode === "github-direct") {
+      if (!githubToken) {
+        setTasks([]);
+        setApprovals([]);
+        setUsage(null);
+        setProjects(buildRemoteProjects([]));
+        return;
+      }
+
+      try {
+        const [owner, repo] = GITHUB_TASK_REPO.split("/");
+        const issues = await githubRequest<Array<{
+          number: number;
+          title: string;
+          body: string;
+          state: string;
+          html_url: string;
+          updated_at: string;
+          labels: Array<{ name: string }>;
+          pull_request?: unknown;
+        }>>(`/repos/${owner}/${repo}/issues?state=all&labels=codex-task&per_page=100&sort=updated&direction=desc`);
+
+        const taskList = (
+          await Promise.all(
+            issues
+              .filter((issue) => !issue.pull_request)
+              .map(async (issue) => {
+                const parsed = parseIssueBody(issue.body || "");
+                const comments = await githubRequest<Array<{ body: string }>>(
+                  `/repos/${owner}/${repo}/issues/${issue.number}/comments?per_page=100&sort=created&direction=asc`,
+                );
+                const statusMeta = parseStatusFromComments(comments, issue.state === "closed");
+                const projectId = parsed.projectId || "dashboard-ui";
+                return {
+                  id: statusMeta.taskId || `issue-${issue.number}`,
+                  issueNumber: issue.number,
+                  issueUrl: issue.html_url,
+                  projectId,
+                  projectName: projectId,
+                  type: parsed.type,
+                  title: parsed.title || issue.title,
+                  description: parsed.description || issue.body || "",
+                  status: statusMeta.status,
+                  summary: statusMeta.summary,
+                  planPreview: "",
+                  workspacePath: "",
+                  branchName: "",
+                  logs: [],
+                  children: [],
+                } satisfies Task;
+              }),
+          )
+        ).sort((left, right) => (right.issueNumber || 0) - (left.issueNumber || 0));
+
+        setTasks(taskList);
+        setProjects(buildRemoteProjects(taskList));
+        setApprovals(
+          taskList
+            .filter((task) => task.status === "waiting_user")
+            .map((task) => ({
+              id: `approval-${task.issueNumber || task.id}`,
+              reason: locale === "zh-CN" ? "请在 GitHub Pages 审批后继续执行" : "Approve in GitHub Pages to continue execution",
+              task,
+            })),
+        );
+        setUsage({
+          totalTasks: taskList.length,
+          activeTasks: taskList.filter((task) => task.status === "running").length,
+          pendingApprovals: taskList.filter((task) => task.status === "waiting_user").length,
+          completedTasks: taskList.filter((task) => task.status === "completed").length,
+          failedTasks: taskList.filter((task) => task.status === "failed").length,
+          estimatedTokens: 0,
+          totalRuns: taskList.length,
+          lastRunAt: issues[0]?.updated_at || "",
+        });
+
+        if (!taskList.length) {
+          setSelectedTaskId("");
+          return;
+        }
+        const currentTaskId = selectedTaskIdRef.current;
+        const nextTaskId = taskList.some((task) => task.id === currentTaskId) ? currentTaskId : taskList[0].id;
+        if (currentTaskId && nextTaskId !== currentTaskId) {
+          setSelectedTaskId(nextTaskId);
+        }
+      } catch {
+        setTasks([]);
+        setApprovals([]);
+      }
+      return;
+    }
     try {
       const payload = await api<{ tasks: Task[] }>("/api/tasks");
       setTasks(payload.tasks);
@@ -379,6 +697,9 @@ export default function App() {
   }
 
   async function refreshApprovals() {
+    if (runtimeMode === "github-direct") {
+      return;
+    }
     try {
       const payload = await api<{ approvals: Approval[] }>("/api/approvals");
       setApprovals(payload.approvals.filter((approval) => approval.task.status === "waiting_user"));
@@ -388,6 +709,17 @@ export default function App() {
   }
 
   async function refreshTools() {
+    if (runtimeMode === "github-direct") {
+      setTools(
+        REMOTE_PROJECT_CATALOG.map((project) => ({
+          id: project.id,
+          name: project.name,
+          route: project.repository,
+          description: project.description,
+        })),
+      );
+      return;
+    }
     try {
       const payload = await api<{ tools: Array<{ id: string; name: string; route: string; description: string }> }>("/api/tools");
       setTools(payload.tools);
@@ -397,6 +729,9 @@ export default function App() {
   }
 
   async function refreshUsage() {
+    if (runtimeMode === "github-direct") {
+      return;
+    }
     try {
       const payload = await api<{ overview: UsageOverview }>("/api/usage");
       setUsage(payload.overview);
@@ -415,7 +750,48 @@ export default function App() {
       const visibility = String(form.get("visibility") || "private");
       const autoCreateRepo = form.get("autoCreateRepo") === "on";
 
-      if (authConfig?.taskBackend === "github-issues") {
+      if (runtimeMode === "github-direct") {
+        const [owner, repoName] = GITHUB_TASK_REPO.split("/");
+        const payload = {
+          projectId: "dashboard-ui",
+          type: "project_create",
+          title: `Create project: ${name}`,
+          description: description || `Create a new Codex-managed project named ${name}.`,
+          requestedProject: {
+            id: slugify(name),
+            name,
+            description,
+            repository,
+            visibility,
+            autoCreateRepo,
+          },
+        };
+        const issue = await githubRequest<{ number: number; html_url: string }>(`/repos/${owner}/${repoName}/issues`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title: payload.title,
+            body: [
+              `project: ${payload.projectId}`,
+              `type: ${payload.type}`,
+              "",
+              payload.description,
+              "",
+              "<!-- codex-task-payload",
+              JSON.stringify({
+                ...payload,
+                requestedBy: authConfig?.user?.login || "",
+                createdAt: new Date().toISOString(),
+              }),
+              "-->",
+            ].join("\n"),
+            labels: ["codex-task"],
+          }),
+        });
+        setTransientNotice(
+          locale === "zh-CN" ? `项目请求已入队：Issue #${issue.number}` : `Project queued via issue #${issue.number}`,
+        );
+      } else if (authConfig?.taskBackend === "github-issues") {
         const queued = await api<{ issue: IssueTask }>("/api/issue-tasks", {
           method: "POST",
           body: JSON.stringify({
@@ -468,7 +844,33 @@ export default function App() {
       const title = String(form.get("title") || "").trim();
       const description = String(form.get("description") || "").trim();
 
-      if (authConfig?.taskBackend === "github-issues") {
+      if (runtimeMode === "github-direct") {
+        const [owner, repoName] = GITHUB_TASK_REPO.split("/");
+        const payload = { projectId, type, title, description };
+        const issue = await githubRequest<{ number: number; html_url: string }>(`/repos/${owner}/${repoName}/issues`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title,
+            body: [
+              `project: ${projectId}`,
+              `type: ${type}`,
+              "",
+              description,
+              "",
+              "<!-- codex-task-payload",
+              JSON.stringify({
+                ...payload,
+                requestedBy: authConfig?.user?.login || "",
+                createdAt: new Date().toISOString(),
+              }),
+              "-->",
+            ].join("\n"),
+            labels: ["codex-task"],
+          }),
+        });
+        setTransientNotice(locale === "zh-CN" ? `任务已入队：Issue #${issue.number}` : `Task queued via issue #${issue.number}`);
+      } else if (authConfig?.taskBackend === "github-issues") {
         const queued = await api<{ issue: IssueTask }>("/api/issue-tasks", {
           method: "POST",
           body: JSON.stringify({
@@ -504,6 +906,54 @@ export default function App() {
   }
 
   async function loginWithGithub() {
+    if (runtimeMode === "github-direct") {
+      if (!GITHUB_CLIENT_ID) {
+        setTransientNotice(locale === "zh-CN" ? "GitHub Client ID 未配置" : "GitHub Client ID is missing");
+        return;
+      }
+
+      try {
+        const response = await fetch("https://github.com/login/device/code", {
+          method: "POST",
+          headers: {
+            Accept: "application/json",
+            "Content-Type": "application/x-www-form-urlencoded",
+          },
+          body: new URLSearchParams({
+            client_id: GITHUB_CLIENT_ID,
+            scope: GITHUB_SCOPES,
+          }),
+        });
+        const device = (await response.json()) as {
+          device_code: string;
+          user_code: string;
+          verification_uri: string;
+          expires_in: number;
+          interval: number;
+          error?: string;
+          error_description?: string;
+        };
+        if (!response.ok || device.error) {
+          throw new Error(device.error_description || device.error || "Unable to start GitHub device flow");
+        }
+        const session: DeviceLoginSession = {
+          deviceCode: device.device_code,
+          userCode: device.user_code,
+          verificationUri: device.verification_uri,
+          expiresAt: Date.now() + device.expires_in * 1000,
+          intervalSec: device.interval || 5,
+          status: locale === "zh-CN" ? "等待你在 GitHub 输入验证码..." : "Waiting for authorization on GitHub...",
+          error: "",
+        };
+        setDeviceLogin(session);
+        const myPollToken = ++pollTokenRef.current;
+        void pollDeviceLogin(session, myPollToken);
+      } catch (error) {
+        setTransientNotice(summarizeError(error));
+      }
+      return;
+    }
+
     if (!authConfig?.enabled || authConfig.mode !== "github-device") {
       setTransientNotice(locale === "zh-CN" ? "服务器未启用 GitHub 设备流登录" : "GitHub device flow is not enabled");
       return;
@@ -543,16 +993,50 @@ export default function App() {
       if (pollToken !== pollTokenRef.current) return;
       await sleep(session.intervalSec * 1000);
       try {
-        const polled = await api<{
-          sessionToken?: string;
-          error?: string;
-          error_description?: string;
-        }>("/api/auth/device/poll", {
-          method: "POST",
-          body: JSON.stringify({ deviceCode: session.deviceCode }),
-        });
+        const polled = runtimeMode === "github-direct"
+          ? await fetch("https://github.com/login/oauth/access_token", {
+              method: "POST",
+              headers: {
+                Accept: "application/json",
+                "Content-Type": "application/x-www-form-urlencoded",
+              },
+              body: new URLSearchParams({
+                client_id: GITHUB_CLIENT_ID,
+                device_code: session.deviceCode,
+                grant_type: "urn:ietf:params:oauth:grant-type:device_code",
+              }),
+            }).then((response) => response.json() as Promise<{
+              access_token?: string;
+              error?: string;
+              error_description?: string;
+              interval?: number;
+            }>)
+          : await api<{
+              sessionToken?: string;
+              error?: string;
+              error_description?: string;
+            }>("/api/auth/device/poll", {
+              method: "POST",
+              body: JSON.stringify({ deviceCode: session.deviceCode }),
+            });
 
-        if (polled.sessionToken) {
+        if ("access_token" in polled && polled.access_token) {
+          localStorage.setItem("codex.githubAccessToken", polled.access_token);
+          setGithubToken(polled.access_token);
+          setDeviceLogin((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  status: locale === "zh-CN" ? "登录成功，正在刷新界面..." : "Signed in. Refreshing dashboard...",
+                }
+              : prev,
+          );
+          await refreshAll();
+          window.setTimeout(() => setDeviceLogin(null), 1200);
+          return;
+        }
+
+        if ("sessionToken" in polled && polled.sessionToken) {
           localStorage.setItem("codex.sessionToken", polled.sessionToken);
           setSessionToken(polled.sessionToken);
           setDeviceLogin((prev) =>
@@ -612,6 +1096,14 @@ export default function App() {
   }
 
   async function logout() {
+    if (runtimeMode === "github-direct") {
+      pollTokenRef.current += 1;
+      localStorage.removeItem("codex.githubAccessToken");
+      setGithubToken("");
+      setDeviceLogin(null);
+      await refreshAll();
+      return;
+    }
     try {
       await api("/api/auth/logout", { method: "POST", body: JSON.stringify({}) });
     } catch {
@@ -627,7 +1119,20 @@ export default function App() {
 
   async function mutateTask(taskId: string, action: "stop" | "retry") {
     try {
-      await api(`/api/tasks/${taskId}/${action}`, { method: "POST" });
+      const task = tasks.find((item) => item.id === taskId);
+      if (runtimeMode === "github-direct") {
+        if (!task?.issueNumber) {
+          throw new Error(locale === "zh-CN" ? "当前任务没有对应的 Issue 编号" : "This task is missing an issue number");
+        }
+        const [owner, repoName] = GITHUB_TASK_REPO.split("/");
+        await githubRequest(`/repos/${owner}/${repoName}/issues/${task.issueNumber}/comments`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ body: action === "stop" ? "/stop" : "/retry" }),
+        });
+      } else {
+        await api(`/api/tasks/${taskId}/${action}`, { method: "POST" });
+      }
       setTransientNotice(action === "stop" ? (locale === "zh-CN" ? "已发送停止指令" : "Stop requested") : locale === "zh-CN" ? "已重试任务" : "Task retried");
       await refreshTasks();
       await refreshApprovals();
@@ -638,10 +1143,24 @@ export default function App() {
 
   async function respondToTask(taskId: string, decision: "approve" | "reject", feedback: string) {
     try {
-      await api(`/api/tasks/${taskId}/respond`, {
-        method: "POST",
-        body: JSON.stringify({ decision, feedback }),
-      });
+      const task = tasks.find((item) => item.id === taskId);
+      if (runtimeMode === "github-direct") {
+        if (!task?.issueNumber) {
+          throw new Error(locale === "zh-CN" ? "当前任务没有对应的 Issue 编号" : "This task is missing an issue number");
+        }
+        const [owner, repoName] = GITHUB_TASK_REPO.split("/");
+        const command = decision === "approve" ? `/approve ${feedback}`.trim() : `/reject ${feedback}`.trim();
+        await githubRequest(`/repos/${owner}/${repoName}/issues/${task.issueNumber}/comments`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ body: command }),
+        });
+      } else {
+        await api(`/api/tasks/${taskId}/respond`, {
+          method: "POST",
+          body: JSON.stringify({ decision, feedback }),
+        });
+      }
       setTransientNotice(locale === "zh-CN" ? "审批结果已提交" : "Decision submitted");
       await refreshAll();
     } catch (error) {
@@ -748,8 +1267,8 @@ export default function App() {
         </div>
         <div className="topbar-right">
           <div className="api-pill">
-            {t.localApi}
-            <code>{DEFAULT_API_BASE}</code>
+            {runtimeMode === "github-direct" ? (locale === "zh-CN" ? "任务队列：" : "Task queue:") : t.localApi}
+            <code>{runtimeMode === "github-direct" ? GITHUB_TASK_REPO : DEFAULT_API_BASE}</code>
           </div>
           <button type="button" className="ghost" onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>
             {theme === "dark" ? (locale === "zh-CN" ? "浅色" : "Light") : locale === "zh-CN" ? "深色" : "Dark"}
@@ -805,7 +1324,7 @@ export default function App() {
           type="button"
           className="ghost"
           onClick={() => void loginWithGithub()}
-          disabled={!authConfig?.enabled || Boolean(authConfig.user)}
+          disabled={runtimeMode === "github-direct" ? !GITHUB_CLIENT_ID || Boolean(authConfig?.user) : !authConfig?.enabled || Boolean(authConfig?.user)}
         >
           {t.loginButton}
         </button>
