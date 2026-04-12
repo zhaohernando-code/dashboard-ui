@@ -73,13 +73,21 @@ type AuthConfig = {
   provider: string;
   hasClientId: boolean;
   repoAutomationEnabled: boolean;
+  taskBackend?: string;
+  githubTaskRepo?: string;
   user: null | {
     login: string;
     name: string;
   };
 };
 
-const DEFAULT_API_BASE = "http://localhost:8787";
+type IssueTask = {
+  number: number;
+  url: string;
+  repo: string;
+};
+
+const DEFAULT_API_BASE = (import.meta.env.VITE_DEFAULT_API_BASE as string | undefined) || "http://localhost:8787";
 
 const tabs = [
   { id: "quest-center", label: "Quest Center" },
@@ -223,16 +231,38 @@ export default function App() {
   async function onCreateProject(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    await api("/api/projects", {
-      method: "POST",
-      body: JSON.stringify({
-        name: form.get("name"),
-        description: form.get("description"),
-        repository: form.get("repository"),
-        visibility: form.get("visibility"),
-        autoCreateRepo: form.get("autoCreateRepo") === "on",
-      }),
-    });
+    const payload = {
+      name: String(form.get("name") || "").trim(),
+      description: String(form.get("description") || "").trim(),
+      repository: String(form.get("repository") || "").trim(),
+      visibility: String(form.get("visibility") || "private"),
+      autoCreateRepo: form.get("autoCreateRepo") === "on",
+    };
+    if (authConfig?.taskBackend === "github-issues") {
+      const issue = await api<{ issue: IssueTask }>("/api/issue-tasks", {
+        method: "POST",
+        body: JSON.stringify({
+          projectId: "dashboard-ui",
+          type: "project_create",
+          title: `Create project: ${payload.name}`,
+          description: payload.description || `Create a new Codex-managed project named ${payload.name}.`,
+          requestedProject: {
+            id: payload.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 64),
+            name: payload.name,
+            description: payload.description,
+            repository: payload.repository,
+            visibility: payload.visibility,
+            autoCreateRepo: payload.autoCreateRepo,
+          },
+        }),
+      });
+      window.alert(`Project request queued as issue #${issue.issue.number} in ${issue.issue.repo}`);
+    } else {
+      await api("/api/projects", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+    }
     (event.currentTarget as HTMLFormElement).reset();
     await refreshAll();
   }
@@ -240,15 +270,24 @@ export default function App() {
   async function onCreateTask(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    await api("/api/tasks", {
-      method: "POST",
-      body: JSON.stringify({
-        projectId: form.get("projectId"),
-        type: form.get("type"),
-        title: form.get("title"),
-        description: form.get("description"),
-      }),
-    });
+    const payload = {
+      projectId: String(form.get("projectId") || "").trim(),
+      type: String(form.get("type") || "task").trim(),
+      title: String(form.get("title") || "").trim(),
+      description: String(form.get("description") || "").trim(),
+    };
+    if (authConfig?.taskBackend === "github-issues") {
+      const issue = await api<{ issue: IssueTask }>("/api/issue-tasks", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+      window.alert(`Task queued as issue #${issue.issue.number} in ${issue.issue.repo}`);
+    } else {
+      await api("/api/tasks", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+    }
     (event.currentTarget as HTMLFormElement).reset();
     await refreshTasks();
   }
@@ -390,6 +429,11 @@ export default function App() {
                 <div className="section-head">
                   <h2>Create</h2>
                 </div>
+                {authConfig?.taskBackend === "github-issues" ? (
+                  <p className="hint">
+                    Queue mode: forms create GitHub issues in {authConfig.githubTaskRepo || "configured task repo"}, then local worker polls and executes.
+                  </p>
+                ) : null}
                 <form className="stack compact" onSubmit={onCreateProject}>
                   <h3>New project</h3>
                   <input name="name" placeholder="project name" required />
@@ -655,4 +699,3 @@ function ApprovalCard({
 function sleep(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
-
