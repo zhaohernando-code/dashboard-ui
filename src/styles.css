@@ -204,7 +204,8 @@ h3 {
 .tool-item,
 .approval-item,
 .info-card,
-.entity-card {
+.entity-card,
+.form-note {
   border-radius: 14px;
   border: 1px solid var(--line);
   background: var(--surface-2);
@@ -471,6 +472,12 @@ textarea {
 
 .check-row input {
   width: auto;
+}
+
+.form-note {
+  padding: 0.78rem 0.85rem;
+  color: var(--text-dim);
+  line-height: 1.55;
 }
 
 .detail-card {
