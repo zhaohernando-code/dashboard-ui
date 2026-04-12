@@ -104,12 +104,14 @@ type CopyState = "idle" | "copied";
 type ThemeMode = "light" | "dark";
 type WorkspaceLevel = "projects" | "tasks" | "detail";
 type RuntimeMode = "local-api" | "github-direct";
+type CreateDialogMode = "project" | "task" | "composite_task";
 
 const DEFAULT_API_BASE = (import.meta.env.VITE_DEFAULT_API_BASE as string | undefined)?.trim() || "http://localhost:8787";
 const GITHUB_CLIENT_ID = (import.meta.env.VITE_GITHUB_CLIENT_ID as string | undefined)?.trim() || "";
 const GITHUB_TASK_REPO = (import.meta.env.VITE_GITHUB_TASK_REPO as string | undefined)?.trim() || "zhaohernando-code/dashboard-ui";
 const GITHUB_SCOPES = (import.meta.env.VITE_GITHUB_OAUTH_SCOPES as string | undefined)?.trim() || "read:user repo";
 const IS_GITHUB_PAGES = typeof window !== "undefined" && window.location.hostname.endsWith("github.io");
+const AUTO_ROUTE_PROJECT_ID = "__auto_route__";
 const REMOTE_PROJECT_CATALOG = [
   {
     id: "dashboard-ui",
@@ -237,8 +239,11 @@ function buildRemoteProjects(tasks: Task[]) {
     if (!projectMap.has(task.projectId)) {
       projectMap.set(task.projectId, {
         id: task.projectId,
-        name: task.projectId,
-        description: "",
+        name: task.projectId === AUTO_ROUTE_PROJECT_ID ? "AI-routed" : task.projectId,
+        description:
+          task.projectId === AUTO_ROUTE_PROJECT_ID
+            ? "Composite or cross-project work waiting for AI routing."
+            : "",
         repository: "",
         toolRoute: `/tools/${task.projectId}`,
         taskStats: { total: 0, running: 0, failed: 0, waitingUser: 0, completed: 0 },
@@ -253,6 +258,25 @@ function buildRemoteProjects(tasks: Task[]) {
   }
 
   return Array.from(projectMap.values());
+}
+
+function isCompositeTask(type: string) {
+  return parseTaskType(type) === "composite_task";
+}
+
+function getTaskProjectId(type: string, rawProjectId: string) {
+  const normalizedProjectId = String(rawProjectId || "").trim();
+  if (isCompositeTask(type)) {
+    return AUTO_ROUTE_PROJECT_ID;
+  }
+  return normalizedProjectId || "dashboard-ui";
+}
+
+function getProjectDisplayName(projectId: string, locale: Locale) {
+  if (projectId === AUTO_ROUTE_PROJECT_ID) {
+    return locale === "zh-CN" ? "AI 待判定项目" : "AI-routed";
+  }
+  return projectId;
 }
 
 export default function App() {
@@ -280,7 +304,7 @@ export default function App() {
   const [selectedTaskId, setSelectedTaskId] = useState("");
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [workspaceLevel, setWorkspaceLevel] = useState<WorkspaceLevel>("projects");
-  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [createDialogMode, setCreateDialogMode] = useState<CreateDialogMode | null>(null);
   const [authStatus, setAuthStatus] = useState("");
   const [deviceLogin, setDeviceLogin] = useState<DeviceLoginSession | null>(null);
   const [notice, setNotice] = useState("");
@@ -625,7 +649,7 @@ export default function App() {
                   issueNumber: issue.number,
                   issueUrl: issue.html_url,
                   projectId,
-                  projectName: projectId,
+                  projectName: getProjectDisplayName(projectId, locale),
                   type: parsed.type,
                   title: parsed.title || issue.title,
                   description: parsed.description || issue.body || "",
@@ -718,7 +742,7 @@ export default function App() {
       setTools(
         REMOTE_PROJECT_CATALOG.map((project) => ({
           id: project.id,
-          name: project.name,
+          name: getProjectDisplayName(project.id, locale),
           route: project.repository,
           description: project.description,
         })),
@@ -833,7 +857,7 @@ export default function App() {
         setTransientNotice(locale === "zh-CN" ? "项目已创建" : "Project created");
       }
       (event.currentTarget as HTMLFormElement).reset();
-      setIsCreateDialogOpen(false);
+      setCreateDialogMode(null);
       await refreshAll();
     } catch (error) {
       setTransientNotice(summarizeError(error));
@@ -844,8 +868,8 @@ export default function App() {
     event.preventDefault();
     try {
       const form = new FormData(event.currentTarget);
-      const projectId = String(form.get("projectId") || "").trim();
       const type = String(form.get("type") || "task").trim();
+      const projectId = getTaskProjectId(type, String(form.get("projectId") || "").trim());
       const title = String(form.get("title") || "").trim();
       const description = String(form.get("description") || "").trim();
 
@@ -866,6 +890,7 @@ export default function App() {
               "<!-- codex-task-payload",
               JSON.stringify({
                 ...payload,
+                routingMode: projectId === AUTO_ROUTE_PROJECT_ID ? "ai" : "fixed",
                 requestedBy: authConfig?.user?.login || "",
                 createdAt: new Date().toISOString(),
               }),
@@ -903,7 +928,7 @@ export default function App() {
         setTransientNotice(locale === "zh-CN" ? "任务已创建" : "Task created");
       }
       (event.currentTarget as HTMLFormElement).reset();
-      setIsCreateDialogOpen(false);
+      setCreateDialogMode(null);
       await refreshTasks();
     } catch (error) {
       setTransientNotice(summarizeError(error));
@@ -1185,7 +1210,7 @@ export default function App() {
       ? [
           {
             key: "tasks",
-            label: selectedProject.name,
+            label: getProjectDisplayName(selectedProject.id, locale),
             active: workspaceLevel === "tasks",
             onClick: () => {
               setSelectedProjectId(selectedProject.id);
@@ -1226,8 +1251,8 @@ export default function App() {
         : "Choose a project first, then inspect its tasks."
       : workspaceLevel === "tasks"
         ? locale === "zh-CN"
-          ? `${selectedProject?.name || "当前项目"} 下的任务`
-          : `Tasks under ${selectedProject?.name || "the current project"}`
+          ? `${getProjectDisplayName(selectedProject?.id || "", locale) || "当前项目"} 下的任务`
+          : `Tasks under ${getProjectDisplayName(selectedProject?.id || "", locale) || "the current project"}`
         : locale === "zh-CN"
           ? "只展示当前任务的详情与操作。"
           : "Focused detail view for the active task.";
@@ -1427,8 +1452,17 @@ export default function App() {
                 <button className="ghost" type="button" onClick={() => void refreshAll()}>
                   {t.refresh}
                 </button>
+                {workspaceLevel === "projects" ? (
+                  <button type="button" className="ghost" onClick={() => setCreateDialogMode("composite_task")}>
+                    {locale === "zh-CN" ? "模糊/组合任务" : "Composite task"}
+                  </button>
+                ) : null}
                 {createLabel ? (
-                  <button type="button" className="primary" onClick={() => setIsCreateDialogOpen(true)}>
+                  <button
+                    type="button"
+                    className="primary"
+                    onClick={() => setCreateDialogMode(workspaceLevel === "projects" ? "project" : "task")}
+                  >
                     {createLabel}
                   </button>
                 ) : null}
@@ -1451,9 +1485,15 @@ export default function App() {
                         <span className="entity-icon" aria-hidden="true">
                           ▣
                         </span>
-                        <span className="title">{project.name}</span>
+                        <span className="title">{getProjectDisplayName(project.id, locale)}</span>
                       </div>
-                      <div className="meta clamp-2">{project.description || (locale === "zh-CN" ? "暂无项目描述" : "No description")}</div>
+                      <div className="meta clamp-2">
+                        {(project.id === AUTO_ROUTE_PROJECT_ID
+                          ? locale === "zh-CN"
+                            ? "模糊或跨项目任务暂存区，等待 AI 判断路由。"
+                            : "Staging area for composite or cross-project tasks before AI routing."
+                          : project.description) || (locale === "zh-CN" ? "暂无项目描述" : "No description")}
+                      </div>
                       <div className="entity-footer">
                         <span className="meta">{project.repository || (locale === "zh-CN" ? "未绑定仓库" : "No repository")}</span>
                         <span className="stats-pill">
@@ -1478,7 +1518,7 @@ export default function App() {
                         <span className={`badge status-${task.status}`}>{statusLabel[task.status][locale]}</span>
                       </div>
                       <div className="meta">
-                        {task.projectName} · {task.type}
+                        {getProjectDisplayName(task.projectId, locale)} · {task.type}
                       </div>
                       <div className="clamp-3 entity-copy">{task.description || (locale === "zh-CN" ? "暂无描述" : "No description")}</div>
                     </button>
@@ -1582,13 +1622,13 @@ export default function App() {
         </section>
       )}
 
-      {isCreateDialogOpen ? (
+      {createDialogMode ? (
         <CreateDialog
           locale={locale}
-          level={workspaceLevel}
+          mode={createDialogMode}
           projects={projects}
           selectedProjectId={selectedProjectId}
-          onClose={() => setIsCreateDialogOpen(false)}
+          onClose={() => setCreateDialogMode(null)}
           onCreateProject={onCreateProject}
           onCreateTask={onCreateTask}
         />
@@ -1599,7 +1639,7 @@ export default function App() {
 
 function CreateDialog({
   locale,
-  level,
+  mode,
   projects,
   selectedProjectId,
   onClose,
@@ -1607,7 +1647,7 @@ function CreateDialog({
   onCreateTask,
 }: {
   locale: Locale;
-  level: WorkspaceLevel;
+  mode: CreateDialogMode;
   projects: Project[];
   selectedProjectId: string;
   onClose: () => void;
@@ -1615,10 +1655,14 @@ function CreateDialog({
   onCreateTask: (event: FormEvent<HTMLFormElement>) => Promise<void>;
 }) {
   const title =
-    level === "projects"
+    mode === "project"
       ? locale === "zh-CN"
         ? "创建项目"
         : "Create project"
+      : mode === "composite_task"
+        ? locale === "zh-CN"
+          ? "创建模糊/组合任务"
+          : "Create composite task"
       : locale === "zh-CN"
         ? "创建任务"
         : "Create task";
@@ -1639,7 +1683,7 @@ function CreateDialog({
           </button>
         </div>
 
-        {level === "projects" ? (
+        {mode === "project" ? (
           <form className="stack compact" onSubmit={onCreateProject}>
             <input name="name" placeholder={locale === "zh-CN" ? "项目名称" : "Project name"} required />
             <textarea name="description" rows={4} placeholder={locale === "zh-CN" ? "目标 / 范围 / 备注" : "Goal / scope / notes"} />
@@ -1656,17 +1700,22 @@ function CreateDialog({
           </form>
         ) : (
           <form className="stack compact" onSubmit={onCreateTask}>
-            <select name="projectId" defaultValue={selectedProjectId || projects[0]?.id}>
-              {projects.map((project) => (
-                <option key={project.id} value={project.id}>
-                  {project.name}
-                </option>
-              ))}
-            </select>
-            <select name="type" defaultValue="task">
-              <option value="task">{locale === "zh-CN" ? "直接任务" : "Direct task"}</option>
-              <option value="composite_task">{locale === "zh-CN" ? "模糊/组合任务" : "Composite task"}</option>
-            </select>
+            {mode === "task" ? (
+              <select name="projectId" defaultValue={selectedProjectId || projects[0]?.id}>
+                {projects.map((project) => (
+                  <option key={project.id} value={project.id}>
+                    {getProjectDisplayName(project.id, locale)}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <div className="form-note">
+                {locale === "zh-CN"
+                  ? "该任务从项目层级发起，不预先绑定项目，由 AI 判断应归属到哪个项目，或是否需要拆分到多个项目。"
+                  : "This task starts from the project layer without a fixed project. AI will decide the target project or split it across multiple projects."}
+              </div>
+            )}
+            <input type="hidden" name="type" value={mode === "composite_task" ? "composite_task" : "task"} />
             <input name="title" placeholder={locale === "zh-CN" ? "任务标题" : "Task title"} required />
             <textarea name="description" rows={5} placeholder={locale === "zh-CN" ? "希望 Codex 完成什么" : "What should Codex do?"} required />
             <button type="submit" className="primary">{locale === "zh-CN" ? "创建任务" : "Create task"}</button>
@@ -1693,7 +1742,7 @@ function TaskDetail({
       <div className="detail-hero">
         <div>
           <div className="meta">
-            {task.projectName} · {task.type}
+            {getProjectDisplayName(task.projectId, locale)} · {task.type}
           </div>
           <h3 className="wrap-anywhere">{task.title}</h3>
           <div className="meta">
@@ -1803,7 +1852,7 @@ function ApprovalCard({
       <div className="title wrap-anywhere">{approval.task.title}</div>
       <div className="meta wrap-anywhere">{approval.reason}</div>
       <div className="meta">
-        {approval.task.projectName} · {approval.task.type}
+        {getProjectDisplayName(approval.task.projectId, locale)} · {approval.task.type}
       </div>
       <textarea
         value={feedback}
