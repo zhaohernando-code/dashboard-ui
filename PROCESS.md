@@ -16,6 +16,8 @@
 
 ## 2026-04-12
 
-- Problem: the task browser mixed projects, tasks, and details in one view, task selection could become unstable during polling refreshes, and long detail content could overflow the card width.
-- Resolution: rebuilt the quest center as a layered `projects -> tasks -> details` flow with breadcrumbs, back navigation, context actions in a modal, selection fallback logic across refreshes, and wrapped long task content/log text; also added a dark-first theme toggle.
-- Prevention: when polling mutable lists, preserve the user's active selection explicitly and only clear it when the entity truly disappears; detail surfaces must default to `overflow-wrap`/`pre-wrap` for logs, paths, and generated summaries.
+- Problem: task task-mnvwpn1r-cbbcjc (bug修复和体验优化) finished with status completed.
+- Resolution: Published via GitHub Contents API fallback.
+- Prevention: Finalization path now records and surfaces publish outcomes to avoid silent drift.
+- Commit ID: 0379611
+- Context: project=dashboard-ui, source=issue #7
