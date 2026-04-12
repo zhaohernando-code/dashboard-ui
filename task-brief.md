@@ -1,15 +1,9 @@
 # Codex Task Brief
-Task ID: task-mnvtz6qq-7i4bki
+Task ID: task-mnvv496v-mst8zu
 Task type: task
-Title: [Task] publish-smoke
+Title: [Task] sync-fallback-smoke
 ## User intent
-Create one file named PUBLISH_SMOKE.md with one line: ok
-## Plan preview
-Composite task: [Task] publish-smoke
-Proposed child tasks:
-1. Create one file named PUBLISH_SMOKE
-2. md with one line: ok
-
+Create file FALLBACK_SYNC_SMOKE.md with one line: synced
 ## Global rules
 ## 项目管理
 所有项目都需要推送到github进行版本管理
@@ -32,6 +26,17 @@ Proposed child tasks:
 **同样的问题不要犯两次**
 遇到了一个问题返工了很多次才跑通的，一定要进行记录
 PROCESS.md也分为局部和总体（局部在当前项目下，总体在 ～/codex 下，判断当前问题属于项目还是全局都可以参考后记录到合适的位置）
+
+## 冲突处理
+如果遇到用户需求会产生一个用户需求点外的严重冲突，对此任务进行pending，然后交由用户在前端进行选择或者追加内容
+
+## 错误处理
+遇到错误优先**解决错误**
+不遇到必须由用户本身处理的问题不要主动进行任务停止，而是先思考如何解决问题
+比如：当用户提了一个任务但发生了一个server侧的错误的时候，也对server进行修复并提交，并在log内写明
+
+# ui风格
+如果项目涉及到ui，在 https://github.com/VoltAgent/awesome-design-md 里根据项目类型和功能去寻找合适的风格，尽量不要选用和已有项目差距太大的风格，选择完后记得把这个风格的规约放入项目的遵循规范
 ## Project rules
 # Dashboard UI Rules
 
