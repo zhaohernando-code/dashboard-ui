@@ -1,5 +1,4 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { ConfigProvider, Segmented, Switch, theme as antdTheme } from "antd";
 
 type TaskStatus =
   | "pending_capture"
@@ -536,6 +535,27 @@ function buildLogViews(logs: TaskLog[]) {
   };
 }
 
+function normalizeDisplayText(value: string) {
+  const text = String(value || "").replace(/\r\n/g, "\n").trim();
+  if (!text) return "";
+  if (text.includes("\n")) return text;
+
+  return text
+    .replace(/([。！？!?；;])(?=\S)/g, "$1\n")
+    .replace(/([.])\s+(?=[A-Z0-9])/g, "$1\n");
+}
+
+function getRequirementPreview(requirement: Requirement, locale: Locale) {
+  const latestAttempt = requirement.attempts[0];
+  const description = normalizeDisplayText(latestAttempt?.description || "");
+  if (description) return description;
+
+  const failureReason = normalizeDisplayText(requirement.openFailureReason || latestAttempt?.openFailureReason || "");
+  if (failureReason) return failureReason;
+
+  return locale === "zh-CN" ? "暂无描述" : "No description";
+}
+
 export default function App() {
   const runtimeMode: RuntimeMode = IS_GITHUB_PAGES ? "github-direct" : "local-api";
   const [locale, setLocale] = useState<Locale>(() => {
@@ -651,36 +671,6 @@ export default function App() {
         languageSetting: locale === "zh-CN" ? "界面语言" : "Language",
       }) satisfies Record<string, string>,
     [locale],
-  );
-
-  const antThemeConfig = useMemo(
-    () => ({
-      algorithm: theme === "dark" ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm,
-      token: {
-        colorPrimary: "#1f66ff",
-        borderRadius: 14,
-        colorBgContainer: "var(--surface)",
-        colorBgElevated: "var(--surface)",
-        colorText: "var(--text)",
-        colorTextSecondary: "var(--text-dim)",
-        colorBorder: "var(--line)",
-      },
-      components: {
-        Switch: {
-          trackHeight: 32,
-          trackMinWidth: 60,
-          trackPadding: 3,
-          handleSize: 26,
-        },
-        Segmented: {
-          itemActiveBg: "color-mix(in srgb, var(--brand) 14%, var(--surface))",
-          itemColor: "var(--text-dim)",
-          itemHoverBg: "var(--surface-3)",
-          trackBg: "var(--surface-3)",
-        },
-      },
-    }),
-    [theme],
   );
 
   const memberUsageSnapshot = useMemo(() => {
@@ -1725,7 +1715,6 @@ export default function App() {
         : "";
 
   return (
-    <ConfigProvider theme={antThemeConfig}>
       <div className="app-root">
       <header className="topbar">
         <div className="brand-wrap">
@@ -1741,7 +1730,6 @@ export default function App() {
           <HeaderSwitch
             checked={theme === "dark"}
             label={t.themeSetting}
-            stateLabel={theme === "dark" ? "Dark" : "Light"}
             onToggle={() => setTheme(theme === "dark" ? "light" : "dark")}
           />
           <HeaderLocaleSwitch
@@ -1848,7 +1836,6 @@ export default function App() {
               <HeaderSwitch
                 checked={theme === "dark"}
                 label={t.themeSetting}
-                stateLabel={theme === "dark" ? "Dark" : "Light"}
                 onToggle={() => setTheme(theme === "dark" ? "light" : "dark")}
               />
               <HeaderLocaleSwitch
@@ -2002,7 +1989,7 @@ export default function App() {
                         {requirement.acceptanceCompleted}/{requirement.acceptanceTotal}
                         {requirement.publishStatus ? ` · ${requirement.publishStatus}` : ""}
                       </div>
-                      <div className="entity-copy wrap-anywhere">{requirement.openFailureReason || requirement.attempts[0]?.summary || requirement.attempts[0]?.description || (locale === "zh-CN" ? "暂无描述" : "No description")}</div>
+                      <div className="entity-copy entity-preview wrap-anywhere clamp-3">{getRequirementPreview(requirement, locale)}</div>
                     </button>
                   ))
                 ) : (
@@ -2155,7 +2142,6 @@ export default function App() {
         />
       ) : null}
       </div>
-    </ConfigProvider>
   );
 }
 
@@ -2329,27 +2315,27 @@ function TaskDetail({
       <div className="detail-grid">
         <div className="info-card full-width">
           <div className="info-label">{locale === "zh-CN" ? "描述" : "Description"}</div>
-          <div className="wrap-anywhere">{task.description || (locale === "zh-CN" ? "暂无描述" : "No description")}</div>
+          <div className="wrap-anywhere preserve-breaks">{normalizeDisplayText(task.description) || (locale === "zh-CN" ? "暂无描述" : "No description")}</div>
         </div>
 
         {task.planPreview ? (
           <div className="info-card full-width">
             <div className="info-label">{locale === "zh-CN" ? "计划预览" : "Plan preview"}</div>
-            <div className="wrap-anywhere">{task.planPreview}</div>
+            <div className="wrap-anywhere preserve-breaks">{normalizeDisplayText(task.planPreview)}</div>
           </div>
         ) : null}
 
         {task.summary ? (
           <div className="info-card full-width">
             <div className="info-label">{locale === "zh-CN" ? "摘要" : "Summary"}</div>
-            <div className="wrap-anywhere">{task.summary}</div>
+            <div className="wrap-anywhere preserve-breaks">{normalizeDisplayText(task.summary)}</div>
           </div>
         ) : null}
 
         {task.openFailureReason ? (
           <div className="info-card full-width">
             <div className="info-label">{locale === "zh-CN" ? "未完成原因" : "Why not completed"}</div>
-            <div className="wrap-anywhere">{task.openFailureReason}</div>
+            <div className="wrap-anywhere preserve-breaks">{normalizeDisplayText(task.openFailureReason)}</div>
           </div>
         ) : null}
 
@@ -2379,7 +2365,7 @@ function TaskDetail({
                 <div key={attempt.id} className="log-item">
                   <strong>#{attempt.attemptNumber || "?"}</strong> · {statusLabel[attempt.status][locale]}
                   <br />
-                  {attempt.summary || attempt.openFailureReason || attempt.description}
+                  <span className="preserve-breaks">{normalizeDisplayText(attempt.summary || attempt.openFailureReason || attempt.description)}</span>
                 </div>
               ))}
             </div>
@@ -2401,13 +2387,13 @@ function TaskDetail({
         ) : null}
 
         {task.children.length ? (
-          <div className="info-card">
-            <div className="info-label">{locale === "zh-CN" ? "子任务" : "Child tasks"}</div>
-            <div className="wrap-anywhere">
-              {task.children.map((child) => `${child.title} (${statusLabel[child.status][locale]})`).join("\n")}
+            <div className="info-card">
+              <div className="info-label">{locale === "zh-CN" ? "子任务" : "Child tasks"}</div>
+              <div className="wrap-anywhere preserve-breaks">
+                {task.children.map((child) => `${child.title} (${statusLabel[child.status][locale]})`).join("\n")}
+              </div>
             </div>
-          </div>
-        ) : null}
+          ) : null}
       </div>
 
       <div className="log-list">
@@ -2429,7 +2415,7 @@ function TaskDetail({
           visibleLogs.map((entry) => (
             <div key={`${entry.timestamp}-${entry.message}`} className="log-item">
               <div className="meta">{new Date(entry.timestamp).toLocaleString(locale)}</div>
-              <div className="wrap-anywhere">{entry.message}</div>
+              <div className="wrap-anywhere preserve-breaks">{normalizeDisplayText(entry.message)}</div>
             </div>
           ))
         ) : (
@@ -2483,21 +2469,27 @@ function ApprovalCard({
 function HeaderSwitch({
   checked,
   label,
-  stateLabel,
   onToggle,
 }: {
   checked: boolean;
   label: string;
-  stateLabel: string;
   onToggle: () => void;
 }) {
   return (
     <div className="switch-card header-switch">
       <span className="switch-copy">
         <span className="mobile-nav-action-label">{label}</span>
-        <span className="switch-state-text">{stateLabel}</span>
       </span>
-      <Switch checked={checked} checkedChildren={stateLabel} unCheckedChildren={stateLabel} onChange={onToggle} />
+      <button
+        type="button"
+        className={checked ? "theme-toggle is-active" : "theme-toggle"}
+        role="switch"
+        aria-checked={checked}
+        aria-label={label}
+        onClick={onToggle}
+      >
+        <span className="theme-toggle-handle" aria-hidden="true" />
+      </button>
     </div>
   );
 }
@@ -2516,15 +2508,23 @@ function HeaderLocaleSwitch({
       <span className="switch-copy">
         <span className="mobile-nav-action-label">{label}</span>
       </span>
-      <Segmented
-        className="locale-segmented"
-        value={value}
-        options={[
+      <div className="locale-segmented" role="tablist" aria-label={label}>
+        {[
           { label: "中文", value: "zh-CN" },
           { label: "English", value: "en-US" },
-        ]}
-        onChange={(next) => onChange(next as Locale)}
-      />
+        ].map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            className={value === option.value ? "locale-segment is-active" : "locale-segment"}
+            role="tab"
+            aria-selected={value === option.value}
+            onClick={() => onChange(option.value as Locale)}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
