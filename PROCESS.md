@@ -195,3 +195,10 @@ no changes added to commit (use "git add" and/or "git commit -a")
 - Prevention: Finalization path now records and surfaces publish outcomes to avoid silent drift.
 - Commit ID: 5995c0a
 - Context: project=dashboard-ui, source=issue #23
+
+## 2026-04-13
+
+- Problem: the dashboard could show individual task states but not whether the task-dispatch substrate itself was healthy, so operators had to infer poller, publish, and backlog risk indirectly.
+- Resolution: added a platform-health section to the usage view, including issue-poller state, GitHub API pressure, recent publish method, and anomaly backlog counts.
+- Prevention: if the product depends on a background task platform, the UI must expose platform-level health directly; otherwise users will keep discovering infrastructure problems only after task delivery fails.
+- Commit ID: `42a74a9`
