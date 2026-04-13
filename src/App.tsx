@@ -144,6 +144,13 @@ type NoticeItem = {
   tone: NoticeTone;
 };
 
+type IssueCommentStatusCache = {
+  updatedAt: string;
+  status: TaskStatus;
+  taskId: string;
+  summary: string;
+};
+
 type Locale = "zh-CN" | "en-US";
 type CopyState = "idle" | "copied";
 type ThemeMode = "light" | "dark";
@@ -571,6 +578,7 @@ export default function App() {
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const [isMobileViewDrawerOpen, setIsMobileViewDrawerOpen] = useState(false);
   const pollTokenRef = useRef(0);
+  const issueStatusCacheRef = useRef<Record<number, IssueCommentStatusCache>>({});
   const selectedProjectIdRef = useRef(selectedProjectId);
   const selectedTaskIdRef = useRef(selectedTaskId);
 
@@ -717,14 +725,15 @@ export default function App() {
 
   useEffect(() => {
     void refreshAll();
+    const intervalMs = runtimeMode === "github-direct" ? 30000 : 5000;
     const interval = window.setInterval(() => {
       void refreshTasks();
       void refreshApprovals();
       void refreshUsage();
       void refreshAuth();
-    }, 5000);
+    }, intervalMs);
     return () => window.clearInterval(interval);
-  }, [sessionToken, githubToken]);
+  }, [githubToken, runtimeMode, sessionToken]);
 
   useEffect(() => {
     return () => {
@@ -819,6 +828,22 @@ export default function App() {
     });
     if (!response.ok) {
       const payload = (await response.json().catch(() => ({}))) as { message?: string };
+      const resetAt = response.headers.get("x-ratelimit-reset");
+      const retryAfter = response.headers.get("retry-after");
+      if (response.status === 403 && payload.message?.toLowerCase().includes("rate limit")) {
+        const waitHint = retryAfter
+          ? `${retryAfter}s`
+          : resetAt
+            ? new Date(Number(resetAt) * 1000).toLocaleString(locale)
+            : locale === "zh-CN"
+              ? "下一窗口"
+              : "the next window";
+        throw new Error(
+          locale === "zh-CN"
+            ? `GitHub API 已触发限流，请在 ${waitHint} 后重试。`
+            : `GitHub API rate limited. Retry after ${waitHint}.`,
+        );
+      }
       throw new Error(payload.message || `GitHub API failed: ${response.status}`);
     }
     return (await response.json()) as T;
@@ -1000,10 +1025,23 @@ export default function App() {
               .filter((issue) => !issue.pull_request)
               .map(async (issue) => {
                 const parsed = parseIssueBody(issue.body || "");
-                const comments = await githubRequest<Array<{ body: string }>>(
-                  `/repos/${owner}/${repo}/issues/${issue.number}/comments?per_page=100&sort=created&direction=asc`,
-                );
-                const statusMeta = parseStatusFromComments(comments, issue.state === "closed");
+                const cached = issueStatusCacheRef.current[issue.number];
+                let statusMeta =
+                  cached && cached.updatedAt === issue.updated_at
+                    ? { status: cached.status, taskId: cached.taskId, summary: cached.summary }
+                    : null;
+                if (!statusMeta) {
+                  const comments = await githubRequest<Array<{ body: string }>>(
+                    `/repos/${owner}/${repo}/issues/${issue.number}/comments?per_page=100&sort=created&direction=asc`,
+                  );
+                  statusMeta = parseStatusFromComments(comments, issue.state === "closed");
+                  issueStatusCacheRef.current[issue.number] = {
+                    updatedAt: issue.updated_at,
+                    status: statusMeta.status,
+                    taskId: statusMeta.taskId,
+                    summary: statusMeta.summary,
+                  };
+                }
                 const projectId = parsed.projectId || "dashboard-ui";
                 return {
                   id: statusMeta.taskId || `issue-${issue.number}`,
