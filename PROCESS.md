@@ -245,14 +245,6 @@ no changes added to commit (use "git add" and/or "git commit -a")
 
 ## 2026-04-13
 
-- Problem: task task-mnx4ou4a-32b0gn (异常队列闭环的修复) finished with status awaiting_acceptance.
-- Resolution: Changes published to remote.
-- Prevention: Finalization path now records and surfaces publish outcomes to avoid silent drift.
-- Commit ID: c9f90b0
-- Context: project=dashboard-ui, source=issue #28
-
-## 2026-04-13
-
 - Problem: the usage overview still felt cramped because the section headings collapsed directly into the next grid and the usage cards kept the same dense spacing as the rest of the control plane, which made the quota area hard to scan quickly.
 - Resolution: increased spacing between usage sections, widened the usage-card gaps/padding, and included the latest CLI status snapshot timestamp in the fallback summary when member used/total quota values are unavailable.
 - Prevention: quota/operator summary surfaces need their own spacing scale instead of inheriting generic card density; when the backend only exposes a partial CLI snapshot, the UI should say which snapshot it is using and why full quota totals are still missing.
