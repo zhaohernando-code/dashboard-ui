@@ -161,6 +161,13 @@ no changes added to commit (use "git add" and/or "git commit -a")
 
 ## 2026-04-13
 
+- Problem: published or awaiting-acceptance tasks could still surface worker-only environment blockers such as missing worktree dependencies, `npm run build` limitations, or “still need commit/push” text even after the control plane had already published successfully, and the sidebar mixed true approvals with acceptance-stage tasks.
+- Resolution: switched the dashboard to prefer user-facing summaries from the control plane, kept approval cards limited to `waiting_user` tasks, and rendered structured `userAction` details instead of free-form worker leftovers.
+- Prevention: the UI must never infer user action from raw worker text; only explicit server-side user-action metadata may enter the pending-approval rail, and published tasks must render normalized user-facing summaries only.
+- Commit ID: pending
+
+## 2026-04-13
+
 - Problem: in GitHub Pages direct mode, every requirement detail showed an empty critical-log section even when the backing GitHub issue already had execution comments.
 - Resolution: traced the issue to `refreshTasks()` building remote tasks with `logs: []`, added issue-comment parsing so GitHub comments become ordered task logs, filtered slash-command control comments like `/approve` and `/retry`, and broadened important-log matching so common state-change comments are kept in the key-log view.
 - Prevention: when adding or refactoring a remote task adapter, verify every detail-card data source end-to-end instead of only status/summary fields; if the UI has a fallback "show recent logs" path, make sure the upstream adapter still populates the raw log collection.
@@ -180,3 +187,11 @@ no changes added to commit (use "git add" and/or "git commit -a")
 - Prevention: Finalization path now records and surfaces publish outcomes to avoid silent drift.
 - Commit ID: 02f1a2a
 - Context: project=dashboard-ui, source=issue #16
+
+## 2026-04-13
+
+- Problem: task task-mnwwjbsg-w4ele2 (解决关键日志确缺失问题) finished with status awaiting_acceptance.
+- Resolution: Published via GitHub Contents API fallback.
+- Prevention: Finalization path now records and surfaces publish outcomes to avoid silent drift.
+- Commit ID: 5995c0a
+- Context: project=dashboard-ui, source=issue #23
