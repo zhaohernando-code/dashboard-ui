@@ -52,6 +52,14 @@ type Task = {
   status: TaskStatus;
   requirementStatus?: TaskStatus;
   summary: string;
+  rawWorkerSummary?: string;
+  userSummary?: string;
+  userAction?: {
+    type: string;
+    title: string;
+    detail: string;
+    risk: "low" | "medium" | "high";
+  } | null;
   planPreview: string;
   workspacePath: string;
   branchName: string;
@@ -79,6 +87,7 @@ type Requirement = {
   acceptanceTotal: number;
   publishStatus?: string;
   openFailureReason?: string;
+  userSummary?: string;
   acceptanceCriteria?: Array<{ id: string; text: string }>;
   verificationResults?: Array<{ criterionId: string; type: string; status: string; evidence: string }>;
   attempts: Task[];
@@ -531,6 +540,7 @@ function buildRequirementsFromTasks(tasks: Task[]) {
         acceptanceTotal: total,
         publishStatus: latest.publishStatus,
         openFailureReason: latest.openFailureReason,
+        userSummary: latest.userSummary || latest.summary,
         acceptanceCriteria: latest.acceptanceCriteria,
         verificationResults: latest.verificationResults,
         attempts: orderedAttempts,
@@ -607,6 +617,9 @@ function normalizeDisplayText(value: string) {
 
 function getRequirementPreview(requirement: Requirement, locale: Locale) {
   const latestAttempt = requirement.attempts[0];
+  const summary = normalizeDisplayText(requirement.userSummary || latestAttempt?.userSummary || latestAttempt?.summary || "");
+  if (summary) return summary;
+
   const description = normalizeDisplayText(latestAttempt?.description || "");
   if (description) return description;
 
@@ -1096,6 +1109,7 @@ export default function App() {
                   description: parsed.description || issue.body || "",
                   status: statusMeta.status,
                   summary: statusMeta.summary,
+                  userSummary: statusMeta.summary,
                   planPreview: "",
                   workspacePath: "",
                   branchName: "",
@@ -1184,7 +1198,7 @@ export default function App() {
     }
     try {
       const payload = await api<{ approvals: Approval[] }>("/api/approvals");
-      setApprovals(payload.approvals.filter((approval) => approval.task.status === "waiting_user" || approval.task.status === "awaiting_acceptance"));
+      setApprovals(payload.approvals.filter((approval) => approval.task.status === "waiting_user"));
     } catch {
       setApprovals([]);
     }
@@ -2386,10 +2400,10 @@ function TaskDetail({
           </div>
         ) : null}
 
-        {task.summary ? (
+        {(task.userSummary || task.summary) ? (
           <div className="info-card full-width">
             <div className="info-label">{locale === "zh-CN" ? "摘要" : "Summary"}</div>
-            <div className="wrap-anywhere preserve-breaks">{normalizeDisplayText(task.summary)}</div>
+            <div className="wrap-anywhere preserve-breaks">{normalizeDisplayText(task.userSummary || task.summary)}</div>
           </div>
         ) : null}
 
@@ -2426,7 +2440,7 @@ function TaskDetail({
                 <div key={attempt.id} className="log-item">
                   <strong>#{attempt.attemptNumber || "?"}</strong> · {statusLabel[attempt.status][locale]}
                   <br />
-                  <span className="preserve-breaks">{normalizeDisplayText(attempt.summary || attempt.openFailureReason || attempt.description)}</span>
+                  <span className="preserve-breaks">{normalizeDisplayText(attempt.userSummary || attempt.summary || attempt.openFailureReason || attempt.description)}</span>
                 </div>
               ))}
             </div>
@@ -2503,7 +2517,8 @@ function ApprovalCard({
   return (
     <div className="approval-item">
       <div className="title wrap-anywhere">{approval.task.title}</div>
-      <div className="meta wrap-anywhere">{approval.reason}</div>
+      <div className="meta wrap-anywhere">{approval.task.userAction?.title || approval.reason}</div>
+      {approval.task.userAction?.detail ? <div className="meta wrap-anywhere">{approval.task.userAction.detail}</div> : null}
       <div className="meta">
         {getProjectDisplayName(approval.task.projectId, locale)} · {approval.task.type}
       </div>
