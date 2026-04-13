@@ -227,7 +227,7 @@ no changes added to commit (use "git add" and/or "git commit -a")
 - Problem: the ongoing Ant Design-based dashboard refactor was still living mostly inside `src/App.tsx`, which left the orchestration file over 3,400 lines long and made the new structure fragile to resume after an interrupted CLI session.
 - Resolution: extracted shared dashboard types into `src/dashboardTypes.ts` and the stable view primitives/dialog/detail cards into `src/dashboardComponents.tsx`, then rewired `src/App.tsx` to use those modules while preserving the current behavior and build output.
 - Prevention: once a frontend refactor stabilizes on a component system, move shared types and view components out of the page orchestrator immediately instead of letting a second monolith grow around the new UI library.
-- Commit ID: `6ff91a4`
+- Commit ID: `b544df7`
 - Prevention: Finalization path now records and surfaces publish outcomes to avoid silent drift.
 - Commit ID: 5995c0a
 - Context: project=dashboard-ui, source=issue #23
