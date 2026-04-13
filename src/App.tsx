@@ -240,7 +240,28 @@ function parseIssueBody(body: string) {
   };
 }
 
-function parseStatusFromComments(comments: Array<{ body: string }>, fallbackClosed: boolean): { status: TaskStatus; taskId: string; summary: string } {
+type IssueComment = {
+  body: string;
+  created_at?: string;
+};
+
+function parseCommentCommand(body: string) {
+  const firstLine = String(body || "")
+    .split("\n")[0]
+    ?.trim()
+    .toLowerCase();
+  if (!firstLine?.startsWith("/")) return "";
+  return firstLine.split(/\s+/, 1)[0] || "";
+}
+
+function normalizeCommentLogMessage(body: string) {
+  return String(body || "")
+    .replace(/\r\n/g, "\n")
+    .replace(/<!--[\s\S]*?-->/g, "")
+    .trim();
+}
+
+function parseStatusFromComments(comments: IssueComment[], fallbackClosed: boolean): { status: TaskStatus; taskId: string; summary: string } {
   let status: TaskStatus = fallbackClosed ? "completed" : "pending";
   let taskId = "";
   let summary = "";
@@ -266,6 +287,33 @@ function parseStatusFromComments(comments: Array<{ body: string }>, fallbackClos
   }
 
   return { status, taskId, summary };
+}
+
+function buildLogsFromComments(comments: IssueComment[]) {
+  return comments
+    .map((comment, index) => {
+      const message = normalizeCommentLogMessage(comment.body);
+      if (!message) return null;
+
+      const command = parseCommentCommand(message);
+      if (["/approve", "/reject", "/retry", "/stop"].includes(command)) {
+        return null;
+      }
+
+      return {
+        timestamp: comment.created_at || new Date(0).toISOString(),
+        message,
+        sortIndex: index,
+      };
+    })
+    .filter((entry): entry is TaskLog & { sortIndex: number } => Boolean(entry))
+    .sort((left, right) => {
+      const leftTime = Date.parse(left.timestamp);
+      const rightTime = Date.parse(right.timestamp);
+      if (leftTime !== rightTime) return leftTime - rightTime;
+      return left.sortIndex - right.sortIndex;
+    })
+    .map(({ timestamp, message }) => ({ timestamp, message }));
 }
 
 function buildRemoteProjects(tasks: Task[]) {
@@ -514,11 +562,23 @@ function isImportantLogMessage(message: string) {
     "retry",
     "awaiting acceptance",
     "needs revision",
+    "accepted",
+    "rejected",
+    "running",
+    "stopped",
+    "failed",
+    "completed",
+    "imported",
     "待捕获",
     "待验收",
     "发布",
+    "审批",
     "失败",
     "完成",
+    "已接受",
+    "已拒绝",
+    "运行",
+    "停止",
   ];
   const noisyPrefixes = ["stderr: exec", "stdout: exec", "stderr: openai codex", "stdout: openai codex"];
   if (noisyPrefixes.some((prefix) => normalized.startsWith(prefix))) {
@@ -1019,10 +1079,11 @@ export default function App() {
               .filter((issue) => !issue.pull_request)
               .map(async (issue) => {
                 const parsed = parseIssueBody(issue.body || "");
-                const comments = await githubRequest<Array<{ body: string }>>(
+                const comments = await githubRequest<IssueComment[]>(
                   `/repos/${owner}/${repo}/issues/${issue.number}/comments?per_page=100&sort=created&direction=asc`,
                 );
                 const statusMeta = parseStatusFromComments(comments, issue.state === "closed");
+                const logs = buildLogsFromComments(comments);
                 const projectId = parsed.projectId || "dashboard-ui";
                 return {
                   id: statusMeta.taskId || `issue-${issue.number}`,
@@ -1038,7 +1099,7 @@ export default function App() {
                   planPreview: "",
                   workspacePath: "",
                   branchName: "",
-                  logs: [],
+                  logs,
                   children: [],
                 } satisfies Task;
               }),
