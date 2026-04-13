@@ -62,6 +62,8 @@ export type Task = {
   planPreview: string;
   workspacePath: string;
   branchName: string;
+  model?: string;
+  reasoningEffort?: "medium" | "high" | "xhigh";
   publishStatus?: string;
   publishMethod?: string;
   publishVerified?: boolean;
@@ -222,6 +224,8 @@ export type CreateProjectValues = {
   repository?: string;
   visibility?: string;
   autoCreateRepo?: boolean;
+  model?: string;
+  reasoningEffort?: "medium" | "high" | "xhigh";
 };
 
 export type CreateTaskValues = {
@@ -229,6 +233,8 @@ export type CreateTaskValues = {
   type?: string;
   title: string;
   description: string;
+  model?: string;
+  reasoningEffort?: "medium" | "high" | "xhigh";
 };
 
 export type NoticeTone = "info" | "success" | "error";

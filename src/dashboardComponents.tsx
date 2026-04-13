@@ -134,6 +134,11 @@ export function CreateDialog({
 
   const [projectForm] = Form.useForm<CreateProjectValues>();
   const [taskForm] = Form.useForm<CreateTaskValues>();
+  const reasoningOptions: Array<{ label: string; value: NonNullable<CreateTaskValues["reasoningEffort"]> }> = [
+    { label: locale === "zh-CN" ? "normal" : "normal", value: "medium" },
+    { label: locale === "zh-CN" ? "high（默认）" : "high (default)", value: "high" },
+    { label: locale === "zh-CN" ? "xhigh" : "xhigh", value: "xhigh" },
+  ];
 
   return (
     <Modal
@@ -148,7 +153,7 @@ export function CreateDialog({
         <Form
           form={projectForm}
           layout="vertical"
-          initialValues={{ visibility: "private", autoCreateRepo: false }}
+          initialValues={{ visibility: "private", autoCreateRepo: false, model: "gpt-5.4", reasoningEffort: "high" }}
           onFinish={(values) => void onCreateProject(values)}
         >
           <Form.Item
@@ -175,6 +180,15 @@ export function CreateDialog({
           <Form.Item name="autoCreateRepo" valuePropName="checked">
             <Checkbox>{locale === "zh-CN" ? "自动创建 GitHub 仓库" : "Auto-create GitHub repository"}</Checkbox>
           </Form.Item>
+          <Form.Item name="model" label="Model">
+            <Select options={[{ label: "gpt-5.4", value: "gpt-5.4" }]} />
+          </Form.Item>
+          <Form.Item
+            name="reasoningEffort"
+            label={locale === "zh-CN" ? "Reasoning Level" : "Reasoning Level"}
+          >
+            <Select options={reasoningOptions} />
+          </Form.Item>
           <Flex justify="flex-end" gap={8}>
             <Button onClick={onClose}>{closeLabel}</Button>
             <Button type="primary" htmlType="submit">
@@ -189,6 +203,8 @@ export function CreateDialog({
           initialValues={{
             projectId: selectedProjectId || projects[0]?.id,
             type: mode === "composite_task" ? "composite_task" : "task",
+            model: "gpt-5.4",
+            reasoningEffort: "high",
           }}
           onFinish={(values) => void onCreateTask(values)}
         >
@@ -228,6 +244,15 @@ export function CreateDialog({
             rules={[{ required: true, message: locale === "zh-CN" ? "请输入任务描述" : "Task description is required" }]}
           >
             <Input.TextArea rows={5} placeholder={locale === "zh-CN" ? "希望 Codex 完成什么" : "What should Codex do?"} />
+          </Form.Item>
+          <Form.Item name="model" label="Model">
+            <Select options={[{ label: "gpt-5.4", value: "gpt-5.4" }]} />
+          </Form.Item>
+          <Form.Item
+            name="reasoningEffort"
+            label={locale === "zh-CN" ? "Reasoning Level" : "Reasoning Level"}
+          >
+            <Select options={reasoningOptions} />
           </Form.Item>
           <Flex justify="flex-end" gap={8}>
             <Button onClick={onClose}>{closeLabel}</Button>

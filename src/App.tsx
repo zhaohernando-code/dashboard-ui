@@ -68,6 +68,8 @@ const IS_GITHUB_PAGES = typeof window !== "undefined" && window.location.hostnam
 const AUTO_ROUTE_PROJECT_ID = "__auto_route__";
 const CLOSED_ANOMALIES_STORAGE_KEY = "codex.dismissedAnomalies";
 const STATUS_FILTER_ALL = "all";
+const DEFAULT_TASK_MODEL = "gpt-5.4";
+const DEFAULT_REASONING_EFFORT = "high";
 const REMOTE_PROJECT_CATALOG = [
   {
     id: "dashboard-ui",
@@ -148,6 +150,8 @@ function parseIssueBody(body: string) {
         type: parseTaskType(payload.type),
         title: String(payload.title || "Untitled task").trim(),
         description: String(payload.description || "").trim(),
+        model: normalizeRequestedModel(String(payload.model || "")),
+        reasoningEffort: normalizeRequestedReasoningEffort(String(payload.reasoningEffort || payload.reasoningLevel || "")),
       };
     } catch {
       // Fall through to plain parsing.
@@ -164,6 +168,8 @@ function parseIssueBody(body: string) {
     type: parseTaskType(meta.type || "task"),
     title: "",
     description: String(body || "").replace(/<!--[\s\S]*?-->/g, "").trim(),
+    model: normalizeRequestedModel(meta.model || ""),
+    reasoningEffort: normalizeRequestedReasoningEffort(meta.reasoning || meta.reasoninglevel || meta.reasoning_effort || ""),
   };
 }
 
@@ -186,6 +192,21 @@ function normalizeCommentLogMessage(body: string) {
     .replace(/\r\n/g, "\n")
     .replace(/<!--[\s\S]*?-->/g, "")
     .trim();
+}
+
+function normalizeRequestedModel(value: string): string {
+  return String(value || "").trim() || DEFAULT_TASK_MODEL;
+}
+
+function normalizeRequestedReasoningEffort(value: string): NonNullable<Task["reasoningEffort"]> {
+  const raw = String(value || "").trim().toLowerCase();
+  if (raw === "normal") {
+    return "medium";
+  }
+  if (raw === "medium" || raw === "high" || raw === "xhigh") {
+    return raw;
+  }
+  return DEFAULT_REASONING_EFFORT;
 }
 
 function parseStatusFromComments(comments: IssueComment[], fallbackClosed: boolean): { status: TaskStatus; taskId: string; summary: string } {
@@ -1335,6 +1356,8 @@ export default function App() {
                   type: parsed.type,
                   title: parsed.title || issue.title,
                   description: parsed.description || issue.body || "",
+                  model: parsed.model,
+                  reasoningEffort: parsed.reasoningEffort,
                   status: statusMeta.status,
                   summary: statusMeta.summary,
                   userSummary: statusMeta.summary,
@@ -1496,6 +1519,8 @@ export default function App() {
       const repository = String(values.repository || "").trim();
       const visibility = String(values.visibility || "private");
       const autoCreateRepo = Boolean(values.autoCreateRepo);
+      const model = normalizeRequestedModel(String(values.model || ""));
+      const reasoningEffort = normalizeRequestedReasoningEffort(String(values.reasoningEffort || ""));
 
       if (runtimeMode === "github-direct") {
         const [owner, repoName] = GITHUB_TASK_REPO.split("/");
@@ -1504,6 +1529,8 @@ export default function App() {
           type: "project_create",
           title: `Create project: ${name}`,
           description: description || `Create a new Codex-managed project named ${name}.`,
+          model,
+          reasoningEffort,
           requestedProject: {
             id: slugify(name),
             name,
@@ -1521,6 +1548,8 @@ export default function App() {
             body: [
               `project: ${payload.projectId}`,
               `type: ${payload.type}`,
+              `model: ${payload.model}`,
+              `reasoning: ${payload.reasoningEffort === "medium" ? "normal" : payload.reasoningEffort}`,
               "",
               payload.description,
               "",
@@ -1547,6 +1576,8 @@ export default function App() {
             type: "project_create",
             title: `Create project: ${name}`,
             description: description || `Create a new Codex-managed project named ${name}.`,
+            model,
+            reasoningEffort,
             requestedProject: {
               id: slugify(name),
               name,
@@ -1572,6 +1603,8 @@ export default function App() {
             repository,
             visibility,
             autoCreateRepo,
+            model,
+            reasoningEffort,
           }),
         });
         setTransientNotice(locale === "zh-CN" ? "项目已创建" : "Project created", "success");
@@ -1589,11 +1622,13 @@ export default function App() {
       const projectId = getTaskProjectId(type, String(values.projectId || "").trim());
       const title = String(values.title || "").trim();
       const description = String(values.description || "").trim();
+      const model = normalizeRequestedModel(String(values.model || ""));
+      const reasoningEffort = normalizeRequestedReasoningEffort(String(values.reasoningEffort || ""));
       let createdTask: Task | null = null;
 
       if (runtimeMode === "github-direct") {
         const [owner, repoName] = GITHUB_TASK_REPO.split("/");
-        const payload = { projectId, type, title, description };
+        const payload = { projectId, type, title, description, model, reasoningEffort };
         const issue = await githubRequest<{ number: number; html_url: string }>(`/repos/${owner}/${repoName}/issues`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -1602,6 +1637,8 @@ export default function App() {
             body: [
               `project: ${projectId}`,
               `type: ${type}`,
+              `model: ${model}`,
+              `reasoning: ${reasoningEffort === "medium" ? "normal" : reasoningEffort}`,
               "",
               description,
               "",
@@ -1626,6 +1663,8 @@ export default function App() {
           type,
           title,
           description,
+          model,
+          reasoningEffort,
           status: "pending_capture",
           summary: "",
           planPreview: "",
@@ -1643,6 +1682,8 @@ export default function App() {
             type,
             title,
             description,
+            model,
+            reasoningEffort,
           }),
         });
         createdTask = {
@@ -1654,6 +1695,8 @@ export default function App() {
           type,
           title,
           description,
+          model,
+          reasoningEffort,
           status: "pending_capture",
           summary: "",
           planPreview: "",
@@ -1676,6 +1719,8 @@ export default function App() {
             type,
             title,
             description,
+            model,
+            reasoningEffort,
           }),
         });
         setTransientNotice(locale === "zh-CN" ? "任务已创建" : "Task created", "success");
