@@ -85,3 +85,10 @@
 - Resolution: extended the usage view to normalize optional member quota fields from `/api/usage`, added a dedicated used/total ratio card with progress bar, and surfaced explicit summary reasons for missing quota data, backend fetch failures, and GitHub Pages direct mode.
 - Prevention: any dashboard metric panel that depends on optional backend fields must keep a human-readable unavailable reason in state instead of collapsing to generic empty UI; frontends consuming evolving APIs should normalize compatible field aliases at the boundary.
 - Commit ID: N/A（当前环境未执行 git 提交）
+
+## 2026-04-13
+
+- Problem: task creation still lacked clear success/failure feedback, queued tasks were invisible before the backend poller imported them, and the PC header kept outdated queue/current-user prompt boxes while theme/language controls did not match the requested switch interaction.
+- Resolution: added transient creation/error notices, auto-closed the create dialog on success, inserted optimistic `pending_capture` tasks so newly queued work stays visible with a dedicated “待捕获” state, converted PC theme/language controls to switch cards, replaced close text buttons with `×`, removed the old queue/current-user strip, and moved logout to the far right of the desktop header.
+- Prevention: any queue-backed creation flow must render an optimistic record immediately after a successful submit, and desktop control-bar requests should be implemented by sharing the same interaction primitive across mobile/desktop instead of maintaining separate button patterns that drift.
+- Commit ID: N/A（当前环境未执行 git 提交）
