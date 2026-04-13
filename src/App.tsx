@@ -5,6 +5,10 @@ type TaskStatus =
   | "pending"
   | "running"
   | "waiting_user"
+  | "awaiting_acceptance"
+  | "needs_revision"
+  | "publish_failed"
+  | "implemented"
   | "failed"
   | "completed"
   | "stopped";
@@ -37,20 +41,47 @@ type TaskLog = {
 
 type Task = {
   id: string;
+  updatedAt?: string;
+  requirementId?: string;
+  attemptNumber?: number;
   projectId: string;
   projectName: string;
   type: string;
   title: string;
   description: string;
   status: TaskStatus;
+  requirementStatus?: TaskStatus;
   summary: string;
   planPreview: string;
   workspacePath: string;
   branchName: string;
+  publishStatus?: string;
+  openFailureReason?: string;
+  acceptanceCriteria?: Array<{ id: string; text: string }>;
+  verificationResults?: Array<{ criterionId: string; type: string; status: string; evidence: string }>;
   logs: TaskLog[];
   children: TaskChild[];
   issueNumber?: number;
   issueUrl?: string;
+};
+
+type Requirement = {
+  id: string;
+  projectId: string;
+  projectName: string;
+  title: string;
+  status: TaskStatus;
+  updatedAt: string;
+  latestAttemptId: string;
+  latestAttemptNumber: number;
+  sourceIssue?: { number?: number; url?: string } | null;
+  acceptanceCompleted: number;
+  acceptanceTotal: number;
+  publishStatus?: string;
+  openFailureReason?: string;
+  acceptanceCriteria?: Array<{ id: string; text: string }>;
+  verificationResults?: Array<{ criterionId: string; type: string; status: string; evidence: string }>;
+  attempts: Task[];
 };
 
 type Approval = {
@@ -154,6 +185,10 @@ const statusLabel: Record<TaskStatus, Record<Locale, string>> = {
   pending: { "zh-CN": "等待中", "en-US": "Pending" },
   running: { "zh-CN": "运行中", "en-US": "Running" },
   waiting_user: { "zh-CN": "待你确认", "en-US": "Awaiting Approval" },
+  awaiting_acceptance: { "zh-CN": "待验收", "en-US": "Awaiting acceptance" },
+  needs_revision: { "zh-CN": "待返修", "en-US": "Needs revision" },
+  publish_failed: { "zh-CN": "发布失败", "en-US": "Publish failed" },
+  implemented: { "zh-CN": "已实现", "en-US": "Implemented" },
   failed: { "zh-CN": "失败", "en-US": "Failed" },
   completed: { "zh-CN": "完成", "en-US": "Completed" },
   stopped: { "zh-CN": "已停止", "en-US": "Stopped" },
@@ -220,7 +255,7 @@ function parseStatusFromComments(comments: Array<{ body: string }>, fallbackClos
     if (statusMatch) {
       taskId = statusMatch[1];
       const next = statusMatch[2].toLowerCase() as TaskStatus;
-      if (["pending_capture", "pending", "running", "waiting_user", "failed", "completed", "stopped"].includes(next)) {
+      if (["pending_capture", "pending", "running", "waiting_user", "awaiting_acceptance", "needs_revision", "publish_failed", "implemented", "failed", "completed", "stopped"].includes(next)) {
         status = next;
       }
       const summaryMatch = body.match(/Summary:\s*([\s\S]+)/i);
@@ -407,6 +442,99 @@ function normalizeUsageOverview(raw: unknown): UsageOverview {
   };
 }
 
+function deriveRequirementId(task: Task) {
+  if (task.requirementId) return task.requirementId;
+  if (typeof task.issueNumber === "number") return `issue:${task.issueNumber}`;
+  return `${task.projectId}::${task.title}`;
+}
+
+function buildRequirementsFromTasks(tasks: Task[]) {
+  const grouped = new Map<string, Task[]>();
+  for (const task of tasks) {
+    const key = deriveRequirementId(task);
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key)!.push(task);
+  }
+
+  return Array.from(grouped.entries())
+    .map(([id, attempts]) => {
+      const orderedAttempts = attempts
+        .slice()
+        .sort((left, right) => {
+          if ((left.attemptNumber || 0) !== (right.attemptNumber || 0)) {
+            return (right.attemptNumber || 0) - (left.attemptNumber || 0);
+          }
+          return right.id.localeCompare(left.id);
+        });
+      const latest = orderedAttempts[0];
+      const accepted = latest.verificationResults?.filter((item) => item.status === "accepted").length || 0;
+      const total = latest.acceptanceCriteria?.length || 0;
+      return {
+        id,
+        projectId: latest.projectId,
+        projectName: latest.projectName,
+        title: latest.title,
+        status: latest.requirementStatus || latest.status,
+        updatedAt: latest.updatedAt || "",
+        latestAttemptId: latest.id,
+        latestAttemptNumber: latest.attemptNumber || orderedAttempts.length,
+        sourceIssue: latest.issueNumber ? { number: latest.issueNumber, url: latest.issueUrl } : null,
+        acceptanceCompleted: accepted,
+        acceptanceTotal: total,
+        publishStatus: latest.publishStatus,
+        openFailureReason: latest.openFailureReason,
+        acceptanceCriteria: latest.acceptanceCriteria,
+        verificationResults: latest.verificationResults,
+        attempts: orderedAttempts,
+      } satisfies Requirement;
+    })
+    .sort((left, right) => right.latestAttemptId.localeCompare(left.latestAttemptId));
+}
+
+function isImportantLogMessage(message: string) {
+  const normalized = String(message || "").trim().toLowerCase();
+  if (!normalized) return false;
+  const importantMarkers = [
+    "task accepted",
+    "task execution started",
+    "workspace prepared",
+    "codex worker process spawned",
+    "imported from github issue",
+    "waiting for explicit approval",
+    "status changed to",
+    "task stopped",
+    "task completed",
+    "task failed",
+    "publish",
+    "warning",
+    "error",
+    "approval",
+    "summary",
+    "queued",
+    "retry",
+    "awaiting acceptance",
+    "needs revision",
+    "待捕获",
+    "待验收",
+    "发布",
+    "失败",
+    "完成",
+  ];
+  const noisyPrefixes = ["stderr: exec", "stdout: exec", "stderr: openai codex", "stdout: openai codex"];
+  if (noisyPrefixes.some((prefix) => normalized.startsWith(prefix))) {
+    return false;
+  }
+  return importantMarkers.some((marker) => normalized.includes(marker));
+}
+
+function buildLogViews(logs: TaskLog[]) {
+  const importantLogs = logs.filter((entry) => isImportantLogMessage(entry.message));
+  return {
+    important: importantLogs.length ? importantLogs : logs.slice(-8),
+    raw: logs,
+  };
+}
+
 export default function App() {
   const runtimeMode: RuntimeMode = IS_GITHUB_PAGES ? "github-direct" : "local-api";
   const [locale, setLocale] = useState<Locale>(() => {
@@ -432,6 +560,7 @@ export default function App() {
   const [authConfig, setAuthConfig] = useState<AuthConfig | null>(null);
   const [connectionStatus, setConnectionStatus] = useState("");
   const [selectedTaskId, setSelectedTaskId] = useState("");
+  const [selectedRequirementId, setSelectedRequirementId] = useState("");
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [workspaceLevel, setWorkspaceLevel] = useState<WorkspaceLevel>("projects");
   const [createDialogMode, setCreateDialogMode] = useState<CreateDialogMode | null>(null);
@@ -465,6 +594,16 @@ export default function App() {
     return [...pendingOnly, ...tasks];
   }, [optimisticTasks, tasks]);
 
+  const visibleRequirements = useMemo(
+    () => buildRequirementsFromTasks(visibleTasks),
+    [visibleTasks],
+  );
+
+  const selectedRequirement = useMemo(
+    () => visibleRequirements.find((requirement) => requirement.id === selectedRequirementId) ?? null,
+    [selectedRequirementId, visibleRequirements],
+  );
+
   const visibleProjects = useMemo(
     () => (runtimeMode === "github-direct" ? buildRemoteProjects(visibleTasks) : mergeProjectStats(projects, visibleTasks)),
     [projects, runtimeMode, visibleTasks],
@@ -475,9 +614,9 @@ export default function App() {
     [selectedProjectId, visibleProjects],
   );
 
-  const selectedProjectTasks = useMemo(
-    () => visibleTasks.filter((task) => task.projectId === selectedProjectId),
-    [selectedProjectId, visibleTasks],
+  const selectedProjectRequirements = useMemo(
+    () => visibleRequirements.filter((requirement) => requirement.projectId === selectedProjectId),
+    [selectedProjectId, visibleRequirements],
   );
 
   const t = useMemo(
@@ -596,6 +735,7 @@ export default function App() {
   useEffect(() => {
     if (!visibleProjects.length) {
       setSelectedProjectId("");
+      setSelectedRequirementId("");
       setSelectedTaskId("");
       setWorkspaceLevel("projects");
       return;
@@ -610,25 +750,30 @@ export default function App() {
   }, [selectedProjectId, visibleProjects]);
 
   useEffect(() => {
-    if (!visibleTasks.length) {
+    if (!visibleRequirements.length) {
+      setSelectedRequirementId("");
       setSelectedTaskId("");
       if (workspaceLevel === "detail") setWorkspaceLevel("tasks");
       return;
     }
 
-    if (!selectedTaskId) return;
+    if (!selectedRequirementId) return;
 
-    const nextTask = visibleTasks.find((task) => task.id === selectedTaskId);
-    if (!nextTask) {
+    const nextRequirement = visibleRequirements.find((requirement) => requirement.id === selectedRequirementId);
+    if (!nextRequirement) {
+      setSelectedRequirementId("");
       setSelectedTaskId("");
       if (workspaceLevel === "detail") setWorkspaceLevel("tasks");
       return;
     }
 
-    if (nextTask.projectId !== selectedProjectId) {
-      setSelectedProjectId(nextTask.projectId);
+    if (nextRequirement.projectId !== selectedProjectId) {
+      setSelectedProjectId(nextRequirement.projectId);
     }
-  }, [selectedProjectId, selectedTaskId, visibleTasks, workspaceLevel]);
+    if (nextRequirement.latestAttemptId !== selectedTaskId) {
+      setSelectedTaskId(nextRequirement.latestAttemptId);
+    }
+  }, [selectedProjectId, selectedRequirementId, selectedTaskId, visibleRequirements, workspaceLevel]);
 
   useEffect(() => {
     if (!optimisticTasks.length) return;
@@ -959,7 +1104,7 @@ export default function App() {
     }
     try {
       const payload = await api<{ approvals: Approval[] }>("/api/approvals");
-      setApprovals(payload.approvals.filter((approval) => approval.task.status === "waiting_user"));
+      setApprovals(payload.approvals.filter((approval) => approval.task.status === "waiting_user" || approval.task.status === "awaiting_acceptance"));
     } catch {
       setApprovals([]);
     }
@@ -1475,12 +1620,14 @@ export default function App() {
 
   function openProject(projectId: string) {
     setSelectedProjectId(projectId);
+    setSelectedRequirementId("");
     setWorkspaceLevel("tasks");
   }
 
-  function openTask(task: Task) {
-    setSelectedProjectId(task.projectId);
-    setSelectedTaskId(task.id);
+  function openRequirement(requirement: Requirement) {
+    setSelectedProjectId(requirement.projectId);
+    setSelectedRequirementId(requirement.id);
+    setSelectedTaskId(requirement.latestAttemptId);
     setWorkspaceLevel("detail");
   }
 
@@ -1499,14 +1646,14 @@ export default function App() {
           },
         ]
       : []),
-    ...(selectedTask
+    ...(selectedRequirement
       ? [
           {
             key: "detail",
-            label: selectedTask.title,
+            label: selectedRequirement.title,
             active: workspaceLevel === "detail",
             onClick: () => {
-              openTask(selectedTask);
+              openRequirement(selectedRequirement);
             },
           },
         ]
@@ -1520,8 +1667,8 @@ export default function App() {
         : "Projects"
       : workspaceLevel === "tasks"
         ? locale === "zh-CN"
-          ? "任务列表"
-          : "Tasks"
+          ? "需求列表"
+          : "Requirements"
         : t.taskDetails;
 
   const workspaceDescription =
@@ -1531,11 +1678,11 @@ export default function App() {
         : "Choose a project first, then inspect its tasks."
       : workspaceLevel === "tasks"
         ? locale === "zh-CN"
-          ? `${getProjectDisplayName(selectedProject?.id || "", locale) || "当前项目"} 下的任务`
-          : `Tasks under ${getProjectDisplayName(selectedProject?.id || "", locale) || "the current project"}`
+          ? `${getProjectDisplayName(selectedProject?.id || "", locale) || "当前项目"} 下的需求线程`
+          : `Requirement threads under ${getProjectDisplayName(selectedProject?.id || "", locale) || "the current project"}`
         : locale === "zh-CN"
-          ? "只展示当前任务的详情与操作。"
-          : "Focused detail view for the active task.";
+          ? "展示当前需求线程的最新 attempt、验收项和失败原因。"
+          : "Focused detail view for the active requirement, including attempts and acceptance.";
 
   const createLabel =
     workspaceLevel === "projects"
@@ -1838,28 +1985,33 @@ export default function App() {
 
             {workspaceLevel === "tasks" ? (
               <div className="entity-grid">
-                {selectedProjectTasks.length ? (
-                  selectedProjectTasks.map((task) => (
-                    <button key={task.id} type="button" className="entity-card task-card" onClick={() => openTask(task)}>
+                {selectedProjectRequirements.length ? (
+                  selectedProjectRequirements.map((requirement) => (
+                    <button key={requirement.id} type="button" className="entity-card task-card" onClick={() => openRequirement(requirement)}>
                       <div className="entity-topline">
-                        <span className="title clamp-2">{task.title}</span>
-                        <span className={`badge status-${task.status}`}>{statusLabel[task.status][locale]}</span>
+                        <span className="title clamp-2">{requirement.title}</span>
+                        <span className={`badge status-${requirement.status}`}>{statusLabel[requirement.status][locale]}</span>
                       </div>
                       <div className="meta">
-                        {getProjectDisplayName(task.projectId, locale)} · {task.type}
+                        {getProjectDisplayName(requirement.projectId, locale)} · attempt #{requirement.latestAttemptNumber}
                       </div>
-                      <div className="clamp-3 entity-copy">{task.description || (locale === "zh-CN" ? "暂无描述" : "No description")}</div>
+                      <div className="meta">
+                        {locale === "zh-CN" ? "验收：" : "Acceptance: "}
+                        {requirement.acceptanceCompleted}/{requirement.acceptanceTotal}
+                        {requirement.publishStatus ? ` · ${requirement.publishStatus}` : ""}
+                      </div>
+                      <div className="clamp-3 entity-copy">{requirement.openFailureReason || requirement.attempts[0]?.summary || requirement.attempts[0]?.description || (locale === "zh-CN" ? "暂无描述" : "No description")}</div>
                     </button>
                   ))
                 ) : (
-                  <div className="detail-empty">{locale === "zh-CN" ? "当前项目暂无任务" : "No tasks in this project"}</div>
+                  <div className="detail-empty">{locale === "zh-CN" ? "当前项目暂无需求" : "No requirements in this project"}</div>
                 )}
               </div>
             ) : null}
 
             {workspaceLevel === "detail" ? (
-              selectedTask ? (
-                <TaskDetail task={selectedTask} locale={locale} onMutate={mutateTask} onRespond={respondToTask} />
+              selectedTask && selectedRequirement ? (
+                <TaskDetail requirement={selectedRequirement} task={selectedTask} locale={locale} onMutate={mutateTask} onRespond={respondToTask} />
               ) : (
                 <div className="detail-empty">{t.noTask}</div>
               )
@@ -1884,7 +2036,9 @@ export default function App() {
                     onOpenTask={(taskId) => {
                       const task = visibleTasks.find((item) => item.id === taskId);
                       if (!task) return;
-                      openTask(task);
+                      const requirement = visibleRequirements.find((item) => item.latestAttemptId === task.id || item.attempts.some((attempt) => attempt.id === task.id));
+                      if (!requirement) return;
+                      openRequirement(requirement);
                     }}
                   />
                 ))
@@ -2106,22 +2260,28 @@ function CreateDialog({
 }
 
 function TaskDetail({
+  requirement,
   task,
   locale,
   onMutate,
   onRespond,
 }: {
+  requirement: Requirement;
   task: Task;
   locale: Locale;
   onMutate: (taskId: string, action: "stop" | "retry") => Promise<void>;
   onRespond: (taskId: string, decision: "approve" | "reject", feedback: string) => Promise<void>;
 }) {
+  const [showRawLogs, setShowRawLogs] = useState(false);
+  const logViews = buildLogViews(task.logs);
+  const visibleLogs = showRawLogs ? logViews.raw : logViews.important;
+
   return (
     <div className="detail-card">
       <div className="detail-hero">
         <div>
           <div className="meta">
-            {getProjectDisplayName(task.projectId, locale)} · {task.type}
+            {getProjectDisplayName(task.projectId, locale)} · {task.type} · requirement #{requirement.latestAttemptNumber}
           </div>
           <h3 className="wrap-anywhere">{task.title}</h3>
           <div className="meta">
@@ -2140,12 +2300,22 @@ function TaskDetail({
               </button>
             </>
           ) : null}
+          {task.status === "awaiting_acceptance" ? (
+            <>
+              <button type="button" className="primary" onClick={() => void onRespond(task.id, "approve", "")}>
+                {locale === "zh-CN" ? "验收通过" : "Accept"}
+              </button>
+              <button type="button" className="ghost" onClick={() => void onRespond(task.id, "reject", "")}>
+                {locale === "zh-CN" ? "打回返修" : "Needs revision"}
+              </button>
+            </>
+          ) : null}
           {task.status === "running" ? (
             <button type="button" className="ghost" onClick={() => void onMutate(task.id, "stop")}>
               {locale === "zh-CN" ? "停止" : "Stop"}
             </button>
           ) : null}
-          {task.status === "failed" || task.status === "stopped" ? (
+          {task.status === "failed" || task.status === "stopped" || task.status === "needs_revision" || task.status === "publish_failed" ? (
             <button type="button" className="ghost" onClick={() => void onMutate(task.id, "retry")}>
               {locale === "zh-CN" ? "重试" : "Retry"}
             </button>
@@ -2170,6 +2340,46 @@ function TaskDetail({
           <div className="info-card">
             <div className="info-label">{locale === "zh-CN" ? "摘要" : "Summary"}</div>
             <div className="wrap-anywhere">{task.summary}</div>
+          </div>
+        ) : null}
+
+        {task.openFailureReason ? (
+          <div className="info-card">
+            <div className="info-label">{locale === "zh-CN" ? "未完成原因" : "Why not completed"}</div>
+            <div className="wrap-anywhere">{task.openFailureReason}</div>
+          </div>
+        ) : null}
+
+        {requirement.acceptanceCriteria?.length ? (
+          <div className="info-card">
+            <div className="info-label">{locale === "zh-CN" ? "验收清单" : "Acceptance checklist"}</div>
+            <div className="stack compact">
+              {requirement.acceptanceCriteria.map((criterion) => {
+                const verification = requirement.verificationResults?.find((item) => item.criterionId === criterion.id);
+                return (
+                  <div key={criterion.id} className="log-item">
+                    <strong>{criterion.text}</strong>
+                    <br />
+                    {(verification?.status || "pending")} {verification?.evidence ? `· ${verification.evidence}` : ""}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
+
+        {requirement.attempts.length > 1 ? (
+          <div className="info-card">
+            <div className="info-label">{locale === "zh-CN" ? "尝试历史" : "Attempt history"}</div>
+            <div className="stack compact">
+              {requirement.attempts.map((attempt) => (
+                <div key={attempt.id} className="log-item">
+                  <strong>#{attempt.attemptNumber || "?"}</strong> · {statusLabel[attempt.status][locale]}
+                  <br />
+                  {attempt.summary || attempt.openFailureReason || attempt.description}
+                </div>
+              ))}
+            </div>
           </div>
         ) : null}
 
@@ -2198,8 +2408,22 @@ function TaskDetail({
       </div>
 
       <div className="log-list">
-        {task.logs.length ? (
-          task.logs.map((entry) => (
+        <div className="section-head">
+          <h3>{locale === "zh-CN" ? "任务日志" : "Task logs"}</h3>
+          {task.logs.length > logViews.important.length ? (
+            <button type="button" className="ghost" onClick={() => setShowRawLogs((current) => !current)}>
+              {showRawLogs
+                ? locale === "zh-CN"
+                  ? "只看关键日志"
+                  : "Show important only"
+                : locale === "zh-CN"
+                  ? "展开原始日志"
+                  : "Show raw logs"}
+            </button>
+          ) : null}
+        </div>
+        {visibleLogs.length ? (
+          visibleLogs.map((entry) => (
             <div key={`${entry.timestamp}-${entry.message}`} className="log-item">
               <div className="meta">{new Date(entry.timestamp).toLocaleString(locale)}</div>
               <div className="wrap-anywhere">{entry.message}</div>
