@@ -288,11 +288,6 @@ button.primary:not(:disabled) {
   gap: 0.75rem;
 }
 
-.side-panel {
-  align-content: start;
-  align-self: start;
-}
-
 .workspace-toolbar,
 .section-head {
   display: flex;
@@ -599,6 +594,32 @@ textarea {
   padding: 1rem;
 }
 
+.dialog-card .section-head {
+  margin-bottom: 1rem;
+}
+
+.dialog-card .section-head h3 {
+  line-height: 1.4;
+}
+
+.dialog-card .icon-button {
+  width: auto;
+  height: auto;
+  min-height: 0;
+  padding: 0.1rem;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 1.05rem;
+}
+
+.dialog-card .icon-button:hover {
+  border-color: transparent;
+  background: transparent;
+  color: var(--text);
+}
+
 .mobile-nav-fab,
 .mobile-nav-backdrop,
 .mobile-drawer-backdrop {
@@ -685,13 +706,17 @@ textarea {
 }
 
 .header-switch {
-  min-width: 208px;
+  min-width: 220px;
   min-height: 62px;
   padding: 0.72rem 0.78rem;
 }
 
 .header-switch .mobile-nav-action-label {
   font-size: 0.92rem;
+}
+
+.header-switch .mobile-nav-action-hint {
+  font-size: 0.76rem;
 }
 
 .header-logout {
@@ -720,57 +745,49 @@ textarea {
   flex: 1;
 }
 
-.segmented-switch {
+.switch-track {
   position: relative;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  align-items: center;
-  width: 118px;
-  min-width: 118px;
-  height: 40px;
-  padding: 3px;
+  width: 86px;
+  min-width: 86px;
+  height: 36px;
   border-radius: 999px;
   background: color-mix(in srgb, var(--surface-3) 78%, var(--brand-soft) 22%);
   border: 1px solid var(--line);
   transition: background-color 140ms ease, border-color 140ms ease;
 }
 
-.segmented-switch-thumb {
+.switch-thumb {
   position: absolute;
   top: 3px;
   left: 3px;
-  width: calc(50% - 3px);
-  height: calc(100% - 6px);
+  width: 28px;
+  height: 28px;
   border-radius: 999px;
   background: #fff;
   box-shadow: 0 8px 18px rgba(17, 30, 52, 0.18);
   transition: transform 140ms ease;
 }
 
-.segmented-switch-option {
-  position: relative;
-  z-index: 1;
-  text-align: center;
-  font-size: 0.77rem;
+.switch-state {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 0.74rem;
   font-weight: 700;
   color: var(--text-dim);
-  transition: color 140ms ease;
 }
 
-.segmented-switch-option.is-active {
-  color: var(--text);
-}
-
-.switch-card.is-on .segmented-switch {
+.switch-card.is-on .switch-track {
   background: color-mix(in srgb, var(--brand) 18%, var(--surface));
   border-color: color-mix(in srgb, var(--brand) 36%, var(--line));
 }
 
-.switch-card.is-on .segmented-switch-thumb {
-  transform: translateX(calc(100% + 1px));
+.switch-card.is-on .switch-thumb {
+  transform: translateX(50px);
 }
 
-.switch-card.is-on .segmented-switch-option.is-active {
+.switch-card.is-on .switch-state {
   color: var(--brand);
 }
 
@@ -823,14 +840,6 @@ textarea {
 .entity-card {
   overflow-wrap: anywhere;
   word-break: break-word;
-}
-
-.detail-text-block {
-  white-space: pre-wrap;
-}
-
-.info-card-wide {
-  grid-column: 1 / -1;
 }
 
 .clamp-2,
