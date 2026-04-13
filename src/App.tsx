@@ -105,6 +105,14 @@ type DeviceLoginSession = {
   error: string;
 };
 
+type NoticeTone = "info" | "success" | "error";
+
+type NoticeItem = {
+  id: number;
+  message: string;
+  tone: NoticeTone;
+};
+
 type Locale = "zh-CN" | "en-US";
 type CopyState = "idle" | "copied";
 type ThemeMode = "light" | "dark";
@@ -223,19 +231,6 @@ function parseStatusFromComments(comments: Array<{ body: string }>, fallbackClos
   }
 
   return { status, taskId, summary };
-}
-
-function getTaskPreviewCopy(task: Task, locale: Locale) {
-  if (task.summary.trim()) {
-    return {
-      label: locale === "zh-CN" ? "摘要" : "Summary",
-      value: task.summary,
-    };
-  }
-  return {
-    label: locale === "zh-CN" ? "描述" : "Description",
-    value: task.description || (locale === "zh-CN" ? "暂无描述" : "No description"),
-  };
 }
 
 function buildRemoteProjects(tasks: Task[]) {
@@ -442,7 +437,7 @@ export default function App() {
   const [createDialogMode, setCreateDialogMode] = useState<CreateDialogMode | null>(null);
   const [authStatus, setAuthStatus] = useState("");
   const [deviceLogin, setDeviceLogin] = useState<DeviceLoginSession | null>(null);
-  const [notice, setNotice] = useState("");
+  const [notices, setNotices] = useState<NoticeItem[]>([]);
   const [copyState, setCopyState] = useState<CopyState>("idle");
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const [isMobileViewDrawerOpen, setIsMobileViewDrawerOpen] = useState(false);
@@ -688,9 +683,12 @@ export default function App() {
     return error instanceof Error ? error.message : String(error);
   }
 
-  function setTransientNotice(message: string) {
-    setNotice(message);
-    window.setTimeout(() => setNotice(""), 4500);
+  function setTransientNotice(message: string, tone: NoticeTone = "info") {
+    const id = Date.now() + Math.floor(Math.random() * 1000);
+    setNotices((current) => [...current, { id, message, tone }]);
+    window.setTimeout(() => {
+      setNotices((current) => current.filter((notice) => notice.id !== id));
+    }, 4500);
   }
 
   async function refreshAll() {
@@ -1016,9 +1014,7 @@ export default function App() {
     }
   }
 
-  async function onCreateProject(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const formElement = event.currentTarget;
+  async function onCreateProject(formElement: HTMLFormElement) {
     try {
       const form = new FormData(formElement);
       const name = String(form.get("name") || "").trim();
@@ -1067,6 +1063,7 @@ export default function App() {
         });
         setTransientNotice(
           locale === "zh-CN" ? `项目请求已入队：Issue #${issue.number}` : `Project queued via issue #${issue.number}`,
+          "success",
         );
       } else if (authConfig?.taskBackend === "github-issues") {
         const queued = await api<{ issue: IssueTask }>("/api/issue-tasks", {
@@ -1090,6 +1087,7 @@ export default function App() {
           locale === "zh-CN"
             ? `项目请求已入队：Issue #${queued.issue.number}`
             : `Project queued via issue #${queued.issue.number}`,
+          "success",
         );
       } else {
         await api("/api/projects", {
@@ -1102,19 +1100,17 @@ export default function App() {
             autoCreateRepo,
           }),
         });
-        setTransientNotice(locale === "zh-CN" ? "项目已创建" : "Project created");
+        setTransientNotice(locale === "zh-CN" ? "项目已创建" : "Project created", "success");
       }
       formElement.reset();
       setCreateDialogMode(null);
       await refreshAll();
     } catch (error) {
-      setTransientNotice(summarizeError(error));
+      setTransientNotice(summarizeError(error), "error");
     }
   }
 
-  async function onCreateTask(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const formElement = event.currentTarget;
+  async function onCreateTask(formElement: HTMLFormElement) {
     try {
       const form = new FormData(formElement);
       const type = String(form.get("type") || "task").trim();
@@ -1166,7 +1162,7 @@ export default function App() {
           logs: [],
           children: [],
         };
-        setTransientNotice(locale === "zh-CN" ? `任务已入队：Issue #${issue.number}` : `Task queued via issue #${issue.number}`);
+        setTransientNotice(locale === "zh-CN" ? `任务已入队：Issue #${issue.number}` : `Task queued via issue #${issue.number}`, "success");
       } else if (authConfig?.taskBackend === "github-issues") {
         const queued = await api<{ issue: IssueTask }>("/api/issue-tasks", {
           method: "POST",
@@ -1198,6 +1194,7 @@ export default function App() {
           locale === "zh-CN"
             ? `任务已入队：Issue #${queued.issue.number}`
             : `Task queued via issue #${queued.issue.number}`,
+          "success",
         );
       } else {
         await api("/api/tasks", {
@@ -1209,7 +1206,7 @@ export default function App() {
             description,
           }),
         });
-        setTransientNotice(locale === "zh-CN" ? "任务已创建" : "Task created");
+        setTransientNotice(locale === "zh-CN" ? "任务已创建" : "Task created", "success");
       }
       if (createdTask) {
         setOptimisticTasks((current) => [createdTask as Task, ...current.filter((task) => task.id !== createdTask!.id)]);
@@ -1221,7 +1218,7 @@ export default function App() {
       setCreateDialogMode(null);
       await refreshTasks();
     } catch (error) {
-      setTransientNotice(summarizeError(error));
+      setTransientNotice(summarizeError(error), "error");
     }
   }
 
@@ -1251,10 +1248,10 @@ export default function App() {
         }
         localStorage.setItem("codex.githubAccessToken", normalized);
         setGithubToken(normalized);
-        setTransientNotice(locale === "zh-CN" ? "GitHub 已连接" : "GitHub connected");
+        setTransientNotice(locale === "zh-CN" ? "GitHub 已连接" : "GitHub connected", "success");
         await refreshAll();
       } catch (error) {
-        setTransientNotice(summarizeError(error));
+        setTransientNotice(summarizeError(error), "error");
       }
       return;
     }
@@ -1289,7 +1286,7 @@ export default function App() {
       const myPollToken = ++pollTokenRef.current;
       void pollDeviceLogin(session, myPollToken);
     } catch (error) {
-      setTransientNotice(summarizeError(error));
+      setTransientNotice(summarizeError(error), "error");
     }
   }
 
@@ -1391,7 +1388,7 @@ export default function App() {
       setCopyState("copied");
       window.setTimeout(() => setCopyState("idle"), 1200);
     } catch {
-      setTransientNotice(locale === "zh-CN" ? "复制失败，请手动复制" : "Clipboard copy failed. Copy manually.");
+      setTransientNotice(locale === "zh-CN" ? "复制失败，请手动复制" : "Clipboard copy failed. Copy manually.", "error");
     }
   }
 
@@ -1438,11 +1435,14 @@ export default function App() {
       } else {
         await api(`/api/tasks/${taskId}/${action}`, { method: "POST" });
       }
-      setTransientNotice(action === "stop" ? (locale === "zh-CN" ? "已发送停止指令" : "Stop requested") : locale === "zh-CN" ? "已重试任务" : "Task retried");
+      setTransientNotice(
+        action === "stop" ? (locale === "zh-CN" ? "已发送停止指令" : "Stop requested") : locale === "zh-CN" ? "已重试任务" : "Task retried",
+        "success",
+      );
       await refreshTasks();
       await refreshApprovals();
     } catch (error) {
-      setTransientNotice(summarizeError(error));
+      setTransientNotice(summarizeError(error), "error");
     }
   }
 
@@ -1466,10 +1466,10 @@ export default function App() {
           body: JSON.stringify({ decision, feedback }),
         });
       }
-      setTransientNotice(locale === "zh-CN" ? "审批结果已提交" : "Decision submitted");
+      setTransientNotice(locale === "zh-CN" ? "审批结果已提交" : "Decision submitted", "success");
       await refreshAll();
     } catch (error) {
-      setTransientNotice(summarizeError(error));
+      setTransientNotice(summarizeError(error), "error");
     }
   }
 
@@ -1608,7 +1608,15 @@ export default function App() {
         </section>
       ) : null}
 
-      {notice ? <section className="notice">{notice}</section> : null}
+      {notices.length ? (
+        <div className="notice-stack" aria-live="polite" aria-atomic="true">
+          {notices.map((notice) => (
+            <section key={notice.id} className={`notice notice-${notice.tone}`}>
+              {notice.message}
+            </section>
+          ))}
+        </div>
+      ) : null}
 
       <nav className="tabs" aria-label="Primary">
         {tabs.map((tab) => (
@@ -1831,22 +1839,18 @@ export default function App() {
             {workspaceLevel === "tasks" ? (
               <div className="entity-grid">
                 {selectedProjectTasks.length ? (
-                  selectedProjectTasks.map((task) => {
-                    const previewCopy = getTaskPreviewCopy(task, locale);
-                    return (
-                      <button key={task.id} type="button" className="entity-card task-card" onClick={() => openTask(task)}>
-                        <div className="entity-topline">
-                          <span className="title clamp-2">{task.title}</span>
-                          <span className={`badge status-${task.status}`}>{statusLabel[task.status][locale]}</span>
-                        </div>
-                        <div className="meta">
-                          {getProjectDisplayName(task.projectId, locale)} · {task.type}
-                        </div>
-                        <div className="info-label entity-copy-label">{previewCopy.label}</div>
-                        <div className="clamp-4 entity-copy">{previewCopy.value}</div>
-                      </button>
-                    );
-                  })
+                  selectedProjectTasks.map((task) => (
+                    <button key={task.id} type="button" className="entity-card task-card" onClick={() => openTask(task)}>
+                      <div className="entity-topline">
+                        <span className="title clamp-2">{task.title}</span>
+                        <span className={`badge status-${task.status}`}>{statusLabel[task.status][locale]}</span>
+                      </div>
+                      <div className="meta">
+                        {getProjectDisplayName(task.projectId, locale)} · {task.type}
+                      </div>
+                      <div className="clamp-3 entity-copy">{task.description || (locale === "zh-CN" ? "暂无描述" : "No description")}</div>
+                    </button>
+                  ))
                 ) : (
                   <div className="detail-empty">{locale === "zh-CN" ? "当前项目暂无任务" : "No tasks in this project"}</div>
                 )}
@@ -2014,8 +2018,8 @@ function CreateDialog({
   selectedProjectId: string;
   closeLabel: string;
   onClose: () => void;
-  onCreateProject: (event: FormEvent<HTMLFormElement>) => Promise<void>;
-  onCreateTask: (event: FormEvent<HTMLFormElement>) => Promise<void>;
+  onCreateProject: (formElement: HTMLFormElement) => Promise<void>;
+  onCreateTask: (formElement: HTMLFormElement) => Promise<void>;
 }) {
   const title =
     mode === "project"
@@ -2047,7 +2051,13 @@ function CreateDialog({
         </div>
 
         {mode === "project" ? (
-          <form className="stack compact" onSubmit={onCreateProject}>
+          <form
+            className="stack compact"
+            onSubmit={(event: FormEvent<HTMLFormElement>) => {
+              event.preventDefault();
+              void onCreateProject(event.currentTarget);
+            }}
+          >
             <input name="name" placeholder={locale === "zh-CN" ? "项目名称" : "Project name"} required />
             <textarea name="description" rows={4} placeholder={locale === "zh-CN" ? "目标 / 范围 / 备注" : "Goal / scope / notes"} />
             <input name="repository" placeholder="GitHub URL (optional)" />
@@ -2062,7 +2072,13 @@ function CreateDialog({
             <button type="submit" className="primary">{locale === "zh-CN" ? "创建项目" : "Create project"}</button>
           </form>
         ) : (
-          <form className="stack compact" onSubmit={onCreateTask}>
+          <form
+            className="stack compact"
+            onSubmit={(event: FormEvent<HTMLFormElement>) => {
+              event.preventDefault();
+              void onCreateTask(event.currentTarget);
+            }}
+          >
             {mode === "task" ? (
               <select name="projectId" defaultValue={selectedProjectId || projects[0]?.id}>
                 {projects.map((project) => (
@@ -2151,7 +2167,7 @@ function TaskDetail({
         ) : null}
 
         {task.summary ? (
-          <div className="info-card summary-card">
+          <div className="info-card">
             <div className="info-label">{locale === "zh-CN" ? "摘要" : "Summary"}</div>
             <div className="wrap-anywhere">{task.summary}</div>
           </div>
