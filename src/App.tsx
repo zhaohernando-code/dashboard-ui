@@ -245,6 +245,7 @@ type ThemeMode = "light" | "dark";
 type WorkspaceLevel = "projects" | "tasks" | "detail";
 type RuntimeMode = "local-api" | "github-direct";
 type CreateDialogMode = "project" | "task" | "composite_task";
+type StatusFilterValue = TaskStatus | "all";
 
 const DEFAULT_API_BASE = (import.meta.env.VITE_DEFAULT_API_BASE as string | undefined)?.trim() || "http://localhost:8787";
 const GITHUB_CLIENT_ID = (import.meta.env.VITE_GITHUB_CLIENT_ID as string | undefined)?.trim() || "";
@@ -253,6 +254,7 @@ const GITHUB_SCOPES = (import.meta.env.VITE_GITHUB_OAUTH_SCOPES as string | unde
 const IS_GITHUB_PAGES = typeof window !== "undefined" && window.location.hostname.endsWith("github.io");
 const AUTO_ROUTE_PROJECT_ID = "__auto_route__";
 const DISMISSED_ANOMALIES_STORAGE_KEY = "codex.dismissedAnomalies";
+const STATUS_FILTER_ALL = "all";
 const REMOTE_PROJECT_CATALOG = [
   {
     id: "dashboard-ui",
@@ -520,6 +522,10 @@ function getProjectDisplayName(projectId: string, locale: Locale) {
     return locale === "zh-CN" ? "AI 待判定项目" : "AI-routed";
   }
   return projectId;
+}
+
+function matchesStatusFilter(status: TaskStatus, filter: StatusFilterValue) {
+  return filter === STATUS_FILTER_ALL || status === filter;
 }
 
 function toFiniteNumber(value: unknown): number | null {
@@ -894,6 +900,10 @@ export default function App() {
   const [copyState, setCopyState] = useState<CopyState>("idle");
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const [isMobileViewDrawerOpen, setIsMobileViewDrawerOpen] = useState(false);
+  const [projectStatusFilter, setProjectStatusFilter] = useState<StatusFilterValue>(STATUS_FILTER_ALL);
+  const [requirementStatusFilter, setRequirementStatusFilter] = useState<StatusFilterValue>(STATUS_FILTER_ALL);
+  const [approvalStatusFilter, setApprovalStatusFilter] = useState<StatusFilterValue>(STATUS_FILTER_ALL);
+  const [anomalyStatusFilter, setAnomalyStatusFilter] = useState<StatusFilterValue>(STATUS_FILTER_ALL);
   const pollTokenRef = useRef(0);
   const selectedProjectIdRef = useRef(selectedProjectId);
   const selectedTaskIdRef = useRef(selectedTaskId);
@@ -953,6 +963,18 @@ export default function App() {
     [projects, runtimeMode, visibleTasks],
   );
 
+  const filteredProjects = useMemo(
+    () =>
+      visibleProjects.filter(
+        (project) =>
+          projectStatusFilter === STATUS_FILTER_ALL
+          || visibleRequirements.some(
+            (requirement) => requirement.projectId === project.id && matchesStatusFilter(requirement.status, projectStatusFilter),
+          ),
+      ),
+    [projectStatusFilter, visibleProjects, visibleRequirements],
+  );
+
   const selectedProject = useMemo(
     () => visibleProjects.find((project) => project.id === selectedProjectId) ?? null,
     [selectedProjectId, visibleProjects],
@@ -961,6 +983,21 @@ export default function App() {
   const selectedProjectRequirements = useMemo(
     () => visibleRequirements.filter((requirement) => requirement.projectId === selectedProjectId),
     [selectedProjectId, visibleRequirements],
+  );
+
+  const filteredSelectedProjectRequirements = useMemo(
+    () => selectedProjectRequirements.filter((requirement) => matchesStatusFilter(requirement.status, requirementStatusFilter)),
+    [requirementStatusFilter, selectedProjectRequirements],
+  );
+
+  const filteredApprovals = useMemo(
+    () => approvals.filter((approval) => matchesStatusFilter(approval.task.status, approvalStatusFilter)),
+    [approvalStatusFilter, approvals],
+  );
+
+  const filteredWorkspaceAnomalies = useMemo(
+    () => visibleWorkspaceAnomalies.filter((item) => matchesStatusFilter(item.status, anomalyStatusFilter)),
+    [anomalyStatusFilter, visibleWorkspaceAnomalies],
   );
 
   const t = useMemo(
@@ -2404,61 +2441,79 @@ export default function App() {
             </div>
 
             {workspaceLevel === "projects" ? (
-              <div className="entity-grid">
-                {visibleProjects.length ? (
-                  visibleProjects.map((project) => (
-                    <button key={project.id} type="button" className="entity-card project-card" onClick={() => openProject(project.id)}>
-                      <div className="entity-topline">
-                        <span className="entity-icon" aria-hidden="true">
-                          ▣
-                        </span>
-                        <span className="title">{getProjectDisplayName(project.id, locale)}</span>
-                      </div>
-                      <div className="meta clamp-2">
-                        {(project.id === AUTO_ROUTE_PROJECT_ID
-                          ? locale === "zh-CN"
-                            ? "模糊或跨项目任务暂存区，等待 AI 判断路由。"
-                            : "Staging area for composite or cross-project tasks before AI routing."
-                          : project.description) || (locale === "zh-CN" ? "暂无项目描述" : "No description")}
-                      </div>
-                      <div className="entity-footer">
-                        <span className="meta">{project.repository || (locale === "zh-CN" ? "未绑定仓库" : "No repository")}</span>
-                        <span className="stats-pill">
-                          {project.taskStats.running}/{project.taskStats.total}
-                        </span>
-                      </div>
-                    </button>
-                  ))
-                ) : (
-                  <div className="detail-empty">{locale === "zh-CN" ? "暂无项目" : "No projects"}</div>
-                )}
-              </div>
+              <>
+                <StatusFilterBar
+                  locale={locale}
+                  value={projectStatusFilter}
+                  onChange={setProjectStatusFilter}
+                />
+                <div className="entity-grid">
+                  {filteredProjects.length ? (
+                    filteredProjects.map((project) => (
+                      <button key={project.id} type="button" className="entity-card project-card" onClick={() => openProject(project.id)}>
+                        <div className="entity-topline">
+                          <span className="entity-icon" aria-hidden="true">
+                            ▣
+                          </span>
+                          <span className="title">{getProjectDisplayName(project.id, locale)}</span>
+                        </div>
+                        <div className="meta clamp-2">
+                          {(project.id === AUTO_ROUTE_PROJECT_ID
+                            ? locale === "zh-CN"
+                              ? "模糊或跨项目任务暂存区，等待 AI 判断路由。"
+                              : "Staging area for composite or cross-project tasks before AI routing."
+                            : project.description) || (locale === "zh-CN" ? "暂无项目描述" : "No description")}
+                        </div>
+                        <div className="entity-footer">
+                          <span className="meta">{project.repository || (locale === "zh-CN" ? "未绑定仓库" : "No repository")}</span>
+                          <span className="stats-pill">
+                            {project.taskStats.running}/{project.taskStats.total}
+                          </span>
+                        </div>
+                      </button>
+                    ))
+                  ) : (
+                    <div className="detail-empty">
+                      {locale === "zh-CN" ? "当前筛选下暂无项目" : "No projects match this status filter"}
+                    </div>
+                  )}
+                </div>
+              </>
             ) : null}
 
             {workspaceLevel === "tasks" ? (
-              <div className="entity-grid">
-                {selectedProjectRequirements.length ? (
-                  selectedProjectRequirements.map((requirement) => (
-                    <button key={requirement.id} type="button" className="entity-card task-card" onClick={() => openRequirement(requirement)}>
-                      <div className="entity-topline">
-                        <span className="title clamp-2">{requirement.title}</span>
-                        <span className={`badge status-${requirement.status}`}>{statusLabel[requirement.status][locale]}</span>
-                      </div>
-                      <div className="meta">
-                        {getProjectDisplayName(requirement.projectId, locale)} · attempt #{requirement.latestAttemptNumber}
-                      </div>
-                      <div className="meta">
-                        {locale === "zh-CN" ? "验收：" : "Acceptance: "}
-                        {requirement.acceptanceCompleted}/{requirement.acceptanceTotal}
-                        {requirement.publishStatus ? ` · ${requirement.publishStatus}` : ""}
-                      </div>
-                      <div className="entity-copy entity-preview wrap-anywhere clamp-3">{getRequirementPreview(requirement, locale)}</div>
-                    </button>
-                  ))
-                ) : (
-                  <div className="detail-empty">{locale === "zh-CN" ? "当前项目暂无需求" : "No requirements in this project"}</div>
-                )}
-              </div>
+              <>
+                <StatusFilterBar
+                  locale={locale}
+                  value={requirementStatusFilter}
+                  onChange={setRequirementStatusFilter}
+                />
+                <div className="entity-grid">
+                  {filteredSelectedProjectRequirements.length ? (
+                    filteredSelectedProjectRequirements.map((requirement) => (
+                      <button key={requirement.id} type="button" className="entity-card task-card" onClick={() => openRequirement(requirement)}>
+                        <div className="entity-topline">
+                          <span className="title clamp-2">{requirement.title}</span>
+                          <span className={`badge status-${requirement.status}`}>{statusLabel[requirement.status][locale]}</span>
+                        </div>
+                        <div className="meta">
+                          {getProjectDisplayName(requirement.projectId, locale)} · attempt #{requirement.latestAttemptNumber}
+                        </div>
+                        <div className="meta">
+                          {locale === "zh-CN" ? "验收：" : "Acceptance: "}
+                          {requirement.acceptanceCompleted}/{requirement.acceptanceTotal}
+                          {requirement.publishStatus ? ` · ${requirement.publishStatus}` : ""}
+                        </div>
+                        <div className="entity-copy entity-preview wrap-anywhere clamp-3">{getRequirementPreview(requirement, locale)}</div>
+                      </button>
+                    ))
+                  ) : (
+                    <div className="detail-empty">
+                      {locale === "zh-CN" ? "当前筛选下暂无需求" : "No requirements match this status filter"}
+                    </div>
+                  )}
+                </div>
+              </>
             ) : null}
 
             {workspaceLevel === "detail" ? (
@@ -2487,9 +2542,14 @@ export default function App() {
                 {t.refresh}
               </button>
             </div>
+            <StatusFilterBar
+              locale={locale}
+              value={approvalStatusFilter}
+              onChange={setApprovalStatusFilter}
+            />
             <div className="stack">
-              {approvals.length ? (
-                approvals.map((approval) => (
+              {filteredApprovals.length ? (
+                filteredApprovals.map((approval) => (
                   <ApprovalCard
                     key={approval.id}
                     approval={approval}
@@ -2505,7 +2565,7 @@ export default function App() {
                   />
                 ))
               ) : (
-                <div className="detail-empty">{locale === "zh-CN" ? "当前没有待审批" : "No approvals pending"}</div>
+                <div className="detail-empty">{locale === "zh-CN" ? "当前筛选下没有待审批" : "No approvals match this status filter"}</div>
               )}
             </div>
             <div className="section-head" style={{ marginTop: "1.25rem" }}>
@@ -2516,9 +2576,14 @@ export default function App() {
                 </button>
               ) : null}
             </div>
+            <StatusFilterBar
+              locale={locale}
+              value={anomalyStatusFilter}
+              onChange={setAnomalyStatusFilter}
+            />
             <div className="stack">
-              {visibleWorkspaceAnomalies.length ? (
-                visibleWorkspaceAnomalies.map((item) => (
+              {filteredWorkspaceAnomalies.length ? (
+                filteredWorkspaceAnomalies.map((item) => (
                   <div key={item.id} className="entity-card task-card anomaly-card">
                     <button
                       type="button"
@@ -2545,7 +2610,7 @@ export default function App() {
                   </div>
                 ))
               ) : (
-                <div className="detail-empty">{locale === "zh-CN" ? "当前没有异常需求" : "No anomalous requirements"}</div>
+                <div className="detail-empty">{locale === "zh-CN" ? "当前筛选下没有异常需求" : "No anomalies match this status filter"}</div>
               )}
             </div>
           </article>
@@ -2832,6 +2897,32 @@ function CreateDialog({
           </form>
         )}
       </div>
+    </div>
+  );
+}
+
+function StatusFilterBar({
+  locale,
+  value,
+  onChange,
+}: {
+  locale: Locale;
+  value: StatusFilterValue;
+  onChange: (next: StatusFilterValue) => void;
+}) {
+  return (
+    <div className="list-filter-bar">
+      <label className="list-filter-control">
+        <span className="meta">{locale === "zh-CN" ? "当前状态筛选" : "Filter by status"}</span>
+        <select value={value} onChange={(event) => onChange(event.target.value as StatusFilterValue)}>
+          <option value={STATUS_FILTER_ALL}>{locale === "zh-CN" ? "全部状态" : "All statuses"}</option>
+          {(Object.keys(statusLabel) as TaskStatus[]).map((status) => (
+            <option key={status} value={status}>
+              {statusLabel[status][locale]}
+            </option>
+          ))}
+        </select>
+      </label>
     </div>
   );
 }

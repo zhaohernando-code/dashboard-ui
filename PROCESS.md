@@ -2,6 +2,13 @@
 
 ## 2026-04-13
 
+- Problem: the dashboard lists showed status badges but offered no operator-side status filter, so users had to visually scan projects, requirements, approvals, and anomaly queues one by one to find the current state they cared about. Worktree validation also failed at first because this task branch had no local `node_modules`.
+- Resolution: added a reusable status filter bar to the project list, requirement list, approval queue, and anomaly queue; project filtering now keeps only projects that contain at least one requirement in the chosen state. For validation, linked the worktree `node_modules` to the canonical repo dependency directory and then ran the normal `npm run check` and `npm run build` flow successfully.
+- Prevention: any operational list that already surfaces a status badge should expose the same status as a first-class filter; for future worktrees, verify dependency availability before starting validation, and reuse the canonical repo dependencies when the worktree itself is intentionally lightweight.
+- Commit ID: N/A（当前回合已完成本地类型检查与构建；未执行远端推送/主线合并）
+
+## 2026-04-13
+
 - Problem: anomaly queue items could only be viewed, so operators had no way to close the loop on known exceptions and the same requirement kept resurfacing even after manual follow-up.
 - Resolution: added anomaly-level manual handling in the dashboard, persisted handled anomaly fingerprints in local storage, exposed mark-handled/restore actions in both the anomaly queue and task detail, and auto-reactivated alerts when the underlying anomaly content changed.
 - Prevention: any operational queue item that is derived from UI-visible heuristics must provide an explicit close-loop action plus a re-alert rule tied to the anomaly fingerprint, otherwise users cannot distinguish “known and handled” from “still needs attention”.
