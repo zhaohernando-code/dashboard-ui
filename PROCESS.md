@@ -78,3 +78,10 @@
 - Resolution: cached the form element before the async submit path in both create handlers, so post-submit `reset()` and dialog close no longer depend on `event.currentTarget` remaining valid after `await`.
 - Prevention: in React async form handlers, never read `event.currentTarget` after an awaited request; capture the form element synchronously at the top of the handler and use that stable reference for cleanup.
 - Commit ID: N/A（当前沙箱禁止写入主仓库 `.git/worktrees/...` 索引，无法在本环境提交）
+
+## 2026-04-13
+
+- Problem: the usage overview only showed task counters and could not express the current member quota used/total ratio; when quota data was missing, the UI fell back to a blank state without explaining why.
+- Resolution: extended the usage view to normalize optional member quota fields from `/api/usage`, added a dedicated used/total ratio card with progress bar, and surfaced explicit summary reasons for missing quota data, backend fetch failures, and GitHub Pages direct mode.
+- Prevention: any dashboard metric panel that depends on optional backend fields must keep a human-readable unavailable reason in state instead of collapsing to generic empty UI; frontends consuming evolving APIs should normalize compatible field aliases at the boundary.
+- Commit ID: N/A（当前环境未执行 git 提交）
