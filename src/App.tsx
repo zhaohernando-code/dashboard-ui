@@ -1005,8 +1005,9 @@ export default function App() {
 
   async function onCreateProject(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const formElement = event.currentTarget;
     try {
-      const form = new FormData(event.currentTarget);
+      const form = new FormData(formElement);
       const name = String(form.get("name") || "").trim();
       const description = String(form.get("description") || "").trim();
       const repository = String(form.get("repository") || "").trim();
@@ -1090,7 +1091,7 @@ export default function App() {
         });
         setTransientNotice(locale === "zh-CN" ? "项目已创建" : "Project created");
       }
-      (event.currentTarget as HTMLFormElement).reset();
+      formElement.reset();
       setCreateDialogMode(null);
       await refreshAll();
     } catch (error) {
@@ -1100,8 +1101,9 @@ export default function App() {
 
   async function onCreateTask(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const formElement = event.currentTarget;
     try {
-      const form = new FormData(event.currentTarget);
+      const form = new FormData(formElement);
       const type = String(form.get("type") || "task").trim();
       const projectId = getTaskProjectId(type, String(form.get("projectId") || "").trim());
       const title = String(form.get("title") || "").trim();
@@ -1202,7 +1204,7 @@ export default function App() {
         setSelectedTaskId(createdTask.id);
         setWorkspaceLevel("tasks");
       }
-      (event.currentTarget as HTMLFormElement).reset();
+      formElement.reset();
       setCreateDialogMode(null);
       await refreshTasks();
     } catch (error) {
@@ -1549,15 +1551,15 @@ export default function App() {
           <HeaderSwitch
             checked={theme === "dark"}
             label={t.themeSetting}
-            offLabel="Light"
-            onLabel="Dark"
+            hint={t.themeSettingHint}
+            stateLabel={theme === "dark" ? "Dark" : "Light"}
             onToggle={() => setTheme(theme === "dark" ? "light" : "dark")}
           />
           <HeaderSwitch
             checked={locale === "en-US"}
             label={t.languageSetting}
-            offLabel="中文"
-            onLabel="English"
+            hint={t.languageSettingHint}
+            stateLabel={locale === "zh-CN" ? "中文" : "English"}
             onToggle={() => setLocale(locale === "zh-CN" ? "en-US" : "zh-CN")}
           />
           <button type="button" className="ghost header-logout" onClick={() => void logout()} disabled={!authConfig?.user}>
@@ -1659,11 +1661,11 @@ export default function App() {
               >
                 <span className="switch-copy">
                   <span className="mobile-nav-action-label">{t.themeSetting}</span>
+                  <span className="mobile-nav-action-hint">{t.themeSettingHint}</span>
                 </span>
-                <span className="segmented-switch" aria-hidden="true">
-                  <span className="segmented-switch-thumb" />
-                  <span className={`segmented-switch-option ${theme === "dark" ? "" : "is-active"}`}>Light</span>
-                  <span className={`segmented-switch-option ${theme === "dark" ? "is-active" : ""}`}>Dark</span>
+                <span className="switch-track" aria-hidden="true">
+                  <span className="switch-thumb" />
+                  <span className="switch-state">{theme === "dark" ? "Dark" : "Light"}</span>
                 </span>
               </button>
               <button
@@ -1677,11 +1679,11 @@ export default function App() {
               >
                 <span className="switch-copy">
                   <span className="mobile-nav-action-label">{t.languageSetting}</span>
+                  <span className="mobile-nav-action-hint">{t.languageSettingHint}</span>
                 </span>
-                <span className="segmented-switch" aria-hidden="true">
-                  <span className="segmented-switch-thumb" />
-                  <span className={`segmented-switch-option ${locale === "en-US" ? "" : "is-active"}`}>中文</span>
-                  <span className={`segmented-switch-option ${locale === "en-US" ? "is-active" : ""}`}>English</span>
+                <span className="switch-track" aria-hidden="true">
+                  <span className="switch-thumb" />
+                  <span className="switch-state">{locale === "zh-CN" ? "中文" : "English"}</span>
                 </span>
               </button>
               {!authConfig?.user ? (
@@ -2132,9 +2134,9 @@ function TaskDetail({
         ) : null}
 
         {task.summary ? (
-          <div className="info-card info-card-wide">
+          <div className="info-card">
             <div className="info-label">{locale === "zh-CN" ? "摘要" : "Summary"}</div>
-            <div className="wrap-anywhere detail-text-block">{task.summary}</div>
+            <div className="wrap-anywhere">{task.summary}</div>
           </div>
         ) : null}
 
@@ -2221,25 +2223,25 @@ function ApprovalCard({
 function HeaderSwitch({
   checked,
   label,
-  offLabel,
-  onLabel,
+  hint,
+  stateLabel,
   onToggle,
 }: {
   checked: boolean;
   label: string;
-  offLabel: string;
-  onLabel: string;
+  hint: string;
+  stateLabel: string;
   onToggle: () => void;
 }) {
   return (
     <button type="button" className={`switch-card header-switch ${checked ? "is-on" : ""}`} role="switch" aria-checked={checked} onClick={onToggle}>
       <span className="switch-copy">
         <span className="mobile-nav-action-label">{label}</span>
+        <span className="mobile-nav-action-hint">{hint}</span>
       </span>
-      <span className="segmented-switch" aria-hidden="true">
-        <span className="segmented-switch-thumb" />
-        <span className={`segmented-switch-option ${checked ? "" : "is-active"}`}>{offLabel}</span>
-        <span className={`segmented-switch-option ${checked ? "is-active" : ""}`}>{onLabel}</span>
+      <span className="switch-track" aria-hidden="true">
+        <span className="switch-thumb" />
+        <span className="switch-state">{stateLabel}</span>
       </span>
     </button>
   );
