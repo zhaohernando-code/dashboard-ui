@@ -295,3 +295,10 @@ no changes added to commit (use "git add" and/or "git commit -a")
 - Resolution: switched `github-direct` usage loading to read a GitHub-backed `Codex Control Plane Status` issue with embedded usage and health JSON, and only fall back to task counters when that status issue has not been published yet.
 - Prevention: dashboards served from GitHub Pages should treat GitHub itself as the transport for operator state; if a metric must survive remote access, publish it onto the same GitHub channel the page already uses for task control.
 - Commit ID: pending
+
+## 2026-04-14
+
+- Problem: clicking the usage overview could blank the entire dashboard because the GitHub-backed status issue intentionally emits a slimmed-down health snapshot without `anomaly.taskIds`, while the usage page still rendered `anomaly.taskIds.length` as if every anomaly always carried a full task list.
+- Resolution: added frontend normalization for platform-health snapshots so missing anomaly task lists are filled with empty arrays before state is stored, and hardened the anomaly renderer to tolerate absent `taskIds`.
+- Prevention: any payload read from the GitHub status issue must be normalized into the dashboard's full runtime shape before rendering; the UI should never assume optional diagnostic arrays are present just because the local API includes them.
+- Commit ID: pending

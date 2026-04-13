@@ -546,6 +546,75 @@ function normalizeUsageOverview(raw: unknown): UsageOverview {
   };
 }
 
+function normalizePlatformHealth(raw: unknown): PlatformHealth | null {
+  const record = asRecord(raw);
+  if (!record) return null;
+
+  const issuePoller = asRecord(record.issuePoller) || {};
+  const githubApi = asRecord(record.githubApi) || {};
+  const publishing = asRecord(record.publishing) || {};
+  const taskState = asRecord(record.taskState) || {};
+  const anomalies = Array.isArray(record.anomalies) ? record.anomalies : [];
+
+  return {
+    generatedAt: String(record.generatedAt || ""),
+    taskBackend: String(record.taskBackend || ""),
+    githubTaskRepo: String(record.githubTaskRepo || ""),
+    issuePoller: {
+      enabled: Boolean(issuePoller.enabled),
+      status: String(issuePoller.status || ""),
+      intervalMs: toFiniteNumber(issuePoller.intervalMs) ?? 0,
+      inFlight: Boolean(issuePoller.inFlight),
+      lastStartedAt: String(issuePoller.lastStartedAt || ""),
+      lastSuccessAt: String(issuePoller.lastSuccessAt || ""),
+      lastDurationMs: toFiniteNumber(issuePoller.lastDurationMs) ?? 0,
+      lastError: String(issuePoller.lastError || ""),
+    },
+    githubApi: {
+      inFlight: toFiniteNumber(githubApi.inFlight) ?? 0,
+      queued: toFiniteNumber(githubApi.queued) ?? 0,
+      lastRequestAt: String(githubApi.lastRequestAt || ""),
+      lastError: String(githubApi.lastError || ""),
+      lastRateLimitAt: String(githubApi.lastRateLimitAt || ""),
+      lastRetryAt: String(githubApi.lastRetryAt || ""),
+      remaining: githubApi.remaining == null ? null : String(githubApi.remaining),
+      resetAt: String(githubApi.resetAt || ""),
+    },
+    publishing: {
+      lastPublishedAt: String(publishing.lastPublishedAt || ""),
+      lastPublishedTaskId: String(publishing.lastPublishedTaskId || ""),
+      lastPublishedTaskTitle: String(publishing.lastPublishedTaskTitle || ""),
+      lastPublishMethod: String(publishing.lastPublishMethod || ""),
+      lastPublishError: String(publishing.lastPublishError || ""),
+      publishedTasks: toFiniteNumber(publishing.publishedTasks) ?? 0,
+      noopTasks: toFiniteNumber(publishing.noopTasks) ?? 0,
+      publishFailedTasks: toFiniteNumber(publishing.publishFailedTasks) ?? 0,
+      completedWithoutVerifiedPublish: toFiniteNumber(publishing.completedWithoutVerifiedPublish) ?? 0,
+    },
+    taskState: {
+      total: toFiniteNumber(taskState.total) ?? 0,
+      running: toFiniteNumber(taskState.running) ?? 0,
+      waitingUser: toFiniteNumber(taskState.waitingUser) ?? 0,
+      awaitingAcceptance: toFiniteNumber(taskState.awaitingAcceptance) ?? 0,
+      needsRevision: toFiniteNumber(taskState.needsRevision) ?? 0,
+      publishFailed: toFiniteNumber(taskState.publishFailed) ?? 0,
+      stoppedLatest: toFiniteNumber(taskState.stoppedLatest) ?? 0,
+    },
+    anomalies: anomalies.map((item, index) => {
+      const anomaly = asRecord(item) || {};
+      return {
+        id: String(anomaly.id || `anomaly-${index}`),
+        severity: String(anomaly.severity || "info"),
+        count: toFiniteNumber(anomaly.count) ?? 0,
+        description: String(anomaly.description || ""),
+        taskIds: Array.isArray(anomaly.taskIds)
+          ? anomaly.taskIds.map((taskId) => String(taskId)).filter(Boolean)
+          : [],
+      };
+    }),
+  };
+}
+
 function buildGithubDirectUsageFallback(taskList: Task[], locale: Locale): UsageOverview {
   const lastUpdatedTask = [...taskList]
     .filter((task) => task.updatedAt)
@@ -1286,7 +1355,7 @@ export default function App() {
           ? `已连接 ${payload.serverName} @ ${payload.host}`
           : `Connected to ${payload.serverName} @ ${payload.host}`,
       );
-      setPlatformHealth(platform.health);
+      setPlatformHealth(normalizePlatformHealth(platform.health));
     } catch (error) {
       setConnectionStatus(summarizeError(error));
       setPlatformHealth(null);
@@ -1562,7 +1631,7 @@ export default function App() {
         if (snapshot?.usage) {
           applyUsageOverview(snapshot.usage);
           if (snapshot.health) {
-            setPlatformHealth(snapshot.health as PlatformHealth);
+            setPlatformHealth(normalizePlatformHealth(snapshot.health));
           }
           return;
         }
@@ -2727,7 +2796,7 @@ export default function App() {
                         description={
                           <Space direction="vertical" size={6}>
                             <Typography.Text>{anomaly.description}</Typography.Text>
-                            {anomaly.taskIds.length ? <Typography.Text type="secondary">{anomaly.taskIds.join(", ")}</Typography.Text> : null}
+                            {(anomaly.taskIds?.length ?? 0) > 0 ? <Typography.Text type="secondary">{anomaly.taskIds.join(", ")}</Typography.Text> : null}
                           </Space>
                         }
                       />
