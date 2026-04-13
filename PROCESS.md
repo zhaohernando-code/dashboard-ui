@@ -1,5 +1,12 @@
 # PROCESS
 
+## 2026-04-14
+
+- Problem: the requirement queue had grown beyond a single screen, but the task workspace still rendered the full filtered list at once, making scanning and returning to a previously opened requirement increasingly noisy. This worktree also started without a local `node_modules`, which would block validation again if left unresolved.
+- Resolution: added requirement-level pagination to the task workspace with a reusable Ant Design pagination footer, reset/clamped page state across project switches and status-filter changes, and preserved detail-to-list continuity by reopening the page that contains the selected requirement when possible. For validation, linked this worktree `node_modules` to `/Users/hernando_zhao/codex/dashboard-ui/node_modules`, then ran `npm run check` and `npm run build` successfully.
+- Prevention: when an operational queue exceeds one viewport, add pagination or another explicit navigation control before the list becomes scan-only; pagination state must be derived from the filtered project-local dataset and reset/clamp whenever filter or project scope changes. In this environment, verify worktree dependencies before running frontend validation and reuse the canonical repo dependency tree when the worktree is intentionally lightweight.
+- Commit ID: N/A（已完成本地类型检查与构建；尝试本地提交时因沙箱拒绝创建 worktree `index.lock` 失败，远端推送/主线合并同样受当前环境限制）
+
 ## 2026-04-13
 
 - Problem: after submitting an acceptance decision, the toast confirmed success but the requirement list could still show `待验收`. The requirement cards preferred the backend `requirementStatus` field over the latest attempt status already loaded in the UI, so stale or mismatched aggregation could keep the old acceptance badge visible.

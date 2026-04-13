@@ -27,6 +27,7 @@ import {
   CreateDialog,
   HeaderLocaleSwitch,
   HeaderSwitch,
+  ListPagination,
   MetricCard,
   SectionHeader,
   StatusFilterBar,
@@ -76,6 +77,8 @@ const CLOSED_ANOMALIES_STORAGE_KEY = "codex.dismissedAnomalies";
 const STATUS_FILTER_ALL = "all";
 const DEFAULT_TASK_MODEL = "gpt-5.4";
 const DEFAULT_REASONING_EFFORT = "high";
+const REQUIREMENT_PAGE_SIZE_DESKTOP = 8;
+const REQUIREMENT_PAGE_SIZE_MOBILE = 6;
 const REMOTE_PROJECT_CATALOG = [
   {
     id: "dashboard-ui",
@@ -866,7 +869,10 @@ export default function App() {
   const [isMobileViewDrawerOpen, setIsMobileViewDrawerOpen] = useState(false);
   const [projectStatusFilter, setProjectStatusFilter] = useState<StatusFilterValue>(STATUS_FILTER_ALL);
   const [requirementStatusFilter, setRequirementStatusFilter] = useState<StatusFilterValue>(STATUS_FILTER_ALL);
+  const [requirementPage, setRequirementPage] = useState(1);
   const screens = Grid.useBreakpoint();
+  const isMobile = !screens.md;
+  const requirementPageSize = isMobile ? REQUIREMENT_PAGE_SIZE_MOBILE : REQUIREMENT_PAGE_SIZE_DESKTOP;
   const pollTokenRef = useRef(0);
   const selectedProjectIdRef = useRef(selectedProjectId);
   const selectedTaskIdRef = useRef(selectedTaskId);
@@ -953,6 +959,11 @@ export default function App() {
     [requirementStatusFilter, selectedProjectRequirements],
   );
 
+  const paginatedSelectedProjectRequirements = useMemo(() => {
+    const startIndex = (requirementPage - 1) * requirementPageSize;
+    return filteredSelectedProjectRequirements.slice(startIndex, startIndex + requirementPageSize);
+  }, [filteredSelectedProjectRequirements, requirementPage, requirementPageSize]);
+
   const t = useMemo(
     () =>
       ({
@@ -1028,7 +1039,6 @@ export default function App() {
       };
     });
   }, [locale, usage]);
-  const isMobile = !screens.md;
 
   useEffect(() => {
     localStorage.setItem("codex.locale", locale);
@@ -1129,6 +1139,13 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem(CLOSED_ANOMALIES_STORAGE_KEY, JSON.stringify(dismissedAnomalies));
   }, [dismissedAnomalies]);
+
+  useEffect(() => {
+    const totalPages = Math.max(1, Math.ceil(filteredSelectedProjectRequirements.length / requirementPageSize));
+    if (requirementPage > totalPages) {
+      setRequirementPage(totalPages);
+    }
+  }, [filteredSelectedProjectRequirements.length, requirementPage, requirementPageSize]);
 
   async function api<T>(path: string, init?: RequestInit): Promise<T> {
     const response = await fetch(`${DEFAULT_API_BASE}${path}`, {
@@ -2121,14 +2138,29 @@ export default function App() {
   function openProject(projectId: string) {
     setSelectedProjectId(projectId);
     setSelectedRequirementId("");
+    setRequirementPage(1);
     setWorkspaceLevel("tasks");
   }
 
   function openRequirement(requirement: Requirement) {
+    const requirementIndex = visibleRequirements
+      .filter(
+        (candidate) => candidate.projectId === requirement.projectId && matchesStatusFilter(candidate.status, requirementStatusFilter),
+      )
+      .findIndex((candidate) => candidate.id === requirement.id);
+
+    if (requirementIndex >= 0) {
+      setRequirementPage(Math.floor(requirementIndex / requirementPageSize) + 1);
+    }
     setSelectedProjectId(requirement.projectId);
     setSelectedRequirementId(requirement.id);
     setSelectedTaskId(requirement.latestAttemptId);
     setWorkspaceLevel("detail");
+  }
+
+  function handleRequirementStatusFilterChange(next: StatusFilterValue) {
+    setRequirementStatusFilter(next);
+    setRequirementPage(1);
   }
 
   const breadcrumbs = [
@@ -2436,7 +2468,7 @@ export default function App() {
                         <StatusFilterBar
                           locale={locale}
                           value={requirementStatusFilter}
-                          onChange={setRequirementStatusFilter}
+                          onChange={handleRequirementStatusFilterChange}
                           statusFilterAll={STATUS_FILTER_ALL}
                           statusLabel={statusLabel}
                         />
@@ -2485,35 +2517,45 @@ export default function App() {
 
                   {workspaceLevel === "tasks" ? (
                     filteredSelectedProjectRequirements.length ? (
-                      <div className="entity-grid">
-                        {filteredSelectedProjectRequirements.map((requirement) => (
-                          <Card
-                            key={requirement.id}
-                            hoverable
-                            className="entity-card"
-                            onClick={() => openRequirement(requirement)}
-                          >
-                            <Space direction="vertical" size={10} className="full-width">
-                              <Flex justify="space-between" align="flex-start" gap={12}>
-                                <Typography.Title level={5} className="card-title clamp-2">
-                                  {requirement.title}
-                                </Typography.Title>
-                                <Tag color={statusTagColor[requirement.status]}>{statusLabel[requirement.status][locale]}</Tag>
-                              </Flex>
-                              <Typography.Text type="secondary">
-                                {getProjectDisplayName(requirement.projectId, locale)} · attempt #{requirement.latestAttemptNumber}
-                              </Typography.Text>
-                              <Typography.Text type="secondary">
-                                {locale === "zh-CN" ? "验收：" : "Acceptance: "}
-                                {requirement.acceptanceCompleted}/{requirement.acceptanceTotal}
-                                {requirement.publishStatus ? ` · ${requirement.publishStatus}` : ""}
-                              </Typography.Text>
-                              <Typography.Paragraph className="entity-preview" ellipsis={{ rows: 3 }}>
-                                {getRequirementPreview(requirement, locale)}
-                              </Typography.Paragraph>
-                            </Space>
-                          </Card>
-                        ))}
+                      <div className="section-stack">
+                        <div className="entity-grid">
+                          {paginatedSelectedProjectRequirements.map((requirement) => (
+                            <Card
+                              key={requirement.id}
+                              hoverable
+                              className="entity-card"
+                              onClick={() => openRequirement(requirement)}
+                            >
+                              <Space direction="vertical" size={10} className="full-width">
+                                <Flex justify="space-between" align="flex-start" gap={12}>
+                                  <Typography.Title level={5} className="card-title clamp-2">
+                                    {requirement.title}
+                                  </Typography.Title>
+                                  <Tag color={statusTagColor[requirement.status]}>{statusLabel[requirement.status][locale]}</Tag>
+                                </Flex>
+                                <Typography.Text type="secondary">
+                                  {getProjectDisplayName(requirement.projectId, locale)} · attempt #{requirement.latestAttemptNumber}
+                                </Typography.Text>
+                                <Typography.Text type="secondary">
+                                  {locale === "zh-CN" ? "验收：" : "Acceptance: "}
+                                  {requirement.acceptanceCompleted}/{requirement.acceptanceTotal}
+                                  {requirement.publishStatus ? ` · ${requirement.publishStatus}` : ""}
+                                </Typography.Text>
+                                <Typography.Paragraph className="entity-preview" ellipsis={{ rows: 3 }}>
+                                  {getRequirementPreview(requirement, locale)}
+                                </Typography.Paragraph>
+                              </Space>
+                            </Card>
+                          ))}
+                        </div>
+                        <ListPagination
+                          locale={locale}
+                          current={requirementPage}
+                          pageSize={requirementPageSize}
+                          total={filteredSelectedProjectRequirements.length}
+                          itemLabel={{ "zh-CN": "需求", "en-US": "requirements" }}
+                          onChange={setRequirementPage}
+                        />
                       </div>
                     ) : (
                       <Empty description={locale === "zh-CN" ? "当前筛选下暂无需求" : "No requirements match this status filter"} />

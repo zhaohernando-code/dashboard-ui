@@ -377,6 +377,10 @@ a {
   gap: 12px;
 }
 
+.list-pagination {
+  width: 100%;
+}
+
 .view-pane {
   margin-top: 0 !important;
 }

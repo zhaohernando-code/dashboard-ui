@@ -11,6 +11,7 @@ import {
   Input,
   List,
   Modal,
+  Pagination,
   Segmented,
   Select,
   Space,
@@ -108,6 +109,15 @@ type MetricCardProps = {
   extra?: ReactNode;
   className?: string;
   valueTone?: "hero" | "compact" | "body";
+};
+
+type ListPaginationProps = {
+  locale: Locale;
+  current: number;
+  pageSize: number;
+  total: number;
+  itemLabel: Record<Locale, string>;
+  onChange: (page: number) => void;
 };
 
 export function CreateDialog({
@@ -629,6 +639,40 @@ export function SectionHeader({ title, subtitle, actions }: SectionHeaderProps) 
         {subtitle ? <Typography.Text type="secondary">{subtitle}</Typography.Text> : null}
       </Space>
       {actions ? <div>{actions}</div> : null}
+    </Flex>
+  );
+}
+
+export function ListPagination({
+  locale,
+  current,
+  pageSize,
+  total,
+  itemLabel,
+  onChange,
+}: ListPaginationProps) {
+  if (total <= pageSize) {
+    return null;
+  }
+
+  const start = (current - 1) * pageSize + 1;
+  const end = Math.min(current * pageSize, total);
+
+  return (
+    <Flex justify="space-between" align="center" gap={12} wrap className="list-pagination">
+      <Typography.Text type="secondary">
+        {locale === "zh-CN"
+          ? `第 ${start}-${end} 条，共 ${total} 条${itemLabel[locale]}`
+          : `${start}-${end} of ${total} ${itemLabel[locale]}`}
+      </Typography.Text>
+      <Pagination
+        current={current}
+        pageSize={pageSize}
+        total={total}
+        showSizeChanger={false}
+        responsive
+        onChange={onChange}
+      />
     </Flex>
   );
 }

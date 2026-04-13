@@ -8,6 +8,12 @@
 - Keep a small repo-native shell layer for branding, background, and a few product-specific interaction patterns.
 - Keep the dashboard deployable to GitHub Pages from a build output directory.
 
+## Design Reference
+
+- Follow the `HashiCorp` reference direction from `VoltAgent/awesome-design-md` for control-plane additions: enterprise-clean, structured, and low-noise rather than consumer-marketing styling.
+- Keep new queue controls such as filters and pagination compact and utility-first; prefer standard Ant Design surfaces inside the existing shell instead of bespoke visual treatments.
+- Use restrained accents and clear information hierarchy so dense operational lists stay easy to scan on both desktop and mobile.
+
 ## Layout Baseline
 
 - Prefer Ant Design layout primitives first: `Layout`, `Flex`, `Space`, `Row`, `Col`, `Tabs`, `Drawer`, `Modal`.
