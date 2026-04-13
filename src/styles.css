@@ -166,6 +166,7 @@ h3 {
 .topbar-right {
   flex-wrap: wrap;
   justify-content: flex-end;
+  margin-left: auto;
 }
 
 .api-pill {
@@ -428,6 +429,11 @@ button.primary:not(:disabled) {
   color: var(--warn);
 }
 
+.status-pending_capture {
+  background: color-mix(in srgb, var(--brand-2) 18%, var(--surface));
+  color: color-mix(in srgb, var(--brand) 72%, var(--brand-2) 28%);
+}
+
 .status-running {
   background: color-mix(in srgb, var(--brand) 14%, var(--surface));
   color: var(--brand);
@@ -673,6 +679,25 @@ textarea {
   text-align: left;
 }
 
+.header-switch {
+  min-width: 220px;
+  min-height: 62px;
+  padding: 0.72rem 0.78rem;
+}
+
+.header-switch .mobile-nav-action-label {
+  font-size: 0.92rem;
+}
+
+.header-switch .mobile-nav-action-hint {
+  font-size: 0.76rem;
+}
+
+.header-logout {
+  align-self: stretch;
+  min-width: 112px;
+}
+
 .mobile-nav-action-label,
 .mobile-nav-action-hint,
 .switch-copy {
@@ -738,6 +763,26 @@ textarea {
 
 .switch-card.is-on .switch-state {
   color: var(--brand);
+}
+
+.icon-button {
+  width: 2.2rem;
+  height: 2.2rem;
+  min-height: 2.2rem;
+  padding: 0;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--text);
+  display: inline-grid;
+  place-items: center;
+  font-size: 1.2rem;
+  line-height: 1;
+}
+
+.icon-button:hover {
+  border-color: var(--line-strong);
+  background: color-mix(in srgb, var(--surface-2) 76%, var(--brand-soft) 24%);
 }
 
 .mobile-drawer-backdrop {
@@ -903,6 +948,10 @@ button:disabled {
 
   .topbar-right,
   .status-strip {
+    display: none;
+  }
+
+  .topbar-right {
     display: none;
   }
 
