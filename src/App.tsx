@@ -226,7 +226,6 @@ type NoticeItem = {
 
 type DismissedAnomaly = {
   id: string;
-  fingerprint: string;
   dismissedAt: string;
 };
 
@@ -253,7 +252,7 @@ const GITHUB_TASK_REPO = (import.meta.env.VITE_GITHUB_TASK_REPO as string | unde
 const GITHUB_SCOPES = (import.meta.env.VITE_GITHUB_OAUTH_SCOPES as string | undefined)?.trim() || "read:user repo";
 const IS_GITHUB_PAGES = typeof window !== "undefined" && window.location.hostname.endsWith("github.io");
 const AUTO_ROUTE_PROJECT_ID = "__auto_route__";
-const DISMISSED_ANOMALIES_STORAGE_KEY = "codex.dismissedAnomalies";
+const CLOSED_ANOMALIES_STORAGE_KEY = "codex.dismissedAnomalies";
 const STATUS_FILTER_ALL = "all";
 const REMOTE_PROJECT_CATALOG = [
   {
@@ -882,14 +881,13 @@ export default function App() {
   const [notices, setNotices] = useState<NoticeItem[]>([]);
   const [dismissedAnomalies, setDismissedAnomalies] = useState<DismissedAnomaly[]>(() => {
     try {
-      const saved = localStorage.getItem(DISMISSED_ANOMALIES_STORAGE_KEY);
+      const saved = localStorage.getItem(CLOSED_ANOMALIES_STORAGE_KEY);
       const parsed = saved ? (JSON.parse(saved) as DismissedAnomaly[]) : [];
       return Array.isArray(parsed)
         ? parsed.filter(
             (item): item is DismissedAnomaly =>
               Boolean(item) &&
               typeof item.id === "string" &&
-              typeof item.fingerprint === "string" &&
               typeof item.dismissedAt === "string",
           )
         : [];
@@ -943,14 +941,14 @@ export default function App() {
     [locale, visibleRequirements],
   );
 
-  const dismissedAnomalyFingerprints = useMemo(
-    () => new Set(dismissedAnomalies.map((item) => item.fingerprint)),
+  const dismissedAnomalyIds = useMemo(
+    () => new Set(dismissedAnomalies.map((item) => item.id)),
     [dismissedAnomalies],
   );
 
   const visibleWorkspaceAnomalies = useMemo(
-    () => workspaceAnomalies.filter((item) => !dismissedAnomalyFingerprints.has(item.fingerprint)),
-    [dismissedAnomalyFingerprints, workspaceAnomalies],
+    () => workspaceAnomalies.filter((item) => !dismissedAnomalyIds.has(item.id)),
+    [dismissedAnomalyIds, workspaceAnomalies],
   );
 
   const selectedRequirementAnomalies = useMemo(
@@ -1211,13 +1209,8 @@ export default function App() {
   }, [optimisticTasks.length, tasks]);
 
   useEffect(() => {
-    localStorage.setItem(DISMISSED_ANOMALIES_STORAGE_KEY, JSON.stringify(dismissedAnomalies));
+    localStorage.setItem(CLOSED_ANOMALIES_STORAGE_KEY, JSON.stringify(dismissedAnomalies));
   }, [dismissedAnomalies]);
-
-  useEffect(() => {
-    const activeFingerprintSet = new Set(workspaceAnomalies.map((item) => item.fingerprint));
-    setDismissedAnomalies((current) => current.filter((item) => activeFingerprintSet.has(item.fingerprint)));
-  }, [workspaceAnomalies]);
 
   async function api<T>(path: string, init?: RequestInit): Promise<T> {
     const response = await fetch(`${DEFAULT_API_BASE}${path}`, {
@@ -1268,27 +1261,16 @@ export default function App() {
 
   function dismissAnomaly(anomaly: WorkspaceAnomaly) {
     setDismissedAnomalies((current) => {
-      if (current.some((item) => item.fingerprint === anomaly.fingerprint)) return current;
+      if (current.some((item) => item.id === anomaly.id)) return current;
       return [
         {
           id: anomaly.id,
-          fingerprint: anomaly.fingerprint,
           dismissedAt: new Date().toISOString(),
         },
         ...current,
       ];
     });
     setTransientNotice(locale === "zh-CN" ? "异常已标记为已处理，不再提示" : "Anomaly marked handled and hidden from alerts", "success");
-  }
-
-  function restoreAnomaly(anomaly: WorkspaceAnomaly) {
-    setDismissedAnomalies((current) => current.filter((item) => item.fingerprint !== anomaly.fingerprint));
-    setTransientNotice(locale === "zh-CN" ? "异常提醒已恢复" : "Anomaly alert restored", "info");
-  }
-
-  function clearDismissedAnomalies() {
-    setDismissedAnomalies([]);
-    setTransientNotice(locale === "zh-CN" ? "已恢复全部异常提醒" : "All anomaly alerts restored", "info");
   }
 
   async function refreshAll() {
@@ -2525,9 +2507,8 @@ export default function App() {
                   onMutate={mutateTask}
                   onRespond={respondToTask}
                   anomalies={selectedRequirementAnomalies}
-                  dismissedAnomalyFingerprints={dismissedAnomalyFingerprints}
+                  dismissedAnomalyIds={dismissedAnomalyIds}
                   onDismissAnomaly={dismissAnomaly}
-                  onRestoreAnomaly={restoreAnomaly}
                 />
               ) : (
                 <div className="detail-empty">{t.noTask}</div>
@@ -2570,11 +2551,6 @@ export default function App() {
             </div>
             <div className="section-head" style={{ marginTop: "1.25rem" }}>
               <h2>{locale === "zh-CN" ? "异常队列" : "Anomaly queue"}</h2>
-              {dismissedAnomalies.length ? (
-                <button className="ghost" type="button" onClick={clearDismissedAnomalies}>
-                  {locale === "zh-CN" ? `恢复已闭环 ${dismissedAnomalies.length}` : `Restore handled ${dismissedAnomalies.length}`}
-                </button>
-              ) : null}
             </div>
             <StatusFilterBar
               locale={locale}
@@ -2934,9 +2910,8 @@ function TaskDetail({
   onMutate,
   onRespond,
   anomalies,
-  dismissedAnomalyFingerprints,
+  dismissedAnomalyIds,
   onDismissAnomaly,
-  onRestoreAnomaly,
 }: {
   requirement: Requirement;
   task: Task;
@@ -2944,9 +2919,8 @@ function TaskDetail({
   onMutate: (taskId: string, action: "stop" | "retry") => Promise<void>;
   onRespond: (taskId: string, decision: "approve" | "reject", feedback: string) => Promise<void>;
   anomalies: WorkspaceAnomaly[];
-  dismissedAnomalyFingerprints: Set<string>;
+  dismissedAnomalyIds: Set<string>;
   onDismissAnomaly: (anomaly: WorkspaceAnomaly) => void;
-  onRestoreAnomaly: (anomaly: WorkspaceAnomaly) => void;
 }) {
   const [showRawLogs, setShowRawLogs] = useState(false);
   const logViews = buildLogViews(task.logs);
@@ -3031,27 +3005,23 @@ function TaskDetail({
             <div className="info-label">{locale === "zh-CN" ? "当前异常闭环" : "Current anomaly handling"}</div>
             <div className="stack compact">
               {anomalies.map((anomaly) => {
-                const isDismissed = dismissedAnomalyFingerprints.has(anomaly.fingerprint);
+                const isDismissed = dismissedAnomalyIds.has(anomaly.id);
                 return (
                   <div key={anomaly.id} className="log-item">
                     <strong>{statusLabel[anomaly.status][locale]}</strong>
                     <br />
                     <span className="preserve-breaks">{normalizeDisplayText(anomaly.detail)}</span>
-                    <div className="action-row detail-subactions">
-                      <button
-                        type="button"
-                        className="ghost"
-                        onClick={() => (isDismissed ? onRestoreAnomaly(anomaly) : onDismissAnomaly(anomaly))}
-                      >
-                        {isDismissed
-                          ? locale === "zh-CN"
-                            ? "恢复提醒"
-                            : "Restore alert"
-                          : locale === "zh-CN"
-                            ? "标记已处理"
-                            : "Mark handled"}
-                      </button>
-                    </div>
+                    {isDismissed ? null : (
+                      <div className="action-row detail-subactions">
+                        <button
+                          type="button"
+                          className="ghost"
+                          onClick={() => onDismissAnomaly(anomaly)}
+                        >
+                          {locale === "zh-CN" ? "标记已处理" : "Mark handled"}
+                        </button>
+                      </div>
+                    )}
                   </div>
                 );
               })}
