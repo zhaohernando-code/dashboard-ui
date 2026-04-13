@@ -1549,15 +1549,15 @@ export default function App() {
           <HeaderSwitch
             checked={theme === "dark"}
             label={t.themeSetting}
-            hint={t.themeSettingHint}
-            stateLabel={theme === "dark" ? "Dark" : "Light"}
+            offLabel="Light"
+            onLabel="Dark"
             onToggle={() => setTheme(theme === "dark" ? "light" : "dark")}
           />
           <HeaderSwitch
             checked={locale === "en-US"}
             label={t.languageSetting}
-            hint={t.languageSettingHint}
-            stateLabel={locale === "zh-CN" ? "中文" : "English"}
+            offLabel="中文"
+            onLabel="English"
             onToggle={() => setLocale(locale === "zh-CN" ? "en-US" : "zh-CN")}
           />
           <button type="button" className="ghost header-logout" onClick={() => void logout()} disabled={!authConfig?.user}>
@@ -1659,11 +1659,11 @@ export default function App() {
               >
                 <span className="switch-copy">
                   <span className="mobile-nav-action-label">{t.themeSetting}</span>
-                  <span className="mobile-nav-action-hint">{t.themeSettingHint}</span>
                 </span>
-                <span className="switch-track" aria-hidden="true">
-                  <span className="switch-thumb" />
-                  <span className="switch-state">{theme === "dark" ? "Dark" : "Light"}</span>
+                <span className="segmented-switch" aria-hidden="true">
+                  <span className="segmented-switch-thumb" />
+                  <span className={`segmented-switch-option ${theme === "dark" ? "" : "is-active"}`}>Light</span>
+                  <span className={`segmented-switch-option ${theme === "dark" ? "is-active" : ""}`}>Dark</span>
                 </span>
               </button>
               <button
@@ -1677,11 +1677,11 @@ export default function App() {
               >
                 <span className="switch-copy">
                   <span className="mobile-nav-action-label">{t.languageSetting}</span>
-                  <span className="mobile-nav-action-hint">{t.languageSettingHint}</span>
                 </span>
-                <span className="switch-track" aria-hidden="true">
-                  <span className="switch-thumb" />
-                  <span className="switch-state">{locale === "zh-CN" ? "中文" : "English"}</span>
+                <span className="segmented-switch" aria-hidden="true">
+                  <span className="segmented-switch-thumb" />
+                  <span className={`segmented-switch-option ${locale === "en-US" ? "" : "is-active"}`}>中文</span>
+                  <span className={`segmented-switch-option ${locale === "en-US" ? "is-active" : ""}`}>English</span>
                 </span>
               </button>
               {!authConfig?.user ? (
@@ -2132,9 +2132,9 @@ function TaskDetail({
         ) : null}
 
         {task.summary ? (
-          <div className="info-card">
+          <div className="info-card info-card-wide">
             <div className="info-label">{locale === "zh-CN" ? "摘要" : "Summary"}</div>
-            <div className="wrap-anywhere">{task.summary}</div>
+            <div className="wrap-anywhere detail-text-block">{task.summary}</div>
           </div>
         ) : null}
 
@@ -2221,25 +2221,25 @@ function ApprovalCard({
 function HeaderSwitch({
   checked,
   label,
-  hint,
-  stateLabel,
+  offLabel,
+  onLabel,
   onToggle,
 }: {
   checked: boolean;
   label: string;
-  hint: string;
-  stateLabel: string;
+  offLabel: string;
+  onLabel: string;
   onToggle: () => void;
 }) {
   return (
     <button type="button" className={`switch-card header-switch ${checked ? "is-on" : ""}`} role="switch" aria-checked={checked} onClick={onToggle}>
       <span className="switch-copy">
         <span className="mobile-nav-action-label">{label}</span>
-        <span className="mobile-nav-action-hint">{hint}</span>
       </span>
-      <span className="switch-track" aria-hidden="true">
-        <span className="switch-thumb" />
-        <span className="switch-state">{stateLabel}</span>
+      <span className="segmented-switch" aria-hidden="true">
+        <span className="segmented-switch-thumb" />
+        <span className={`segmented-switch-option ${checked ? "" : "is-active"}`}>{offLabel}</span>
+        <span className={`segmented-switch-option ${checked ? "is-active" : ""}`}>{onLabel}</span>
       </span>
     </button>
   );
