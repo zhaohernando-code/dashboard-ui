@@ -288,3 +288,10 @@ no changes added to commit (use "git add" and/or "git commit -a")
 - Resolution: decoupled usage state from issue-task refreshes, allowed the usage panel to keep backend snapshots when available, added a GitHub-direct fallback usage model, and surfaced an explicit mixed-content explanation when Pages is configured against a local HTTP API.
 - Prevention: observational panels must not be mutated by unrelated task-refresh code, and any GitHub Pages build that depends on a backend origin must detect HTTPS-to-HTTP local API mismatches and explain them instead of silently rendering empty states.
 - Commit ID: pending
+
+## 2026-04-13
+
+- Problem: even after the blank-state fix, GitHub Pages still could not show the real local Codex CLI usage remotely because the browser cannot read a local HTTP control plane from an HTTPS page, so mobile and off-device sessions still lacked the actual 5h/weekly snapshot.
+- Resolution: switched `github-direct` usage loading to read a GitHub-backed `Codex Control Plane Status` issue with embedded usage and health JSON, and only fall back to task counters when that status issue has not been published yet.
+- Prevention: dashboards served from GitHub Pages should treat GitHub itself as the transport for operator state; if a metric must survive remote access, publish it onto the same GitHub channel the page already uses for task control.
+- Commit ID: pending

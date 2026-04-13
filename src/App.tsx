@@ -63,6 +63,7 @@ import type {
 const DEFAULT_API_BASE = (import.meta.env.VITE_DEFAULT_API_BASE as string | undefined)?.trim() || "http://localhost:8787";
 const GITHUB_CLIENT_ID = (import.meta.env.VITE_GITHUB_CLIENT_ID as string | undefined)?.trim() || "";
 const GITHUB_TASK_REPO = (import.meta.env.VITE_GITHUB_TASK_REPO as string | undefined)?.trim() || "zhaohernando-code/dashboard-ui";
+const GITHUB_STATUS_ISSUE_TITLE = (import.meta.env.VITE_GITHUB_STATUS_ISSUE_TITLE as string | undefined)?.trim() || "Codex Control Plane Status";
 const GITHUB_SCOPES = (import.meta.env.VITE_GITHUB_OAUTH_SCOPES as string | undefined)?.trim() || "read:user repo";
 const IS_GITHUB_PAGES = typeof window !== "undefined" && window.location.hostname.endsWith("github.io");
 const HAS_MIXED_CONTENT_LOCAL_API =
@@ -175,6 +176,18 @@ function parseIssueBody(body: string) {
     model: normalizeRequestedModel(meta.model || ""),
     reasoningEffort: normalizeRequestedReasoningEffort(meta.reasoning || meta.reasoninglevel || meta.reasoning_effort || ""),
   };
+}
+
+function parseEmbeddedStatusPayload(body: string) {
+  const match = String(body || "").match(/<!--\s*codex-status-snapshot\s*([\s\S]*?)\s*-->/i);
+  if (!match) {
+    return null;
+  }
+  try {
+    return JSON.parse(match[1]);
+  } catch {
+    return null;
+  }
 }
 
 type IssueComment = {
@@ -1101,15 +1114,12 @@ export default function App() {
     return (await response.json()) as T;
   }
 
-  async function githubRequest<T>(path: string, init?: RequestInit): Promise<T> {
-    if (!githubToken) {
-      throw new Error(locale === "zh-CN" ? "请先使用 GitHub 登录" : "Sign in with GitHub first");
-    }
+  async function githubApiRequest<T>(path: string, init?: RequestInit, accessToken?: string): Promise<T> {
     const response = await fetch(`https://api.github.com${path}`, {
       ...init,
       headers: {
         Accept: "application/vnd.github+json",
-        Authorization: `Bearer ${githubToken}`,
+        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
         ...(init?.headers || {}),
       },
     });
@@ -1118,6 +1128,56 @@ export default function App() {
       throw new Error(payload.message || `GitHub API failed: ${response.status}`);
     }
     return (await response.json()) as T;
+  }
+
+  async function githubRequest<T>(path: string, init?: RequestInit): Promise<T> {
+    if (!githubToken) {
+      throw new Error(locale === "zh-CN" ? "请先使用 GitHub 登录" : "Sign in with GitHub first");
+    }
+    return githubApiRequest<T>(path, init, githubToken);
+  }
+
+  async function loadGithubStatusSnapshot() {
+    const [owner, repo] = GITHUB_TASK_REPO.split("/");
+    const issues = await githubApiRequest<Array<{
+      number: number;
+      title: string;
+      body: string;
+      state: string;
+      updated_at: string;
+      pull_request?: unknown;
+    }>>(`/repos/${owner}/${repo}/issues?state=open&per_page=30&sort=updated&direction=desc`, undefined, githubToken || undefined);
+    const issue = issues.find(
+      (item) => !item.pull_request && (item.title?.trim() === GITHUB_STATUS_ISSUE_TITLE || /<!--\s*codex-status-snapshot\s*[\s\S]*?-->/i.test(item.body || "")),
+    );
+    if (!issue) {
+      return null;
+    }
+    return parseEmbeddedStatusPayload(issue.body || "");
+  }
+
+  function applyUsageOverview(raw: unknown) {
+    const normalized = normalizeUsageOverview(raw);
+    setUsage(normalized);
+    const hasMemberUsage = normalized.memberUsageUsed !== null && normalized.memberUsageTotal !== null;
+    const statusSnapshotTime = normalized.statusCollectedAt
+      ? new Date(normalized.statusCollectedAt).toLocaleString(locale, {
+          month: "short",
+          day: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+        })
+      : "";
+    setUsageSummary(
+      hasMemberUsage
+        ? locale === "zh-CN"
+          ? `当前会员算力已使用 ${normalized.memberUsageUsed}${normalized.memberUsageUnit ? ` ${normalized.memberUsageUnit}` : ""}，总量 ${normalized.memberUsageTotal}${normalized.memberUsageUnit ? ` ${normalized.memberUsageUnit}` : ""}。`
+          : `Current member quota used: ${normalized.memberUsageUsed}${normalized.memberUsageUnit ? ` ${normalized.memberUsageUnit}` : ""} out of ${normalized.memberUsageTotal}${normalized.memberUsageUnit ? ` ${normalized.memberUsageUnit}` : ""}.`
+        : normalized.memberUsageReason ||
+          (locale === "zh-CN"
+            ? `已拿到运行统计${statusSnapshotTime ? `，最近一次 CLI 状态快照时间为 ${statusSnapshotTime}` : ""}，但接口没有返回当前会员的算力已用/总量。`
+            : `Runtime statistics loaded${statusSnapshotTime ? ` from the latest CLI status snapshot at ${statusSnapshotTime}` : ""}, but the API did not return current member used/total quota.`),
+    );
   }
 
   function summarizeError(error: unknown) {
@@ -1496,38 +1556,41 @@ export default function App() {
   }
 
   async function refreshUsage() {
-    if (runtimeMode === "github-direct" && HAS_MIXED_CONTENT_LOCAL_API) {
-      setUsage(buildGithubDirectUsageFallback(tasks, locale));
-      setUsageSummary(
-        locale === "zh-CN"
-          ? `当前页面通过 HTTPS 打开，但后端地址是 ${DEFAULT_API_BASE}。浏览器会拦截 GitHub Pages 到本机 HTTP API 的请求，因此无法直接读取本机 CLI 的 /status。请把 VITE_DEFAULT_API_BASE 改成可访问的 HTTPS 地址，或改用本地开发地址打开。`
-          : `This page is served over HTTPS, but the backend is configured as ${DEFAULT_API_BASE}. Browsers block GitHub Pages from calling a local HTTP API, so the page cannot read the local CLI /status directly. Point VITE_DEFAULT_API_BASE to a reachable HTTPS endpoint, or open the dashboard from a local dev server instead.`,
-      );
-      return;
+    if (runtimeMode === "github-direct") {
+      try {
+        const snapshot = await loadGithubStatusSnapshot();
+        if (snapshot?.usage) {
+          applyUsageOverview(snapshot.usage);
+          if (snapshot.health) {
+            setPlatformHealth(snapshot.health as PlatformHealth);
+          }
+          return;
+        }
+      } catch (error) {
+        if (!HAS_MIXED_CONTENT_LOCAL_API) {
+          setUsage(buildGithubDirectUsageFallback(tasks, locale));
+          setUsageSummary(
+            locale === "zh-CN"
+              ? `无法从 GitHub 状态快照读取本机用量，已回退到任务统计：${summarizeError(error)}`
+              : `Unable to read the GitHub-backed control-plane snapshot. Falling back to task activity: ${summarizeError(error)}`,
+          );
+          return;
+        }
+      }
+
+      if (HAS_MIXED_CONTENT_LOCAL_API) {
+        setUsage(buildGithubDirectUsageFallback(tasks, locale));
+        setUsageSummary(
+          locale === "zh-CN"
+            ? `当前页面通过 HTTPS 打开，但后端地址是 ${DEFAULT_API_BASE}。浏览器会拦截 GitHub Pages 到本机 HTTP API 的请求；页面现在会优先读取 GitHub 状态快照，如果该快照还未同步出来，则只能先显示任务统计。`
+            : `This page is served over HTTPS, but the backend is configured as ${DEFAULT_API_BASE}. Browsers block GitHub Pages from calling a local HTTP API; the dashboard now prefers a GitHub-backed status snapshot, and falls back to task activity until that snapshot is available.`,
+        );
+        return;
+      }
     }
     try {
       const payload = await api<{ overview: UsageOverview }>("/api/usage");
-      const normalized = normalizeUsageOverview(payload.overview);
-      setUsage(normalized);
-      const hasMemberUsage = normalized.memberUsageUsed !== null && normalized.memberUsageTotal !== null;
-      const statusSnapshotTime = normalized.statusCollectedAt
-        ? new Date(normalized.statusCollectedAt).toLocaleString(locale, {
-            month: "short",
-            day: "numeric",
-            hour: "2-digit",
-            minute: "2-digit",
-          })
-        : "";
-      setUsageSummary(
-        hasMemberUsage
-          ? locale === "zh-CN"
-            ? `当前会员算力已使用 ${normalized.memberUsageUsed}${normalized.memberUsageUnit ? ` ${normalized.memberUsageUnit}` : ""}，总量 ${normalized.memberUsageTotal}${normalized.memberUsageUnit ? ` ${normalized.memberUsageUnit}` : ""}。`
-            : `Current member quota used: ${normalized.memberUsageUsed}${normalized.memberUsageUnit ? ` ${normalized.memberUsageUnit}` : ""} out of ${normalized.memberUsageTotal}${normalized.memberUsageUnit ? ` ${normalized.memberUsageUnit}` : ""}.`
-          : normalized.memberUsageReason ||
-            (locale === "zh-CN"
-              ? `已拿到运行统计${statusSnapshotTime ? `，最近一次 CLI 状态快照时间为 ${statusSnapshotTime}` : ""}，但接口没有返回当前会员的算力已用/总量。`
-              : `Runtime statistics loaded${statusSnapshotTime ? ` from the latest CLI status snapshot at ${statusSnapshotTime}` : ""}, but the API did not return current member used/total quota.`),
-      );
+      applyUsageOverview(payload.overview);
     } catch (error) {
       if (runtimeMode === "github-direct") {
         setUsage(buildGithubDirectUsageFallback(tasks, locale));
