@@ -161,6 +161,13 @@ no changes added to commit (use "git add" and/or "git commit -a")
 
 ## 2026-04-13
 
+- Problem: in GitHub Pages direct mode, every requirement detail showed an empty critical-log section even when the backing GitHub issue already had execution comments.
+- Resolution: traced the issue to `refreshTasks()` building remote tasks with `logs: []`, added issue-comment parsing so GitHub comments become ordered task logs, filtered slash-command control comments like `/approve` and `/retry`, and broadened important-log matching so common state-change comments are kept in the key-log view.
+- Prevention: when adding or refactoring a remote task adapter, verify every detail-card data source end-to-end instead of only status/summary fields; if the UI has a fallback "show recent logs" path, make sure the upstream adapter still populates the raw log collection.
+- Commit ID: pending
+
+## 2026-04-13
+
 - Problem: task `task-mnwum040-vyh1ac` completed implementation and local build in its task branch, but finalization stalled and the changes never reached `main`, leaving the task looking “still running for a long time” even though the worker had already produced a final summary.
 - Resolution: recovered the finished task from `task/task-mnwum040-vyh1ac`, reapplied the published UI files onto `main`, rebuilt locally, and completed the release from the canonical repository instead of waiting on the stalled worktree finalization path.
 - Prevention: when a task already has a finished summary but `main` has not moved, treat it as a finalization/publish recovery incident rather than a still-running worker; recover from the task branch immediately and record the release path.
