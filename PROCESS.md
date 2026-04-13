@@ -158,3 +158,18 @@ no changes added to commit (use "git add" and/or "git commit -a")
 - Prevention: Finalization path now records and surfaces publish outcomes to avoid silent drift.
 - Commit ID: `856655e`
 - Context: project=dashboard-ui, source=issue #21
+
+## 2026-04-13
+
+- Problem: task `task-mnwum040-vyh1ac` completed implementation and local build in its task branch, but finalization stalled and the changes never reached `main`, leaving the task looking “still running for a long time” even though the worker had already produced a final summary.
+- Resolution: recovered the finished task from `task/task-mnwum040-vyh1ac`, reapplied the published UI files onto `main`, rebuilt locally, and completed the release from the canonical repository instead of waiting on the stalled worktree finalization path.
+- Prevention: when a task already has a finished summary but `main` has not moved, treat it as a finalization/publish recovery incident rather than a still-running worker; recover from the task branch immediately and record the release path.
+- Commit ID: pending
+
+## 2026-04-13
+
+- Problem: task task-mnwslvvq-03y8jh (ui优化) finished with status awaiting_acceptance.
+- Resolution: Published via GitHub Contents API fallback.
+- Prevention: Finalization path now records and surfaces publish outcomes to avoid silent drift.
+- Commit ID: 02f1a2a
+- Context: project=dashboard-ui, source=issue #16
