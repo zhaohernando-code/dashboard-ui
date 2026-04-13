@@ -710,7 +710,7 @@ function buildRequirementsFromTasks(tasks: Task[]) {
         projectId: latest.projectId,
         projectName: latest.projectName,
         title: latest.title,
-        status: latest.requirementStatus || latest.status,
+        status: latest.status,
         updatedAt: latest.updatedAt || "",
         latestAttemptId: latest.id,
         latestAttemptNumber: latest.attemptNumber || orderedAttempts.length,

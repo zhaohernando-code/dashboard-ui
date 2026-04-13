@@ -2,6 +2,11 @@
 
 ## 2026-04-13
 
+- Problem: after submitting an acceptance decision, the toast confirmed success but the requirement list could still show `待验收`. The requirement cards preferred the backend `requirementStatus` field over the latest attempt status already loaded in the UI, so stale or mismatched aggregation could keep the old acceptance badge visible.
+- Resolution: updated [src/App.tsx](/Users/hernando_zhao/codex/.codex-system/worktrees/dashboard-ui/task-mnx4fpft-bmufsw/src/App.tsx) so `buildRequirementsFromTasks()` derives each requirement card status directly from the latest grouped attempt `status`, keeping the list aligned with the detail view after approval submission.
+- Prevention: when the UI already groups attempts into a requirement thread, the displayed requirement status must come from that grouped latest attempt unless the backend aggregate is guaranteed to share the exact same requirement key and lifecycle semantics.
+- Commit ID: N/A（当前回合修复后会继续做本地校验；远端推送/主线合并受环境限制）
+
 - Problem: the dashboard lists showed status badges but offered no operator-side status filter, so users had to visually scan projects, requirements, approvals, and anomaly queues one by one to find the current state they cared about. Worktree validation also failed at first because this task branch had no local `node_modules`.
 - Resolution: added a reusable status filter bar to the project list, requirement list, approval queue, and anomaly queue; project filtering now keeps only projects that contain at least one requirement in the chosen state. For validation, linked the worktree `node_modules` to the canonical repo dependency directory and then ran the normal `npm run check` and `npm run build` flow successfully.
 - Prevention: any operational list that already surfaces a status badge should expose the same status as a first-class filter; for future worktrees, verify dependency availability before starting validation, and reuse the canonical repo dependencies when the worktree itself is intentionally lightweight.
