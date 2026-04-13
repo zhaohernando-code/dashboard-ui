@@ -225,6 +225,19 @@ function parseStatusFromComments(comments: Array<{ body: string }>, fallbackClos
   return { status, taskId, summary };
 }
 
+function getTaskPreviewCopy(task: Task, locale: Locale) {
+  if (task.summary.trim()) {
+    return {
+      label: locale === "zh-CN" ? "摘要" : "Summary",
+      value: task.summary,
+    };
+  }
+  return {
+    label: locale === "zh-CN" ? "描述" : "Description",
+    value: task.description || (locale === "zh-CN" ? "暂无描述" : "No description"),
+  };
+}
+
 function buildRemoteProjects(tasks: Task[]) {
   const projectMap = new Map(
     REMOTE_PROJECT_CATALOG.map((project) => [
@@ -1818,18 +1831,22 @@ export default function App() {
             {workspaceLevel === "tasks" ? (
               <div className="entity-grid">
                 {selectedProjectTasks.length ? (
-                  selectedProjectTasks.map((task) => (
-                    <button key={task.id} type="button" className="entity-card task-card" onClick={() => openTask(task)}>
-                      <div className="entity-topline">
-                        <span className="title clamp-2">{task.title}</span>
-                        <span className={`badge status-${task.status}`}>{statusLabel[task.status][locale]}</span>
-                      </div>
-                      <div className="meta">
-                        {getProjectDisplayName(task.projectId, locale)} · {task.type}
-                      </div>
-                      <div className="clamp-3 entity-copy">{task.description || (locale === "zh-CN" ? "暂无描述" : "No description")}</div>
-                    </button>
-                  ))
+                  selectedProjectTasks.map((task) => {
+                    const previewCopy = getTaskPreviewCopy(task, locale);
+                    return (
+                      <button key={task.id} type="button" className="entity-card task-card" onClick={() => openTask(task)}>
+                        <div className="entity-topline">
+                          <span className="title clamp-2">{task.title}</span>
+                          <span className={`badge status-${task.status}`}>{statusLabel[task.status][locale]}</span>
+                        </div>
+                        <div className="meta">
+                          {getProjectDisplayName(task.projectId, locale)} · {task.type}
+                        </div>
+                        <div className="info-label entity-copy-label">{previewCopy.label}</div>
+                        <div className="clamp-4 entity-copy">{previewCopy.value}</div>
+                      </button>
+                    );
+                  })
                 ) : (
                   <div className="detail-empty">{locale === "zh-CN" ? "当前项目暂无任务" : "No tasks in this project"}</div>
                 )}
@@ -2134,7 +2151,7 @@ function TaskDetail({
         ) : null}
 
         {task.summary ? (
-          <div className="info-card">
+          <div className="info-card summary-card">
             <div className="info-label">{locale === "zh-CN" ? "摘要" : "Summary"}</div>
             <div className="wrap-anywhere">{task.summary}</div>
           </div>
