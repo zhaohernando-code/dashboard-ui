@@ -140,6 +140,62 @@ function slugify(value: string) {
     .slice(0, 64);
 }
 
+function extractRepositoryName(repository: string) {
+  const trimmed = String(repository || "").trim();
+  if (!trimmed) return "";
+  try {
+    const parsed = new URL(trimmed);
+    return parsed.pathname
+      .split("/")
+      .filter(Boolean)
+      .pop()
+      ?.replace(/\.git$/i, "") || "";
+  } catch {
+    return trimmed
+      .split("/")
+      .filter(Boolean)
+      .pop()
+      ?.replace(/\.git$/i, "") || "";
+  }
+}
+
+function normalizeProjectIdentifier(value: string) {
+  return String(value || "")
+    .trim()
+    .replace(/[^\p{L}\p{N}._-]+/gu, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 64);
+}
+
+function deriveRequestedProjectId(name: string, repository: string, allowGeneratedFallback = true) {
+  const normalizedExplicitId = normalizeProjectIdentifier(name);
+  const asciiNameId = slugify(name);
+  if (asciiNameId) return asciiNameId;
+  const asciiRepositoryId = slugify(extractRepositoryName(repository));
+  if (asciiRepositoryId) return asciiRepositoryId;
+  if (normalizedExplicitId) return normalizedExplicitId;
+  const normalizedRepositoryId = normalizeProjectIdentifier(extractRepositoryName(repository));
+  if (normalizedRepositoryId) return normalizedRepositoryId;
+  return allowGeneratedFallback ? `project-${Date.now().toString(36)}` : "";
+}
+
+function resolveTaskProjectId(
+  type: string,
+  rawProjectId: string,
+  requestedProject?: { id?: string; name?: string; repository?: string } | null,
+  fallbackProjectId = "dashboard-ui",
+) {
+  if (parseTaskType(type) === "project_create") {
+    const requestedProjectId =
+      normalizeProjectIdentifier(String(requestedProject?.id || "")) ||
+      deriveRequestedProjectId(String(requestedProject?.name || ""), String(requestedProject?.repository || ""), false);
+    if (requestedProjectId) {
+      return requestedProjectId;
+    }
+  }
+  return normalizeProjectIdentifier(rawProjectId) || fallbackProjectId;
+}
+
 
 function parseTaskType(value: string) {
   const raw = String(value || "task").trim().toLowerCase();
@@ -154,9 +210,11 @@ function parseIssueBody(body: string) {
   if (embedded) {
     try {
       const payload = JSON.parse(embedded[1]);
+      const type = parseTaskType(payload.type);
+      const requestedProject = payload.requestedProject || null;
       return {
-        projectId: String(payload.projectId || "dashboard-ui").trim() || "dashboard-ui",
-        type: parseTaskType(payload.type),
+        projectId: resolveTaskProjectId(type, String(payload.projectId || ""), requestedProject),
+        type,
         title: String(payload.title || "Untitled task").trim(),
         description: String(payload.description || "").trim(),
         model: normalizeRequestedModel(String(payload.model || "")),
@@ -172,9 +230,10 @@ function parseIssueBody(body: string) {
     const match = line.match(/^\s*([a-zA-Z_]+)\s*:\s*(.+)\s*$/);
     if (match) meta[match[1].toLowerCase()] = match[2].trim();
   }
+  const type = parseTaskType(meta.type || "task");
   return {
-    projectId: meta.project || meta.projectid || "dashboard-ui",
-    type: parseTaskType(meta.type || "task"),
+    projectId: resolveTaskProjectId(type, meta.project || meta.projectid || "", null),
+    type,
     title: "",
     description: String(body || "").replace(/<!--[\s\S]*?-->/g, "").trim(),
     model: normalizeRequestedModel(meta.model || ""),
@@ -1667,24 +1726,26 @@ export default function App() {
       const autoCreateRepo = Boolean(values.autoCreateRepo);
       const model = normalizeRequestedModel(String(values.model || ""));
       const reasoningEffort = normalizeRequestedReasoningEffort(String(values.reasoningEffort || ""));
+      const requestedProjectId = deriveRequestedProjectId(name, repository);
+      const requestedProject = {
+        id: requestedProjectId,
+        name,
+        description,
+        repository,
+        visibility,
+        autoCreateRepo,
+      };
 
       if (runtimeMode === "github-direct") {
         const [owner, repoName] = GITHUB_TASK_REPO.split("/");
         const payload = {
-          projectId: "dashboard-ui",
+          projectId: requestedProjectId,
           type: "project_create",
           title: `Create project: ${name}`,
           description: description || `Create a new Codex-managed project named ${name}.`,
           model,
           reasoningEffort,
-          requestedProject: {
-            id: slugify(name),
-            name,
-            description,
-            repository,
-            visibility,
-            autoCreateRepo,
-          },
+          requestedProject,
         };
         const issue = await githubRequest<{ number: number; html_url: string }>(`/repos/${owner}/${repoName}/issues`, {
           method: "POST",
@@ -1718,20 +1779,13 @@ export default function App() {
         const queued = await api<{ issue: IssueTask }>("/api/issue-tasks", {
           method: "POST",
           body: JSON.stringify({
-            projectId: "dashboard-ui",
+            projectId: requestedProjectId,
             type: "project_create",
             title: `Create project: ${name}`,
             description: description || `Create a new Codex-managed project named ${name}.`,
             model,
             reasoningEffort,
-            requestedProject: {
-              id: slugify(name),
-              name,
-              description,
-              repository,
-              visibility,
-              autoCreateRepo,
-            },
+            requestedProject,
           }),
         });
         setTransientNotice(
@@ -1755,6 +1809,7 @@ export default function App() {
         });
         setTransientNotice(locale === "zh-CN" ? "项目已创建" : "Project created", "success");
       }
+      setSelectedProjectId(requestedProjectId);
       setCreateDialogMode(null);
       await refreshAll();
     } catch (error) {

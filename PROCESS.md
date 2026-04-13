@@ -274,6 +274,14 @@ no changes added to commit (use "git add" and/or "git commit -a")
 - Prevention: only add filters where they reduce ambiguity in multi-state lists, and when a filter belongs to a list header, compose it inside the same header container first instead of bolting on an extra row.
 - Commit ID: pending
 
+## 2026-04-14
+
+- Problem: project creation requests were still serialized with `projectId=dashboard-ui`, so the resulting requirement cards and approval state were grouped under the dashboard host project instead of the project being created. For non-ASCII project names, the old ASCII-only slug path could also collapse the intended target id to an empty string.
+- Resolution: normalized project-create scoping in the dashboard by deriving the target `projectId` from `requestedProject` metadata, using repository/name fallbacks that preserve Unicode when needed, and parsing legacy GitHub issue payloads back onto the requested project scope so already-queued create-project requirements stop rendering under `dashboard-ui`.
+- Prevention: `project_create` must always be treated as a task scoped to the requested project, not the UI shell project; any code path that creates or parses project ids must share the same normalization rules and must not rely on ASCII-only slug generation for project names.
+- Commit ID: dashboard-ui=N/A（当前沙箱拒绝创建 `/Users/hernando_zhao/codex/dashboard-ui/.git/worktrees/task-mnxfir0s-5pz1qq/index.lock`，无法执行 `git add` / `git commit`），local-control-server=`4b47191`
+- Context: project=dashboard-ui, source=task-mnxfir0s-5pz1qq
+
 ## 2026-04-13
 
 - Problem: task task-mnx4wa57-5uydcv (筛选更新功能修复) finished with status awaiting_acceptance.
