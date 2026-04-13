@@ -1,252 +1,64 @@
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  Alert,
+  App as AntApp,
+  Button,
+  Card,
+  ConfigProvider,
+  Divider,
+  Drawer,
+  Empty,
+  Flex,
+  Grid,
+  Layout,
+  List,
+  Progress,
+  Segmented,
+  Space,
+  Tag,
+  Typography,
+  theme as antdTheme,
+} from "antd";
+import { MenuOutlined, PlusOutlined, ReloadOutlined } from "@ant-design/icons";
 
-type TaskStatus =
-  | "pending_capture"
-  | "pending"
-  | "running"
-  | "waiting_user"
-  | "awaiting_acceptance"
-  | "needs_revision"
-  | "publish_failed"
-  | "superseded"
-  | "implemented"
-  | "failed"
-  | "completed"
-  | "stopped";
-
-type Project = {
-  id: string;
-  name: string;
-  description: string;
-  repository: string;
-  toolRoute: string;
-  taskStats: {
-    total: number;
-    running: number;
-    failed: number;
-    waitingUser: number;
-    completed: number;
-  };
-};
-
-type TaskChild = {
-  id: string;
-  title: string;
-  status: TaskStatus;
-};
-
-type TaskLog = {
-  timestamp: string;
-  message: string;
-};
-
-type Task = {
-  id: string;
-  updatedAt?: string;
-  requirementId?: string;
-  attemptNumber?: number;
-  projectId: string;
-  projectName: string;
-  type: string;
-  title: string;
-  description: string;
-  status: TaskStatus;
-  requirementStatus?: TaskStatus;
-  summary: string;
-  rawWorkerSummary?: string;
-  userSummary?: string;
-  userAction?: {
-    type: string;
-    title: string;
-    detail: string;
-    risk: "low" | "medium" | "high";
-  } | null;
-  planPreview: string;
-  workspacePath: string;
-  branchName: string;
-  publishStatus?: string;
-  publishMethod?: string;
-  publishVerified?: boolean;
-  healthFlags?: string[];
-  openFailureReason?: string;
-  acceptanceCriteria?: Array<{ id: string; text: string }>;
-  verificationResults?: Array<{ criterionId: string; type: string; status: string; evidence: string }>;
-  logs: TaskLog[];
-  children: TaskChild[];
-  issueNumber?: number;
-  issueUrl?: string;
-};
-
-type Requirement = {
-  id: string;
-  projectId: string;
-  projectName: string;
-  title: string;
-  status: TaskStatus;
-  updatedAt: string;
-  latestAttemptId: string;
-  latestAttemptNumber: number;
-  sourceIssue?: { number?: number; url?: string } | null;
-  acceptanceCompleted: number;
-  acceptanceTotal: number;
-  publishStatus?: string;
-  publishMethod?: string;
-  publishVerified?: boolean;
-  healthFlags?: string[];
-  openFailureReason?: string;
-  userSummary?: string;
-  acceptanceCriteria?: Array<{ id: string; text: string }>;
-  verificationResults?: Array<{ criterionId: string; type: string; status: string; evidence: string }>;
-  attempts: Task[];
-};
-
-type Approval = {
-  id: string;
-  reason: string;
-  task: Task;
-};
-
-type UsageOverview = {
-  totalTasks: number;
-  activeTasks: number;
-  pendingApprovals: number;
-  completedTasks: number;
-  failedTasks: number;
-  estimatedTokens: number;
-  totalRuns: number;
-  lastRunAt: string;
-  memberUsageUsed?: number | null;
-  memberUsageTotal?: number | null;
-  memberUsageRatio?: number | null;
-  memberUsageUnit?: string;
-  memberUsageReason?: string;
-  rateLimits?: {
-    primary: UsageLimitWindow | null;
-    secondary: UsageLimitWindow | null;
-  };
-  statusCollectedAt?: string;
-  statusSource?: string;
-};
-
-type UsageLimitWindow = {
-  usedPercent: number | null;
-  windowMinutes: number | null;
-  resetsAt: string;
-  sourceLabel?: string;
-};
-
-type PlatformHealth = {
-  generatedAt: string;
-  taskBackend: string;
-  githubTaskRepo: string;
-  issuePoller: {
-    enabled: boolean;
-    status: string;
-    intervalMs: number;
-    inFlight: boolean;
-    lastStartedAt: string;
-    lastSuccessAt: string;
-    lastDurationMs: number;
-    lastError: string;
-  };
-  githubApi: {
-    inFlight: number;
-    queued: number;
-    lastRequestAt: string;
-    lastError: string;
-    lastRateLimitAt: string;
-    lastRetryAt: string;
-    remaining: string | null;
-    resetAt: string;
-  };
-  publishing: {
-    lastPublishedAt: string;
-    lastPublishedTaskId: string;
-    lastPublishedTaskTitle: string;
-    lastPublishMethod: string;
-    lastPublishError: string;
-    publishedTasks: number;
-    noopTasks: number;
-    publishFailedTasks: number;
-    completedWithoutVerifiedPublish: number;
-  };
-  taskState: {
-    total: number;
-    running: number;
-    waitingUser: number;
-    awaitingAcceptance: number;
-    needsRevision: number;
-    publishFailed: number;
-    stoppedLatest: number;
-  };
-  anomalies: Array<{
-    id: string;
-    severity: string;
-    count: number;
-    description: string;
-    taskIds: string[];
-  }>;
-};
-
-type AuthConfig = {
-  enabled: boolean;
-  mode: string;
-  provider: string;
-  hasClientId: boolean;
-  repoAutomationEnabled: boolean;
-  taskBackend?: string;
-  githubTaskRepo?: string;
-  user: null | {
-    login: string;
-    name: string;
-  };
-};
-
-type IssueTask = {
-  number: number;
-  url: string;
-  repo: string;
-};
-
-type DeviceLoginSession = {
-  deviceCode: string;
-  userCode: string;
-  verificationUri: string;
-  expiresAt: number;
-  intervalSec: number;
-  status: string;
-  error: string;
-};
-
-type NoticeTone = "info" | "success" | "error";
-
-type NoticeItem = {
-  id: number;
-  message: string;
-  tone: NoticeTone;
-};
-
-type DismissedAnomaly = {
-  id: string;
-  dismissedAt: string;
-};
-
-type WorkspaceAnomaly = {
-  id: string;
-  title: string;
-  status: TaskStatus;
-  detail: string;
-  taskId: string;
-  fingerprint: string;
-};
-
-type Locale = "zh-CN" | "en-US";
-type CopyState = "idle" | "copied";
-type ThemeMode = "light" | "dark";
-type WorkspaceLevel = "projects" | "tasks" | "detail";
-type RuntimeMode = "local-api" | "github-direct";
-type CreateDialogMode = "project" | "task" | "composite_task";
-type StatusFilterValue = TaskStatus | "all";
+import {
+  ApprovalCard,
+  CreateDialog,
+  HeaderLocaleSwitch,
+  HeaderSwitch,
+  MetricCard,
+  SectionHeader,
+  StatusFilterBar,
+  TaskDetail,
+} from "./dashboardComponents";
+import type {
+  Approval,
+  AuthConfig,
+  CopyState,
+  CreateDialogMode,
+  CreateProjectValues,
+  CreateTaskValues,
+  DeviceLoginSession,
+  DismissedAnomaly,
+  IssueTask,
+  Locale,
+  NoticeItem,
+  NoticeTone,
+  PlatformHealth,
+  Project,
+  Requirement,
+  RuntimeMode,
+  StatusFilterValue,
+  Task,
+  TaskLog,
+  TaskStatus,
+  ThemeMode,
+  ToolLink,
+  UsageLimitWindow,
+  UsageOverview,
+  WorkspaceAnomaly,
+  WorkspaceLevel,
+} from "./dashboardTypes";
 
 const DEFAULT_API_BASE = (import.meta.env.VITE_DEFAULT_API_BASE as string | undefined)?.trim() || "http://localhost:8787";
 const GITHUB_CLIENT_ID = (import.meta.env.VITE_GITHUB_CLIENT_ID as string | undefined)?.trim() || "";
@@ -292,6 +104,21 @@ const statusLabel: Record<TaskStatus, Record<Locale, string>> = {
   failed: { "zh-CN": "失败", "en-US": "Failed" },
   completed: { "zh-CN": "完成", "en-US": "Completed" },
   stopped: { "zh-CN": "已停止", "en-US": "Stopped" },
+};
+
+const statusTagColor: Record<TaskStatus, string> = {
+  pending_capture: "blue",
+  pending: "orange",
+  running: "processing",
+  waiting_user: "purple",
+  awaiting_acceptance: "gold",
+  needs_revision: "volcano",
+  publish_failed: "red",
+  superseded: "default",
+  implemented: "cyan",
+  failed: "red",
+  completed: "success",
+  stopped: "default",
 };
 
 function slugify(value: string) {
@@ -869,7 +696,7 @@ export default function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [optimisticTasks, setOptimisticTasks] = useState<Task[]>([]);
   const [approvals, setApprovals] = useState<Approval[]>([]);
-  const [tools, setTools] = useState<Array<{ id: string; name: string; route: string; description: string }>>([]);
+  const [tools, setTools] = useState<ToolLink[]>([]);
   const [usage, setUsage] = useState<UsageOverview | null>(null);
   const [usageSummary, setUsageSummary] = useState("");
   const [platformHealth, setPlatformHealth] = useState<PlatformHealth | null>(null);
@@ -904,6 +731,7 @@ export default function App() {
   const [isMobileViewDrawerOpen, setIsMobileViewDrawerOpen] = useState(false);
   const [projectStatusFilter, setProjectStatusFilter] = useState<StatusFilterValue>(STATUS_FILTER_ALL);
   const [requirementStatusFilter, setRequirementStatusFilter] = useState<StatusFilterValue>(STATUS_FILTER_ALL);
+  const screens = Grid.useBreakpoint();
   const pollTokenRef = useRef(0);
   const selectedProjectIdRef = useRef(selectedProjectId);
   const selectedTaskIdRef = useRef(selectedTaskId);
@@ -1103,6 +931,7 @@ export default function App() {
       };
     });
   }, [locale, usage]);
+  const isMobile = !screens.md;
 
   useEffect(() => {
     localStorage.setItem("codex.locale", locale);
@@ -1660,14 +1489,13 @@ export default function App() {
     }
   }
 
-  async function onCreateProject(formElement: HTMLFormElement) {
+  async function onCreateProject(values: CreateProjectValues) {
     try {
-      const form = new FormData(formElement);
-      const name = String(form.get("name") || "").trim();
-      const description = String(form.get("description") || "").trim();
-      const repository = String(form.get("repository") || "").trim();
-      const visibility = String(form.get("visibility") || "private");
-      const autoCreateRepo = form.get("autoCreateRepo") === "on";
+      const name = String(values.name || "").trim();
+      const description = String(values.description || "").trim();
+      const repository = String(values.repository || "").trim();
+      const visibility = String(values.visibility || "private");
+      const autoCreateRepo = Boolean(values.autoCreateRepo);
 
       if (runtimeMode === "github-direct") {
         const [owner, repoName] = GITHUB_TASK_REPO.split("/");
@@ -1748,7 +1576,6 @@ export default function App() {
         });
         setTransientNotice(locale === "zh-CN" ? "项目已创建" : "Project created", "success");
       }
-      formElement.reset();
       setCreateDialogMode(null);
       await refreshAll();
     } catch (error) {
@@ -1756,13 +1583,12 @@ export default function App() {
     }
   }
 
-  async function onCreateTask(formElement: HTMLFormElement) {
+  async function onCreateTask(values: CreateTaskValues) {
     try {
-      const form = new FormData(formElement);
-      const type = String(form.get("type") || "task").trim();
-      const projectId = getTaskProjectId(type, String(form.get("projectId") || "").trim());
-      const title = String(form.get("title") || "").trim();
-      const description = String(form.get("description") || "").trim();
+      const type = String(values.type || "task").trim();
+      const projectId = getTaskProjectId(type, String(values.projectId || "").trim());
+      const title = String(values.title || "").trim();
+      const description = String(values.description || "").trim();
       let createdTask: Task | null = null;
 
       if (runtimeMode === "github-direct") {
@@ -1860,7 +1686,6 @@ export default function App() {
         setSelectedTaskId(createdTask.id);
         setWorkspaceLevel("tasks");
       }
-      formElement.reset();
       setCreateDialogMode(null);
       await refreshTasks();
     } catch (error) {
@@ -2197,1020 +2022,598 @@ export default function App() {
         : "";
 
   return (
-      <div className="app-root">
-      <header className="topbar">
-        <div className="brand-wrap">
-          <div className="brand-mark" aria-hidden="true">
-            C
-          </div>
-          <div className="brand-copy">
-            <div className="brand-title">{t.title}</div>
-            <div className="brand-subtitle">{t.subtitle}</div>
-          </div>
-        </div>
-        <div className="topbar-right">
-          <HeaderSwitch
-            checked={theme === "dark"}
-            label={t.themeSetting}
-            onToggle={() => setTheme(theme === "dark" ? "light" : "dark")}
-          />
-          <HeaderLocaleSwitch
-            label={t.languageSetting}
-            value={locale}
-            onChange={setLocale}
-          />
-          <button type="button" className="ghost header-logout" onClick={() => void logout()} disabled={!authConfig?.user}>
-            {t.logoutButton}
-          </button>
-        </div>
-      </header>
+    <ConfigProvider
+      theme={{
+        algorithm: theme === "dark" ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm,
+        token: {
+          colorPrimary: "#1f66ff",
+          borderRadius: 18,
+          fontFamily: '"IBM Plex Sans", "PingFang SC", "Noto Sans SC", sans-serif',
+          fontFamilyCode: '"JetBrains Mono", "SFMono-Regular", Menlo, monospace',
+        },
+      }}
+    >
+      <AntApp>
+        <Layout className="app-shell">
+          <div className="app-root">
+            <Card className="topbar-card" bordered={false}>
+              <Flex justify="space-between" align="center" gap={16} wrap>
+                <Flex align="center" gap={14} className="brand-wrap">
+                  <div className="brand-mark" aria-hidden="true">
+                    C
+                  </div>
+                  <div className="brand-copy">
+                    <Typography.Title level={3} className="brand-title">
+                      {t.title}
+                    </Typography.Title>
+                    <Typography.Text type="secondary" className="brand-subtitle">
+                      {t.subtitle}
+                    </Typography.Text>
+                  </div>
+                </Flex>
+                <Space size={12} wrap className="topbar-actions">
+                  <Tag color="blue">{runtimeMode === "github-direct" ? "GitHub Direct" : "Local API"}</Tag>
+                  <Typography.Text type="secondary" className="api-base-label">
+                    {t.localApi} {runtimeMode === "github-direct" ? GITHUB_TASK_REPO : DEFAULT_API_BASE}
+                  </Typography.Text>
+                  {!isMobile ? (
+                    <>
+                      <HeaderSwitch
+                        checked={theme === "dark"}
+                        label={t.themeSetting}
+                        onToggle={() => setTheme(theme === "dark" ? "light" : "dark")}
+                      />
+                      <HeaderLocaleSwitch
+                        label={t.languageSetting}
+                        value={locale}
+                        onChange={setLocale}
+                      />
+                      {authConfig?.user ? (
+                        <Button onClick={() => void logout()}>{t.logoutButton}</Button>
+                      ) : (
+                        <Button
+                          type="primary"
+                          onClick={() => void loginWithGithub()}
+                          disabled={runtimeMode !== "github-direct" && !authConfig?.enabled}
+                        >
+                          {t.loginButton}
+                        </Button>
+                      )}
+                    </>
+                  ) : null}
+                </Space>
+              </Flex>
+            </Card>
 
-      {deviceLogin ? (
-        <section className="device-card">
-          <div className="section-head">
-            <h3>{locale === "zh-CN" ? "GitHub 设备登录" : "GitHub Device Login"}</h3>
-            <button type="button" className="icon-button" aria-label={locale === "zh-CN" ? "关闭" : "Close"} onClick={cancelDeviceLogin}>
-              ×
-            </button>
-          </div>
-          <p className="hint">
-            {locale === "zh-CN"
-              ? "请先打开下方链接，然后输入验证码。整个流程可在当前页面完成轮询。"
-              : "Open the URL below and enter your code. Polling continues in this page."}
-          </p>
-          <div className="device-row">
-            <a href={deviceLogin.verificationUri} target="_blank" rel="noreferrer">
-              {deviceLogin.verificationUri}
-            </a>
-            <button type="button" className="primary" onClick={() => void copyDeviceCode()}>
-              {copyState === "copied" ? (locale === "zh-CN" ? "已复制" : "Copied") : locale === "zh-CN" ? "复制验证码" : "Copy code"}
-            </button>
-          </div>
-          <div className="code-box">{deviceLogin.userCode}</div>
-          <div className="hint">{deviceLogin.status}</div>
-          {deviceLogin.error ? <pre className="error-box">{deviceLogin.error}</pre> : null}
-        </section>
-      ) : null}
+            {deviceLogin ? (
+              <Card className="section-card" bordered={false}>
+                <SectionHeader
+                  title={locale === "zh-CN" ? "GitHub 设备登录" : "GitHub Device Login"}
+                  subtitle={
+                    locale === "zh-CN"
+                      ? "打开链接并输入验证码，页面会在当前会话中自动轮询。"
+                      : "Open the link and enter the code. Polling stays inside this session."
+                  }
+                  actions={
+                    <Button onClick={cancelDeviceLogin}>
+                      {locale === "zh-CN" ? "关闭" : "Close"}
+                    </Button>
+                  }
+                />
+                <Space direction="vertical" size={16} className="block-stack full-width">
+                  <Space wrap>
+                    <a href={deviceLogin.verificationUri} target="_blank" rel="noreferrer">
+                      {deviceLogin.verificationUri}
+                    </a>
+                    <Button type="primary" onClick={() => void copyDeviceCode()}>
+                      {copyState === "copied" ? (locale === "zh-CN" ? "已复制" : "Copied") : locale === "zh-CN" ? "复制验证码" : "Copy code"}
+                    </Button>
+                  </Space>
+                  <Typography.Text code className="device-code">
+                    {deviceLogin.userCode}
+                  </Typography.Text>
+                  <Alert type="info" message={deviceLogin.status} showIcon />
+                  {deviceLogin.error ? <Alert type="error" message={deviceLogin.error} showIcon /> : null}
+                </Space>
+              </Card>
+            ) : null}
 
-      {notices.length ? (
-        <div className="notice-stack" aria-live="polite" aria-atomic="true">
-          {notices.map((notice) => (
-            <section key={notice.id} className={`notice notice-${notice.tone}`}>
-              {notice.message}
-            </section>
-          ))}
-        </div>
-      ) : null}
+            {notices.length ? (
+              <div className="notice-stack" aria-live="polite" aria-atomic="true">
+                {notices.map((notice) => (
+                  <section key={notice.id} className={`notice notice-${notice.tone}`}>
+                    {notice.message}
+                  </section>
+                ))}
+              </div>
+            ) : null}
 
-      <nav className="tabs" aria-label="Primary">
-        {tabs.map((tab) => (
-          <button key={tab.id} className={tab.id === activeTab ? "tab active" : "tab"} onClick={() => setActiveTab(tab.id)} type="button">
-            {tab.label[locale]}
-          </button>
-        ))}
-        <div className="spacer" />
-        {!authConfig?.user ? (
-          <button
-            type="button"
-            className="ghost"
-            onClick={() => void loginWithGithub()}
-            disabled={runtimeMode === "github-direct" ? false : !authConfig?.enabled}
-          >
-            {t.loginButton}
-          </button>
-        ) : null}
-      </nav>
+            {!isMobile ? (
+              <Card className="tabs-card" bordered={false}>
+                <Flex justify="space-between" align="center" gap={16} wrap>
+                  <Segmented
+                    options={tabs.map((tab) => ({ label: tab.label[locale], value: tab.id }))}
+                    value={activeTab}
+                    onChange={(value) => setActiveTab(value as (typeof tabs)[number]["id"])}
+                  />
+                  {!authConfig?.user ? (
+                    <Button
+                      type="primary"
+                      onClick={() => void loginWithGithub()}
+                      disabled={runtimeMode !== "github-direct" && !authConfig?.enabled}
+                    >
+                      {t.loginButton}
+                    </Button>
+                  ) : null}
+                </Flex>
+              </Card>
+            ) : (
+              <Button
+                type="primary"
+                icon={<MenuOutlined />}
+                className="mobile-nav-trigger"
+                onClick={() => setIsMobileNavOpen(true)}
+              >
+                {t.mobileControlTitle}
+              </Button>
+            )}
 
-      <div className="mobile-nav-fab">
-        <button
-          type="button"
-          className="mobile-nav-trigger"
-          aria-expanded={isMobileNavOpen}
-          aria-controls="mobile-nav-sheet"
-          onClick={() => setIsMobileNavOpen((open) => !open)}
-        >
-          <span className="mobile-nav-trigger-label">{t.mobileControlTitle}</span>
-          <span className="mobile-nav-trigger-meta">{t.mobileControlMeta}</span>
-        </button>
-      </div>
+            <Drawer
+              title={t.mobileControlTitle}
+              placement="bottom"
+              height="auto"
+              open={isMobileNavOpen}
+              onClose={() => setIsMobileNavOpen(false)}
+              className="mobile-drawer"
+            >
+              <Space direction="vertical" size={16} className="full-width">
+                <Button block onClick={() => setIsMobileViewDrawerOpen(true)}>
+                  {t.openViewDrawer}
+                </Button>
+                <HeaderSwitch
+                  checked={theme === "dark"}
+                  label={t.themeSetting}
+                  onToggle={() => setTheme(theme === "dark" ? "light" : "dark")}
+                />
+                <HeaderLocaleSwitch
+                  label={t.languageSetting}
+                  value={locale}
+                  onChange={setLocale}
+                />
+                {authConfig?.user ? (
+                  <Button block onClick={() => void logout()}>
+                    {t.logoutButton}
+                  </Button>
+                ) : (
+                  <Button
+                    block
+                    type="primary"
+                    onClick={() => void loginWithGithub()}
+                    disabled={runtimeMode !== "github-direct" && !authConfig?.enabled}
+                  >
+                    {t.loginButton}
+                  </Button>
+                )}
+              </Space>
+            </Drawer>
 
-      {isMobileNavOpen ? (
-        <div className="mobile-nav-backdrop" role="presentation" onClick={() => setIsMobileNavOpen(false)}>
-          <div
-            id="mobile-nav-sheet"
-            className="mobile-nav-sheet"
-            role="dialog"
-            aria-modal="true"
-            aria-label={t.mobileControlTitle}
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="section-head">
-              <h3>{t.mobileControlTitle}</h3>
-              <button type="button" className="icon-button" aria-label={locale === "zh-CN" ? "关闭" : "Close"} onClick={() => setIsMobileNavOpen(false)}>
-                ×
-              </button>
-            </div>
-            <div className="mobile-nav-actions">
-              <button type="button" className="ghost mobile-nav-action-card" onClick={() => setIsMobileViewDrawerOpen(true)}>
-                <span className="mobile-nav-action-label">{t.openViewDrawer}</span>
-                <span className="mobile-nav-action-hint">{tabs.find((tab) => tab.id === activeTab)?.label[locale]}</span>
-              </button>
-              <HeaderSwitch
-                checked={theme === "dark"}
-                label={t.themeSetting}
-                onToggle={() => setTheme(theme === "dark" ? "light" : "dark")}
+            <Drawer
+              title={t.mobileViewDrawerTitle}
+              placement="bottom"
+              height="auto"
+              open={isMobileViewDrawerOpen}
+              onClose={() => setIsMobileViewDrawerOpen(false)}
+              className="mobile-drawer"
+            >
+              <Segmented
+                block
+                options={tabs.map((tab) => ({ label: tab.label[locale], value: tab.id }))}
+                value={activeTab}
+                onChange={(value) => {
+                  setActiveTab(value as (typeof tabs)[number]["id"]);
+                  setIsMobileViewDrawerOpen(false);
+                }}
               />
-              <HeaderLocaleSwitch
-                label={t.languageSetting}
-                value={locale}
-                onChange={setLocale}
-              />
-              {!authConfig?.user ? (
-                <button
-                  type="button"
-                  className="ghost mobile-nav-action-card"
-                  onClick={() => void loginWithGithub()}
-                  disabled={runtimeMode === "github-direct" ? false : !authConfig?.enabled}
-                >
-                  <span className="mobile-nav-action-label">{t.loginButton}</span>
-                  <span className="mobile-nav-action-hint">{locale === "zh-CN" ? "连接 CodeHub / GitHub 身份" : "Connect your CodeHub / GitHub identity"}</span>
-                </button>
-              ) : null}
-              <button type="button" className="ghost" onClick={() => void logout()} disabled={!authConfig?.user}>
-                {t.logoutButton}
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+            </Drawer>
 
-      {isMobileViewDrawerOpen ? (
-        <div className="mobile-drawer-backdrop" role="presentation" onClick={() => setIsMobileViewDrawerOpen(false)}>
-          <div
-            className="mobile-view-drawer"
-            role="dialog"
-            aria-modal="true"
-            aria-label={t.mobileViewDrawerTitle}
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="section-head">
-              <h3>{t.mobileViewDrawerTitle}</h3>
-              <button type="button" className="icon-button" aria-label={locale === "zh-CN" ? "关闭" : "Close"} onClick={() => setIsMobileViewDrawerOpen(false)}>
-                ×
-              </button>
-            </div>
-            <div className="mobile-nav-tablist">
-              {tabs.map((tab) => (
-                <button
-                  key={tab.id}
-                  className={tab.id === activeTab ? "tab active" : "tab"}
-                  onClick={() => setActiveTab(tab.id)}
-                  type="button"
-                >
-                  {tab.label[locale]}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      {activeTab === "quest-center" && (
-        <section className="workspace-shell">
-          <article className="card workspace-panel">
-            <div className="workspace-toolbar">
-              <div className="toolbar-left">
-                <div className="breadcrumb-row" aria-label="Breadcrumb">
-                  {breadcrumbs.map((crumb) => (
-                    <div key={crumb.key} className="breadcrumb-item">
-                      <button
-                        type="button"
-                        className={crumb.active ? "breadcrumb active" : "breadcrumb"}
-                        onClick={crumb.onClick}
-                      >
-                        {crumb.label}
-                      </button>
+            {activeTab === "quest-center" ? (
+              <div className="workspace-layout">
+                <Card className="pane-card workspace-main-card" bordered={false}>
+                  <Flex justify="space-between" gap={16} wrap className="workspace-toolbar">
+                    <div className="breadcrumb-row" aria-label="Breadcrumb">
+                      {breadcrumbs.map((crumb) => (
+                        <Button
+                          key={crumb.key}
+                          type={crumb.active ? "primary" : "default"}
+                          onClick={crumb.onClick}
+                          className="breadcrumb-button"
+                        >
+                          {crumb.label}
+                        </Button>
+                      ))}
                     </div>
+                    <Space wrap>
+                      <Button icon={<ReloadOutlined />} onClick={() => void refreshAll()}>
+                        {t.refresh}
+                      </Button>
+                      {workspaceLevel === "projects" ? (
+                        <Button onClick={() => setCreateDialogMode("composite_task")}>
+                          {locale === "zh-CN" ? "模糊/组合任务" : "Composite task"}
+                        </Button>
+                      ) : null}
+                      {createLabel ? (
+                        <Button
+                          type="primary"
+                          icon={<PlusOutlined />}
+                          onClick={() => setCreateDialogMode(workspaceLevel === "projects" ? "project" : "task")}
+                        >
+                          {createLabel}
+                        </Button>
+                      ) : null}
+                    </Space>
+                  </Flex>
+
+                  <SectionHeader
+                    title={workspaceTitle}
+                    subtitle={workspaceDescription}
+                    actions={
+                      workspaceLevel === "projects" ? (
+                        <StatusFilterBar
+                          locale={locale}
+                          value={projectStatusFilter}
+                          onChange={setProjectStatusFilter}
+                          statusFilterAll={STATUS_FILTER_ALL}
+                          statusLabel={statusLabel}
+                        />
+                      ) : workspaceLevel === "tasks" ? (
+                        <StatusFilterBar
+                          locale={locale}
+                          value={requirementStatusFilter}
+                          onChange={setRequirementStatusFilter}
+                          statusFilterAll={STATUS_FILTER_ALL}
+                          statusLabel={statusLabel}
+                        />
+                      ) : undefined
+                    }
+                  />
+
+                  {workspaceLevel === "projects" ? (
+                    filteredProjects.length ? (
+                      <div className="entity-grid">
+                        {filteredProjects.map((project) => (
+                          <Card
+                            key={project.id}
+                            hoverable
+                            className="entity-card"
+                            onClick={() => openProject(project.id)}
+                          >
+                            <Flex justify="space-between" align="flex-start" gap={12}>
+                              <Space direction="vertical" size={6} className="full-width">
+                                <Typography.Title level={5} className="card-title">
+                                  {getProjectDisplayName(project.id, locale)}
+                                </Typography.Title>
+                                <Typography.Text type="secondary">
+                                  {(project.id === AUTO_ROUTE_PROJECT_ID
+                                    ? locale === "zh-CN"
+                                      ? "模糊或跨项目任务暂存区，等待 AI 判断路由。"
+                                      : "Staging area for composite or cross-project tasks before AI routing."
+                                    : project.description) || (locale === "zh-CN" ? "暂无项目描述" : "No description")}
+                                </Typography.Text>
+                              </Space>
+                              <Tag color="blue">
+                                {project.taskStats.running}/{project.taskStats.total}
+                              </Tag>
+                            </Flex>
+                            <Divider />
+                            <Typography.Text type="secondary" className="wrap-anywhere">
+                              {project.repository || (locale === "zh-CN" ? "未绑定仓库" : "No repository")}
+                            </Typography.Text>
+                          </Card>
+                        ))}
+                      </div>
+                    ) : (
+                      <Empty description={locale === "zh-CN" ? "当前筛选下暂无项目" : "No projects match this status filter"} />
+                    )
+                  ) : null}
+
+                  {workspaceLevel === "tasks" ? (
+                    filteredSelectedProjectRequirements.length ? (
+                      <div className="entity-grid">
+                        {filteredSelectedProjectRequirements.map((requirement) => (
+                          <Card
+                            key={requirement.id}
+                            hoverable
+                            className="entity-card"
+                            onClick={() => openRequirement(requirement)}
+                          >
+                            <Space direction="vertical" size={10} className="full-width">
+                              <Flex justify="space-between" align="flex-start" gap={12}>
+                                <Typography.Title level={5} className="card-title clamp-2">
+                                  {requirement.title}
+                                </Typography.Title>
+                                <Tag color={statusTagColor[requirement.status]}>{statusLabel[requirement.status][locale]}</Tag>
+                              </Flex>
+                              <Typography.Text type="secondary">
+                                {getProjectDisplayName(requirement.projectId, locale)} · attempt #{requirement.latestAttemptNumber}
+                              </Typography.Text>
+                              <Typography.Text type="secondary">
+                                {locale === "zh-CN" ? "验收：" : "Acceptance: "}
+                                {requirement.acceptanceCompleted}/{requirement.acceptanceTotal}
+                                {requirement.publishStatus ? ` · ${requirement.publishStatus}` : ""}
+                              </Typography.Text>
+                              <Typography.Paragraph className="entity-preview" ellipsis={{ rows: 3 }}>
+                                {getRequirementPreview(requirement, locale)}
+                              </Typography.Paragraph>
+                            </Space>
+                          </Card>
+                        ))}
+                      </div>
+                    ) : (
+                      <Empty description={locale === "zh-CN" ? "当前筛选下暂无需求" : "No requirements match this status filter"} />
+                    )
+                  ) : null}
+
+                  {workspaceLevel === "detail" ? (
+                    selectedTask && selectedRequirement ? (
+                      <TaskDetail
+                        requirement={selectedRequirement}
+                        task={selectedTask}
+                        locale={locale}
+                        onMutate={mutateTask}
+                        onRespond={respondToTask}
+                        anomalies={selectedRequirementAnomalies}
+                        dismissedAnomalyIds={dismissedAnomalyIds}
+                        onDismissAnomaly={dismissAnomaly}
+                        statusLabel={statusLabel}
+                        statusTagColor={statusTagColor}
+                        getProjectDisplayName={getProjectDisplayName}
+                        normalizeDisplayText={normalizeDisplayText}
+                        buildLogViews={buildLogViews}
+                      />
+                    ) : (
+                      <Empty description={t.noTask} />
+                    )
+                  ) : null}
+                </Card>
+
+                <div className="workspace-side">
+                  <Card className="pane-card" bordered={false}>
+                    <SectionHeader
+                      title={t.pendingApprovals}
+                      actions={
+                        <Button icon={<ReloadOutlined />} onClick={() => void refreshApprovals()}>
+                          {t.refresh}
+                        </Button>
+                      }
+                    />
+                    <div className="section-stack">
+                      {approvals.length ? (
+                        approvals.map((approval) => (
+                          <ApprovalCard
+                            key={approval.id}
+                            approval={approval}
+                            locale={locale}
+                            onRespond={respondToTask}
+                            onOpenTask={(taskId) => {
+                              const task = visibleTasks.find((item) => item.id === taskId);
+                              if (!task) return;
+                              const requirement = visibleRequirements.find((item) => item.latestAttemptId === task.id || item.attempts.some((attempt) => attempt.id === task.id));
+                              if (!requirement) return;
+                              openRequirement(requirement);
+                            }}
+                            statusLabel={statusLabel}
+                            statusTagColor={statusTagColor}
+                            getProjectDisplayName={getProjectDisplayName}
+                          />
+                        ))
+                      ) : (
+                        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={locale === "zh-CN" ? "当前没有待审批" : "No pending approvals"} />
+                      )}
+                    </div>
+                    <Divider />
+                    <SectionHeader title={locale === "zh-CN" ? "异常队列" : "Anomaly queue"} />
+                    <div className="section-stack">
+                      {visibleWorkspaceAnomalies.length ? (
+                        visibleWorkspaceAnomalies.map((item) => (
+                          <Card key={item.id} size="small" className="list-card">
+                            <Space direction="vertical" size={10} className="full-width">
+                              <Flex justify="space-between" align="flex-start" gap={12}>
+                                <Typography.Text strong>{item.title}</Typography.Text>
+                                <Tag color={statusTagColor[item.status]}>{statusLabel[item.status][locale]}</Tag>
+                              </Flex>
+                              <Typography.Text>{item.detail}</Typography.Text>
+                              <Flex gap={8} wrap>
+                                <Button
+                                  onClick={() => {
+                                    const task = visibleTasks.find((candidate) => candidate.id === item.taskId);
+                                    if (!task) return;
+                                    const requirement = visibleRequirements.find((candidate) => candidate.latestAttemptId === task.id || candidate.attempts.some((attempt) => attempt.id === task.id));
+                                    if (!requirement) return;
+                                    openRequirement(requirement);
+                                  }}
+                                >
+                                  {locale === "zh-CN" ? "打开需求" : "Open requirement"}
+                                </Button>
+                                <Button type="primary" ghost onClick={() => dismissAnomaly(item)}>
+                                  {locale === "zh-CN" ? "标记已处理" : "Mark handled"}
+                                </Button>
+                              </Flex>
+                            </Space>
+                          </Card>
+                        ))
+                      ) : (
+                        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={locale === "zh-CN" ? "当前没有异常需求" : "No anomalies"} />
+                      )}
+                    </div>
+                  </Card>
+                </div>
+              </div>
+            ) : null}
+
+            {activeTab === "tools" ? (
+              <Card className="pane-card" bordered={false}>
+                <SectionHeader title={locale === "zh-CN" ? "工具路由" : "Tool routes"} />
+                {tools.length ? (
+                  <List
+                    dataSource={tools}
+                    renderItem={(tool) => (
+                      <List.Item>
+                        <Card size="small" className="list-card full-width">
+                          <Space direction="vertical" size={8} className="full-width">
+                            <Typography.Text strong>{tool.name}</Typography.Text>
+                            <Typography.Text type="secondary">
+                              {tool.description || (locale === "zh-CN" ? "无描述" : "No description")}
+                            </Typography.Text>
+                            <a className="wrap-anywhere" href={tool.route} target="_blank" rel="noreferrer">
+                              {locale === "zh-CN" ? `打开 ${tool.route}` : `Open ${tool.route}`}
+                            </a>
+                          </Space>
+                        </Card>
+                      </List.Item>
+                    )}
+                  />
+                ) : (
+                  <Empty description={locale === "zh-CN" ? "暂无工具路由" : "No tools"} />
+                )}
+              </Card>
+            ) : null}
+
+            {activeTab === "usage" ? (
+              <Card className="pane-card" bordered={false}>
+                <SectionHeader title={locale === "zh-CN" ? "运行用量快照" : "Usage snapshot"} />
+                <div className="metric-grid metric-grid-wide">
+                  {usageLimitSnapshots.map((item) => (
+                    <MetricCard
+                      key={item.key}
+                      subtitle={item.subtitle}
+                      title={item.title}
+                      value={item.percentLabel}
+                      badge={item.sourceLabel}
+                      extra={
+                        <>
+                          <Progress percent={item.progressValue} size="small" showInfo={false} />
+                          <Flex justify="space-between" gap={12} wrap>
+                            <Typography.Text type="secondary">
+                              {item.available ? item.detail : locale === "zh-CN" ? "当前接口暂无该窗口数据" : "This API does not currently expose this window"}
+                            </Typography.Text>
+                            <Typography.Text type="secondary">{item.resetText}</Typography.Text>
+                          </Flex>
+                        </>
+                      }
+                    />
                   ))}
                 </div>
-              </div>
-              <div className="toolbar-actions">
-                <button className="ghost" type="button" onClick={() => void refreshAll()}>
-                  {t.refresh}
-                </button>
-                {workspaceLevel === "projects" ? (
-                  <button type="button" className="ghost" onClick={() => setCreateDialogMode("composite_task")}>
-                    {locale === "zh-CN" ? "模糊/组合任务" : "Composite task"}
-                  </button>
-                ) : null}
-                {createLabel ? (
-                  <button
-                    type="button"
-                    className="primary"
-                    onClick={() => setCreateDialogMode(workspaceLevel === "projects" ? "project" : "task")}
-                  >
-                    {createLabel}
-                  </button>
-                ) : null}
-              </div>
-            </div>
 
-            <div className={`panel-intro ${workspaceLevel === "detail" ? "" : "panel-intro-with-filter"}`.trim()}>
-              <div>
-                <h2>{workspaceTitle}</h2>
-                <div className="meta">{workspaceDescription}</div>
-              </div>
-              {workspaceLevel === "projects" ? (
-                <StatusFilterBar
-                  locale={locale}
-                  value={projectStatusFilter}
-                  onChange={setProjectStatusFilter}
-                />
-              ) : null}
-              {workspaceLevel === "tasks" ? (
-                <StatusFilterBar
-                  locale={locale}
-                  value={requirementStatusFilter}
-                  onChange={setRequirementStatusFilter}
-                />
-              ) : null}
-            </div>
-
-            {workspaceLevel === "projects" ? (
-              <>
-                <div className="entity-grid">
-                  {filteredProjects.length ? (
-                    filteredProjects.map((project) => (
-                      <button key={project.id} type="button" className="entity-card project-card" onClick={() => openProject(project.id)}>
-                        <div className="entity-topline">
-                          <span className="entity-icon" aria-hidden="true">
-                            ▣
-                          </span>
-                          <span className="title">{getProjectDisplayName(project.id, locale)}</span>
-                        </div>
-                        <div className="meta clamp-2">
-                          {(project.id === AUTO_ROUTE_PROJECT_ID
+                <div className="metric-grid metric-grid-hero">
+                  <MetricCard
+                    subtitle={locale === "zh-CN" ? "当前会员算力" : "Current member quota"}
+                    title={locale === "zh-CN" ? "会员额度" : "Member quota"}
+                    value={
+                      memberUsageSnapshot?.available
+                        ? memberUsageSnapshot.label
+                        : memberUsageSnapshot?.label || (locale === "zh-CN" ? "暂无会员算力数据" : "Member quota unavailable")
+                    }
+                    extra={
+                      <>
+                        <Progress percent={memberUsagePercentValue} size="small" showInfo={false} />
+                        <Typography.Text type="secondary">
+                          {memberUsageSnapshot?.available
                             ? locale === "zh-CN"
-                              ? "模糊或跨项目任务暂存区，等待 AI 判断路由。"
-                              : "Staging area for composite or cross-project tasks before AI routing."
-                            : project.description) || (locale === "zh-CN" ? "暂无项目描述" : "No description")}
-                        </div>
-                        <div className="entity-footer">
-                          <span className="meta">{project.repository || (locale === "zh-CN" ? "未绑定仓库" : "No repository")}</span>
-                          <span className="stats-pill">
-                            {project.taskStats.running}/{project.taskStats.total}
-                          </span>
-                        </div>
-                      </button>
-                    ))
-                  ) : (
-                    <div className="detail-empty">
-                      {locale === "zh-CN" ? "当前筛选下暂无项目" : "No projects match this status filter"}
-                    </div>
-                  )}
-                </div>
-              </>
-            ) : null}
-
-            {workspaceLevel === "tasks" ? (
-              <>
-                <div className="entity-grid">
-                  {filteredSelectedProjectRequirements.length ? (
-                    filteredSelectedProjectRequirements.map((requirement) => (
-                      <button key={requirement.id} type="button" className="entity-card task-card" onClick={() => openRequirement(requirement)}>
-                        <div className="entity-topline">
-                          <span className="title clamp-2">{requirement.title}</span>
-                          <span className={`badge status-${requirement.status}`}>{statusLabel[requirement.status][locale]}</span>
-                        </div>
-                        <div className="meta">
-                          {getProjectDisplayName(requirement.projectId, locale)} · attempt #{requirement.latestAttemptNumber}
-                        </div>
-                        <div className="meta">
-                          {locale === "zh-CN" ? "验收：" : "Acceptance: "}
-                          {requirement.acceptanceCompleted}/{requirement.acceptanceTotal}
-                          {requirement.publishStatus ? ` · ${requirement.publishStatus}` : ""}
-                        </div>
-                        <div className="entity-copy entity-preview wrap-anywhere clamp-3">{getRequirementPreview(requirement, locale)}</div>
-                      </button>
-                    ))
-                  ) : (
-                    <div className="detail-empty">
-                      {locale === "zh-CN" ? "当前筛选下暂无需求" : "No requirements match this status filter"}
-                    </div>
-                  )}
-                </div>
-              </>
-            ) : null}
-
-            {workspaceLevel === "detail" ? (
-              selectedTask && selectedRequirement ? (
-                <TaskDetail
-                  requirement={selectedRequirement}
-                  task={selectedTask}
-                  locale={locale}
-                  onMutate={mutateTask}
-                  onRespond={respondToTask}
-                  anomalies={selectedRequirementAnomalies}
-                  dismissedAnomalyIds={dismissedAnomalyIds}
-                  onDismissAnomaly={dismissAnomaly}
-                />
-              ) : (
-                <div className="detail-empty">{t.noTask}</div>
-              )
-            ) : null}
-          </article>
-
-          <article className="card side-panel approval-panel">
-            <div className="section-head">
-              <h2>{t.pendingApprovals}</h2>
-              <button className="ghost" type="button" onClick={() => void refreshApprovals()}>
-                {t.refresh}
-              </button>
-            </div>
-            <div className="stack">
-              {approvals.length ? (
-                approvals.map((approval) => (
-                  <ApprovalCard
-                    key={approval.id}
-                    approval={approval}
-                    locale={locale}
-                    onRespond={respondToTask}
-                    onOpenTask={(taskId) => {
-                      const task = visibleTasks.find((item) => item.id === taskId);
-                      if (!task) return;
-                      const requirement = visibleRequirements.find((item) => item.latestAttemptId === task.id || item.attempts.some((attempt) => attempt.id === task.id));
-                      if (!requirement) return;
-                      openRequirement(requirement);
-                    }}
+                              ? `已使用 ${memberUsageSnapshot.percent}`
+                              : `${memberUsageSnapshot.percent} used`
+                            : memberUsageSnapshot?.reason || usageSummary || (locale === "zh-CN" ? "暂无说明" : "No details")}
+                        </Typography.Text>
+                      </>
+                    }
                   />
-                ))
-              ) : (
-                <div className="detail-empty">{locale === "zh-CN" ? "当前没有待审批" : "No pending approvals"}</div>
-              )}
-            </div>
-            <div className="section-head" style={{ marginTop: "1.25rem" }}>
-              <h2>{locale === "zh-CN" ? "异常队列" : "Anomaly queue"}</h2>
-            </div>
-            <div className="stack">
-              {visibleWorkspaceAnomalies.length ? (
-                visibleWorkspaceAnomalies.map((item) => (
-                  <div key={item.id} className="entity-card task-card anomaly-card">
-                    <button
-                      type="button"
-                      className="anomaly-open"
-                      onClick={() => {
-                        const task = visibleTasks.find((candidate) => candidate.id === item.taskId);
-                        if (!task) return;
-                        const requirement = visibleRequirements.find((candidate) => candidate.latestAttemptId === task.id || candidate.attempts.some((attempt) => attempt.id === task.id));
-                        if (!requirement) return;
-                        openRequirement(requirement);
-                      }}
-                    >
-                      <div className="entity-topline">
-                        <span className="title clamp-2">{item.title}</span>
-                        <span className={`badge status-${item.status}`}>{statusLabel[item.status][locale]}</span>
-                      </div>
-                      <div className="entity-copy entity-preview wrap-anywhere clamp-3">{item.detail}</div>
-                    </button>
-                    <div className="action-row">
-                      <button type="button" className="ghost" onClick={() => dismissAnomaly(item)}>
-                        {locale === "zh-CN" ? "标记已处理" : "Mark handled"}
-                      </button>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="detail-empty">{locale === "zh-CN" ? "当前没有异常需求" : "No anomalies"}</div>
-              )}
-            </div>
-          </article>
-        </section>
-      )}
-
-      {activeTab === "tools" && (
-        <section className="single-panel">
-          <article className="card">
-            <div className="section-head">
-              <h2>{locale === "zh-CN" ? "工具路由" : "Tool routes"}</h2>
-            </div>
-            <div className="stack">
-              {tools.length ? (
-                tools.map((tool) => (
-                  <div key={tool.id} className="tool-item">
-                    <div className="title">{tool.name}</div>
-                    <div className="meta">{tool.description || (locale === "zh-CN" ? "无描述" : "No description")}</div>
-                    <a className="meta link wrap-anywhere" href={tool.route} target="_blank" rel="noreferrer">
-                      {locale === "zh-CN" ? `打开 ${tool.route}` : `Open ${tool.route}`}
-                    </a>
-                  </div>
-                ))
-              ) : (
-                <div className="detail-empty">{locale === "zh-CN" ? "暂无工具路由" : "No tools"}</div>
-              )}
-            </div>
-          </article>
-        </section>
-      )}
-
-      {activeTab === "usage" && (
-        <section className="single-panel">
-          <article className="card">
-            <div className="section-head usage-section-head">
-              <h2>{locale === "zh-CN" ? "运行用量快照" : "Usage snapshot"}</h2>
-            </div>
-            <div className="usage-limit-grid">
-              {usageLimitSnapshots.map((item) => (
-                <section key={item.key} className="usage-limit-card">
-                  <div className="usage-limit-head">
-                    <div>
-                      <div className="meta">{item.subtitle}</div>
-                      <h3>{item.title}</h3>
-                    </div>
-                    {item.sourceLabel ? <span className="stats-pill">{item.sourceLabel}</span> : null}
-                  </div>
-                  <div className="usage-limit-value">
-                    {item.percentLabel}
-                  </div>
-                  <div
-                    className="usage-progress usage-progress-tight"
-                    role="progressbar"
-                    aria-valuemin={0}
-                    aria-valuemax={100}
-                    aria-valuenow={item.progressValue}
-                    aria-label={item.title}
-                  >
-                    <div className="usage-progress-bar" style={{ width: `${item.progressValue}%` }} />
-                  </div>
-                  <div className="usage-limit-meta">
-                    <span>{item.available ? item.detail : (locale === "zh-CN" ? "当前接口暂无该窗口数据" : "This API does not currently expose this window")}</span>
-                    <span>{item.resetText}</span>
-                  </div>
-                </section>
-              ))}
-            </div>
-            <div className="usage-hero">
-              <div className="usage-member-card">
-                <div className="meta">{locale === "zh-CN" ? "当前会员算力" : "Current member quota"}</div>
-                <div className="usage-member-value">
-                  {memberUsageSnapshot?.available
-                    ? memberUsageSnapshot.label
-                    : memberUsageSnapshot?.label || (locale === "zh-CN" ? "暂无会员算力数据" : "Member quota unavailable")}
-                </div>
-                <div
-                  className="usage-progress"
-                  role="progressbar"
-                  aria-valuemin={0}
-                  aria-valuemax={100}
-                  aria-valuenow={memberUsagePercentValue}
-                  aria-label={locale === "zh-CN" ? "会员算力用量比例" : "Member quota usage ratio"}
-                >
-                  <div
-                    className="usage-progress-bar"
-                    style={{ width: memberUsagePercentText }}
+                  <MetricCard
+                    subtitle={locale === "zh-CN" ? "摘要" : "Summary"}
+                    title={locale === "zh-CN" ? "用量说明" : "Usage overview"}
+                    value={usageSummary || (locale === "zh-CN" ? "暂无用量摘要。" : "No usage summary.")}
                   />
                 </div>
-                <div className="meta">
-                  {memberUsageSnapshot?.available
-                    ? locale === "zh-CN"
-                      ? `已使用 ${memberUsageSnapshot.percent}`
-                      : `${memberUsageSnapshot.percent} used`
-                    : memberUsageSnapshot?.reason || usageSummary || (locale === "zh-CN" ? "暂无说明" : "No details")}
-                </div>
-              </div>
-              <div className="usage-summary-card">
-                <div className="meta">{locale === "zh-CN" ? "摘要" : "Summary"}</div>
-                <div className="wrap-anywhere">
-                  {usageSummary || (locale === "zh-CN" ? "暂无用量摘要。" : "No usage summary.")}
-                </div>
-              </div>
-            </div>
-            <div className="section-head usage-section-head">
-              <h2>{locale === "zh-CN" ? "运行指标" : "Runtime metrics"}</h2>
-            </div>
-            <div className="usage-grid usage-grid-roomy">
-              {usage
-                ? [
-                    [locale === "zh-CN" ? "总任务数" : "Total tasks", usage.totalTasks],
-                    [locale === "zh-CN" ? "活动任务" : "Active tasks", usage.activeTasks],
-                    [locale === "zh-CN" ? "待审批" : "Pending approvals", usage.pendingApprovals],
-                    [locale === "zh-CN" ? "已完成" : "Completed", usage.completedTasks],
-                    [locale === "zh-CN" ? "失败" : "Failed", usage.failedTasks],
-                    [locale === "zh-CN" ? "预估 token" : "Token estimate", usage.estimatedTokens],
-                    [locale === "zh-CN" ? "Worker 运行次数" : "Worker runs", usage.totalRuns],
-                    [locale === "zh-CN" ? "最近运行" : "Last run", usage.lastRunAt || "n/a"],
-                  ].map(([label, value]) => (
-                    <div key={String(label)} className="usage-item">
-                      <div className="meta">{label}</div>
-                      <div className="title wrap-anywhere">{String(value)}</div>
-                    </div>
-                  ))
-                : <div className="detail-empty">{locale === "zh-CN" ? "暂无用量数据" : "No usage data"}</div>}
-            </div>
-            <div className="section-head usage-section-head">
-              <h2>{locale === "zh-CN" ? "平台健康" : "Platform health"}</h2>
-            </div>
-            <div className="usage-grid">
-              {platformHealth
-                ? [
-                    [locale === "zh-CN" ? "任务后端" : "Task backend", platformHealth.taskBackend || "n/a"],
-                    [locale === "zh-CN" ? "Issue Poller" : "Issue poller", platformHealth.issuePoller.status],
-                    [locale === "zh-CN" ? "轮询周期" : "Poll interval", platformHealth.issuePoller.intervalMs ? `${platformHealth.issuePoller.intervalMs}ms` : "n/a"],
-                    [locale === "zh-CN" ? "最近成功轮询" : "Last poll success", platformHealth.issuePoller.lastSuccessAt || "n/a"],
-                    [locale === "zh-CN" ? "GitHub API 余量" : "GitHub API remaining", platformHealth.githubApi.remaining ?? "n/a"],
-                    [locale === "zh-CN" ? "最近发布方式" : "Last publish method", platformHealth.publishing.lastPublishMethod || "n/a"],
-                    [locale === "zh-CN" ? "待验收需求" : "Awaiting acceptance", platformHealth.taskState.awaitingAcceptance],
-                    [locale === "zh-CN" ? "待返修需求" : "Needs revision", platformHealth.taskState.needsRevision + platformHealth.taskState.publishFailed],
-                  ].map(([label, value]) => (
-                    <div key={String(label)} className="usage-item">
-                      <div className="meta">{label}</div>
-                      <div className="title wrap-anywhere">{String(value)}</div>
-                    </div>
-                  ))
-                : <div className="detail-empty">{locale === "zh-CN" ? "暂无平台健康数据" : "No platform health data"}</div>}
-            </div>
-            <div className="section-head">
-              <h2>{locale === "zh-CN" ? "异常与风险" : "Anomalies and risks"}</h2>
-            </div>
-            <div className="stack compact">
-              {platformHealth?.anomalies?.length
-                ? platformHealth.anomalies.map((anomaly) => (
-                    <div key={anomaly.id} className="log-item">
-                      <strong>{anomaly.id}</strong> · {anomaly.count} · {anomaly.severity}
-                      <br />
-                      <span className="preserve-breaks">{anomaly.description}</span>
-                      {anomaly.taskIds.length ? (
-                        <>
-                          <br />
-                          <span className="meta">{anomaly.taskIds.join(", ")}</span>
-                        </>
-                      ) : null}
-                    </div>
-                  ))
-                : <div className="detail-empty">{locale === "zh-CN" ? "当前没有异常项" : "No anomalies detected"}</div>}
-            </div>
-          </article>
-        </section>
-      )}
 
-      {createDialogMode ? (
-        <CreateDialog
-          locale={locale}
-          mode={createDialogMode}
-          projects={projects}
-          selectedProjectId={selectedProjectId}
-          closeLabel={locale === "zh-CN" ? "关闭" : "Close"}
-          onClose={() => setCreateDialogMode(null)}
-          onCreateProject={onCreateProject}
-          onCreateTask={onCreateTask}
-        />
-      ) : null}
-      </div>
-  );
-}
-
-function CreateDialog({
-  locale,
-  mode,
-  projects,
-  selectedProjectId,
-  closeLabel,
-  onClose,
-  onCreateProject,
-  onCreateTask,
-}: {
-  locale: Locale;
-  mode: CreateDialogMode;
-  projects: Project[];
-  selectedProjectId: string;
-  closeLabel: string;
-  onClose: () => void;
-  onCreateProject: (formElement: HTMLFormElement) => Promise<void>;
-  onCreateTask: (formElement: HTMLFormElement) => Promise<void>;
-}) {
-  const title =
-    mode === "project"
-      ? locale === "zh-CN"
-        ? "创建项目"
-        : "Create project"
-      : mode === "composite_task"
-        ? locale === "zh-CN"
-          ? "创建模糊/组合任务"
-          : "Create composite task"
-      : locale === "zh-CN"
-        ? "创建任务"
-        : "Create task";
-
-  return (
-    <div className="dialog-backdrop" role="presentation" onClick={onClose}>
-      <div
-        className="dialog-card"
-        role="dialog"
-        aria-modal="true"
-        aria-label={title}
-        onClick={(event) => event.stopPropagation()}
-      >
-        <div className="section-head">
-          <h3>{title}</h3>
-          <button type="button" className="icon-button" aria-label={closeLabel} onClick={onClose}>
-            ×
-          </button>
-        </div>
-
-        {mode === "project" ? (
-          <form
-            className="stack compact"
-            onSubmit={(event: FormEvent<HTMLFormElement>) => {
-              event.preventDefault();
-              void onCreateProject(event.currentTarget);
-            }}
-          >
-            <input name="name" placeholder={locale === "zh-CN" ? "项目名称" : "Project name"} required />
-            <textarea name="description" rows={4} placeholder={locale === "zh-CN" ? "目标 / 范围 / 备注" : "Goal / scope / notes"} />
-            <input name="repository" placeholder="GitHub URL (optional)" />
-            <select name="visibility" defaultValue="private">
-              <option value="private">{locale === "zh-CN" ? "私有仓库" : "Private repo"}</option>
-              <option value="public">{locale === "zh-CN" ? "公开仓库" : "Public repo"}</option>
-            </select>
-            <label className="check-row">
-              <input type="checkbox" name="autoCreateRepo" />
-              <span>{locale === "zh-CN" ? "自动创建 GitHub 仓库" : "Auto-create GitHub repository"}</span>
-            </label>
-            <button type="submit" className="primary">{locale === "zh-CN" ? "创建项目" : "Create project"}</button>
-          </form>
-        ) : (
-          <form
-            className="stack compact"
-            onSubmit={(event: FormEvent<HTMLFormElement>) => {
-              event.preventDefault();
-              void onCreateTask(event.currentTarget);
-            }}
-          >
-            {mode === "task" ? (
-              <select name="projectId" defaultValue={selectedProjectId || projects[0]?.id}>
-                {projects.map((project) => (
-                  <option key={project.id} value={project.id}>
-                    {getProjectDisplayName(project.id, locale)}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <div className="form-note">
-                {locale === "zh-CN"
-                  ? "该任务从项目层级发起，不预先绑定项目，由 AI 判断应归属到哪个项目，或是否需要拆分到多个项目。"
-                  : "This task starts from the project layer without a fixed project. AI will decide the target project or split it across multiple projects."}
-              </div>
-            )}
-            <input type="hidden" name="type" value={mode === "composite_task" ? "composite_task" : "task"} />
-            <input name="title" placeholder={locale === "zh-CN" ? "任务标题" : "Task title"} required />
-            <textarea name="description" rows={5} placeholder={locale === "zh-CN" ? "希望 Codex 完成什么" : "What should Codex do?"} required />
-            <button type="submit" className="primary">{locale === "zh-CN" ? "创建任务" : "Create task"}</button>
-          </form>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function StatusFilterBar({
-  locale,
-  value,
-  onChange,
-}: {
-  locale: Locale;
-  value: StatusFilterValue;
-  onChange: (next: StatusFilterValue) => void;
-}) {
-  return (
-    <div className="list-filter-bar">
-      <label className="list-filter-control">
-        <span className="meta">{locale === "zh-CN" ? "当前状态筛选" : "Filter by status"}</span>
-        <select value={value} onChange={(event) => onChange(event.target.value as StatusFilterValue)}>
-          <option value={STATUS_FILTER_ALL}>{locale === "zh-CN" ? "全部状态" : "All statuses"}</option>
-          {(Object.keys(statusLabel) as TaskStatus[]).map((status) => (
-            <option key={status} value={status}>
-              {statusLabel[status][locale]}
-            </option>
-          ))}
-        </select>
-      </label>
-    </div>
-  );
-}
-
-function TaskDetail({
-  requirement,
-  task,
-  locale,
-  onMutate,
-  onRespond,
-  anomalies,
-  dismissedAnomalyIds,
-  onDismissAnomaly,
-}: {
-  requirement: Requirement;
-  task: Task;
-  locale: Locale;
-  onMutate: (taskId: string, action: "stop" | "retry") => Promise<void>;
-  onRespond: (taskId: string, decision: "approve" | "reject", feedback: string) => Promise<void>;
-  anomalies: WorkspaceAnomaly[];
-  dismissedAnomalyIds: Set<string>;
-  onDismissAnomaly: (anomaly: WorkspaceAnomaly) => void;
-}) {
-  const [showRawLogs, setShowRawLogs] = useState(false);
-  const logViews = buildLogViews(task.logs);
-  const visibleLogs = showRawLogs ? logViews.raw : logViews.important;
-
-  return (
-    <div className="detail-card">
-      <div className="detail-hero">
-        <div>
-          <div className="meta">
-            {getProjectDisplayName(task.projectId, locale)} · {task.type} · requirement #{requirement.latestAttemptNumber}
-          </div>
-          <h3 className="wrap-anywhere">{task.title}</h3>
-          <div className="meta">
-            {locale === "zh-CN" ? "状态：" : "Status: "}
-            {statusLabel[task.status][locale]}
-          </div>
-        </div>
-        <div className="action-row detail-actions">
-          {task.status === "waiting_user" ? (
-            <>
-              <button type="button" className="primary" onClick={() => void onRespond(task.id, "approve", "")}>
-                {locale === "zh-CN" ? "通过" : "Approve"}
-              </button>
-              <button type="button" className="ghost" onClick={() => void onRespond(task.id, "reject", "")}>
-                {locale === "zh-CN" ? "拒绝" : "Reject"}
-              </button>
-            </>
-          ) : null}
-          {task.status === "awaiting_acceptance" ? (
-            <>
-              <button type="button" className="primary" onClick={() => void onRespond(task.id, "approve", "")}>
-                {locale === "zh-CN" ? "验收通过" : "Accept"}
-              </button>
-              <button type="button" className="ghost" onClick={() => void onRespond(task.id, "reject", "")}>
-                {locale === "zh-CN" ? "打回返修" : "Needs revision"}
-              </button>
-            </>
-          ) : null}
-          {task.status === "running" ? (
-            <button type="button" className="ghost" onClick={() => void onMutate(task.id, "stop")}>
-              {locale === "zh-CN" ? "停止" : "Stop"}
-            </button>
-          ) : null}
-          {task.status === "failed" || task.status === "stopped" || task.status === "needs_revision" || task.status === "publish_failed" ? (
-            <button type="button" className="ghost" onClick={() => void onMutate(task.id, "retry")}>
-              {locale === "zh-CN" ? "重试" : "Retry"}
-            </button>
-          ) : null}
-        </div>
-      </div>
-
-      <div className="detail-grid">
-        <div className="info-card full-width">
-          <div className="info-label">{locale === "zh-CN" ? "描述" : "Description"}</div>
-          <div className="wrap-anywhere preserve-breaks">{normalizeDisplayText(task.description) || (locale === "zh-CN" ? "暂无描述" : "No description")}</div>
-        </div>
-
-        {task.planPreview ? (
-          <div className="info-card full-width">
-            <div className="info-label">{locale === "zh-CN" ? "计划预览" : "Plan preview"}</div>
-            <div className="wrap-anywhere preserve-breaks">{normalizeDisplayText(task.planPreview)}</div>
-          </div>
-        ) : null}
-
-        {(task.userSummary || task.summary) ? (
-          <div className="info-card full-width">
-            <div className="info-label">{locale === "zh-CN" ? "摘要" : "Summary"}</div>
-            <div className="wrap-anywhere preserve-breaks">{normalizeDisplayText(task.userSummary || task.summary)}</div>
-          </div>
-        ) : null}
-
-        {task.openFailureReason ? (
-          <div className="info-card full-width">
-            <div className="info-label">{locale === "zh-CN" ? "未完成原因" : "Why not completed"}</div>
-            <div className="wrap-anywhere preserve-breaks">{normalizeDisplayText(task.openFailureReason)}</div>
-          </div>
-        ) : null}
-
-        {anomalies.length ? (
-          <div className="info-card full-width">
-            <div className="info-label">{locale === "zh-CN" ? "当前异常闭环" : "Current anomaly handling"}</div>
-            <div className="stack compact">
-              {anomalies.map((anomaly) => {
-                const isDismissed = dismissedAnomalyIds.has(anomaly.id);
-                return (
-                  <div key={anomaly.id} className="log-item">
-                    <strong>{statusLabel[anomaly.status][locale]}</strong>
-                    <br />
-                    <span className="preserve-breaks">{normalizeDisplayText(anomaly.detail)}</span>
-                    {isDismissed ? null : (
-                      <div className="action-row detail-subactions">
-                        <button
-                          type="button"
-                          className="ghost"
-                          onClick={() => onDismissAnomaly(anomaly)}
-                        >
-                          {locale === "zh-CN" ? "标记已处理" : "Mark handled"}
-                        </button>
-                      </div>
-                    )}
+                <SectionHeader title={locale === "zh-CN" ? "运行指标" : "Runtime metrics"} />
+                {usage ? (
+                  <div className="metric-grid">
+                    {[
+                      [locale === "zh-CN" ? "总任务数" : "Total tasks", usage.totalTasks],
+                      [locale === "zh-CN" ? "活动任务" : "Active tasks", usage.activeTasks],
+                      [locale === "zh-CN" ? "待审批" : "Pending approvals", usage.pendingApprovals],
+                      [locale === "zh-CN" ? "已完成" : "Completed", usage.completedTasks],
+                      [locale === "zh-CN" ? "失败" : "Failed", usage.failedTasks],
+                      [locale === "zh-CN" ? "预估 token" : "Token estimate", usage.estimatedTokens],
+                      [locale === "zh-CN" ? "Worker 运行次数" : "Worker runs", usage.totalRuns],
+                      [locale === "zh-CN" ? "最近运行" : "Last run", usage.lastRunAt || "n/a"],
+                    ].map(([label, value]) => (
+                      <MetricCard key={String(label)} subtitle={String(label)} value={String(value)} />
+                    ))}
                   </div>
-                );
-              })}
-            </div>
-          </div>
-        ) : null}
+                ) : (
+                  <Empty description={locale === "zh-CN" ? "暂无用量数据" : "No usage data"} />
+                )}
 
-        {requirement.acceptanceCriteria?.length ? (
-          <div className="info-card">
-            <div className="info-label">{locale === "zh-CN" ? "验收清单" : "Acceptance checklist"}</div>
-            <div className="stack compact">
-              {requirement.acceptanceCriteria.map((criterion) => {
-                const verification = requirement.verificationResults?.find((item) => item.criterionId === criterion.id);
-                return (
-                  <div key={criterion.id} className="log-item">
-                    <strong>{criterion.text}</strong>
-                    <br />
-                    {(verification?.status || "pending")} {verification?.evidence ? `· ${verification.evidence}` : ""}
+                <SectionHeader title={locale === "zh-CN" ? "平台健康" : "Platform health"} />
+                {platformHealth ? (
+                  <div className="metric-grid">
+                    {[
+                      [locale === "zh-CN" ? "任务后端" : "Task backend", platformHealth.taskBackend || "n/a"],
+                      [locale === "zh-CN" ? "Issue Poller" : "Issue poller", platformHealth.issuePoller.status],
+                      [locale === "zh-CN" ? "轮询周期" : "Poll interval", platformHealth.issuePoller.intervalMs ? `${platformHealth.issuePoller.intervalMs}ms` : "n/a"],
+                      [locale === "zh-CN" ? "最近成功轮询" : "Last poll success", platformHealth.issuePoller.lastSuccessAt || "n/a"],
+                      [locale === "zh-CN" ? "GitHub API 余量" : "GitHub API remaining", platformHealth.githubApi.remaining ?? "n/a"],
+                      [locale === "zh-CN" ? "最近发布方式" : "Last publish method", platformHealth.publishing.lastPublishMethod || "n/a"],
+                      [locale === "zh-CN" ? "待验收需求" : "Awaiting acceptance", platformHealth.taskState.awaitingAcceptance],
+                      [locale === "zh-CN" ? "待返修需求" : "Needs revision", platformHealth.taskState.needsRevision + platformHealth.taskState.publishFailed],
+                    ].map(([label, value]) => (
+                      <MetricCard key={String(label)} subtitle={String(label)} value={String(value)} />
+                    ))}
                   </div>
-                );
-              })}
-            </div>
+                ) : (
+                  <Empty description={locale === "zh-CN" ? "暂无平台健康数据" : "No platform health data"} />
+                )}
+
+                <SectionHeader title={locale === "zh-CN" ? "异常与风险" : "Anomalies and risks"} />
+                {platformHealth?.anomalies?.length ? (
+                  <div className="section-stack">
+                    {platformHealth.anomalies.map((anomaly) => (
+                      <Alert
+                        key={anomaly.id}
+                        type={anomaly.severity === "high" ? "error" : anomaly.severity === "medium" ? "warning" : "info"}
+                        showIcon
+                        message={`${anomaly.id} · ${anomaly.count} · ${anomaly.severity}`}
+                        description={
+                          <Space direction="vertical" size={6}>
+                            <Typography.Text>{anomaly.description}</Typography.Text>
+                            {anomaly.taskIds.length ? <Typography.Text type="secondary">{anomaly.taskIds.join(", ")}</Typography.Text> : null}
+                          </Space>
+                        }
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <Empty description={locale === "zh-CN" ? "当前没有异常项" : "No anomalies detected"} />
+                )}
+              </Card>
+            ) : null}
+
+            {createDialogMode ? (
+              <CreateDialog
+                locale={locale}
+                mode={createDialogMode}
+                projects={projects}
+                selectedProjectId={selectedProjectId}
+                closeLabel={locale === "zh-CN" ? "关闭" : "Close"}
+                onClose={() => setCreateDialogMode(null)}
+                onCreateProject={onCreateProject}
+                onCreateTask={onCreateTask}
+                getProjectDisplayName={getProjectDisplayName}
+              />
+            ) : null}
           </div>
-        ) : null}
-
-        {requirement.attempts.length > 1 ? (
-          <div className="info-card">
-            <div className="info-label">{locale === "zh-CN" ? "尝试历史" : "Attempt history"}</div>
-            <div className="stack compact">
-              {requirement.attempts.map((attempt) => (
-                <div key={attempt.id} className="log-item">
-                  <strong>#{attempt.attemptNumber || "?"}</strong> · {statusLabel[attempt.status][locale]}
-                  <br />
-                  <span className="preserve-breaks">{normalizeDisplayText(attempt.userSummary || attempt.summary || attempt.openFailureReason || attempt.description)}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        ) : null}
-
-        {task.branchName ? (
-          <div className="info-card">
-            <div className="info-label">{locale === "zh-CN" ? "分支" : "Branch"}</div>
-            <div className="wrap-anywhere">{task.branchName}</div>
-          </div>
-        ) : null}
-
-        {task.workspacePath ? (
-          <div className="info-card">
-            <div className="info-label">{locale === "zh-CN" ? "工作区" : "Workspace"}</div>
-            <div className="wrap-anywhere">{task.workspacePath}</div>
-          </div>
-        ) : null}
-
-        {task.children.length ? (
-            <div className="info-card">
-              <div className="info-label">{locale === "zh-CN" ? "子任务" : "Child tasks"}</div>
-              <div className="wrap-anywhere preserve-breaks">
-                {task.children.map((child) => `${child.title} (${statusLabel[child.status][locale]})`).join("\n")}
-              </div>
-            </div>
-          ) : null}
-      </div>
-
-      <div className="log-list">
-        <div className="section-head">
-          <h3>{locale === "zh-CN" ? "任务日志" : "Task logs"}</h3>
-          {task.logs.length > logViews.important.length ? (
-            <button type="button" className="ghost" onClick={() => setShowRawLogs((current) => !current)}>
-              {showRawLogs
-                ? locale === "zh-CN"
-                  ? "只看关键日志"
-                  : "Show important only"
-                : locale === "zh-CN"
-                  ? "展开原始日志"
-                  : "Show raw logs"}
-            </button>
-          ) : null}
-        </div>
-        {visibleLogs.length ? (
-          visibleLogs.map((entry) => (
-            <div key={`${entry.timestamp}-${entry.message}`} className="log-item">
-              <div className="meta">{new Date(entry.timestamp).toLocaleString(locale)}</div>
-              <div className="wrap-anywhere preserve-breaks">{normalizeDisplayText(entry.message)}</div>
-            </div>
-          ))
-        ) : (
-          <div className="detail-empty">{locale === "zh-CN" ? "暂无关键日志" : "No important logs yet"}</div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function ApprovalCard({
-  approval,
-  locale,
-  onRespond,
-  onOpenTask,
-}: {
-  approval: Approval;
-  locale: Locale;
-  onRespond: (taskId: string, decision: "approve" | "reject", feedback: string) => Promise<void>;
-  onOpenTask: (taskId: string) => void;
-}) {
-  const [feedback, setFeedback] = useState("");
-
-  return (
-    <div className="approval-item">
-      <div className="title wrap-anywhere">{approval.task.title}</div>
-      <div className="meta wrap-anywhere">{approval.task.userAction?.title || approval.reason}</div>
-      {approval.task.userAction?.detail ? <div className="meta wrap-anywhere">{approval.task.userAction.detail}</div> : null}
-      <div className="meta">
-        {getProjectDisplayName(approval.task.projectId, locale)} · {approval.task.type}
-      </div>
-      <textarea
-        value={feedback}
-        onChange={(event) => setFeedback(event.target.value)}
-        placeholder={locale === "zh-CN" ? "可选：审批反馈或限制条件" : "Optional feedback or constraints"}
-      />
-      <div className="action-row">
-        <button type="button" className="primary" onClick={() => void onRespond(approval.task.id, "approve", feedback)}>
-          {locale === "zh-CN" ? "通过" : "Approve"}
-        </button>
-        <button type="button" className="ghost" onClick={() => void onRespond(approval.task.id, "reject", feedback)}>
-          {locale === "zh-CN" ? "拒绝" : "Reject"}
-        </button>
-        <button type="button" className="ghost" onClick={() => onOpenTask(approval.task.id)}>
-          {locale === "zh-CN" ? "打开任务" : "Open task"}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function HeaderSwitch({
-  checked,
-  label,
-  onToggle,
-}: {
-  checked: boolean;
-  label: string;
-  onToggle: () => void;
-}) {
-  return (
-    <div className="switch-card header-switch">
-      <span className="switch-copy">
-        <span className="mobile-nav-action-label">{label}</span>
-      </span>
-      <button
-        type="button"
-        className={checked ? "theme-toggle is-active" : "theme-toggle"}
-        role="switch"
-        aria-checked={checked}
-        aria-label={label}
-        onClick={onToggle}
-      >
-        <span className="theme-toggle-handle" aria-hidden="true" />
-      </button>
-    </div>
-  );
-}
-
-function HeaderLocaleSwitch({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: Locale;
-  onChange: (next: Locale) => void;
-}) {
-  return (
-    <div className="switch-card header-switch locale-switch-card">
-      <span className="switch-copy">
-        <span className="mobile-nav-action-label">{label}</span>
-      </span>
-      <div className="locale-segmented" role="tablist" aria-label={label}>
-        {[
-          { label: "中文", value: "zh-CN" },
-          { label: "English", value: "en-US" },
-        ].map((option) => (
-          <button
-            key={option.value}
-            type="button"
-            className={value === option.value ? "locale-segment is-active" : "locale-segment"}
-            role="tab"
-            aria-selected={value === option.value}
-            onClick={() => onChange(option.value as Locale)}
-          >
-            {option.label}
-          </button>
-        ))}
-      </div>
-    </div>
+        </Layout>
+      </AntApp>
+    </ConfigProvider>
   );
 }
 

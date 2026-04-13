@@ -224,6 +224,16 @@ no changes added to commit (use "git add" and/or "git commit -a")
 
 ## 2026-04-13
 
+- Problem: the ongoing Ant Design-based dashboard refactor was still living mostly inside `src/App.tsx`, which left the orchestration file over 3,400 lines long and made the new structure fragile to resume after an interrupted CLI session.
+- Resolution: extracted shared dashboard types into `src/dashboardTypes.ts` and the stable view primitives/dialog/detail cards into `src/dashboardComponents.tsx`, then rewired `src/App.tsx` to use those modules while preserving the current behavior and build output.
+- Prevention: once a frontend refactor stabilizes on a component system, move shared types and view components out of the page orchestrator immediately instead of letting a second monolith grow around the new UI library.
+- Commit ID: pending
+- Prevention: Finalization path now records and surfaces publish outcomes to avoid silent drift.
+- Commit ID: 5995c0a
+- Context: project=dashboard-ui, source=issue #23
+
+## 2026-04-13
+
 - Problem: the dashboard could show individual task states but not whether the task-dispatch substrate itself was healthy, so operators had to infer poller, publish, and backlog risk indirectly.
 - Resolution: added a platform-health section to the usage view, including issue-poller state, GitHub API pressure, recent publish method, and anomaly backlog counts.
 - Prevention: if the product depends on a background task platform, the UI must expose platform-level health directly; otherwise users will keep discovering infrastructure problems only after task delivery fails.
@@ -256,3 +266,11 @@ no changes added to commit (use "git add" and/or "git commit -a")
 - Resolution: removed status filtering from approvals and anomalies, moved the project/requirement status filter into the same header row as the workspace title, and kept mobile fallback wrapping only for narrow screens.
 - Prevention: only add filters where they reduce ambiguity in multi-state lists, and when a filter belongs to a list header, compose it inside the same header container first instead of bolting on an extra row.
 - Commit ID: pending
+
+## 2026-04-13
+
+- Problem: task task-mnx4wa57-5uydcv (筛选更新功能修复) finished with status awaiting_acceptance.
+- Resolution: Changes published to remote.
+- Prevention: Finalization path now records and surfaces publish outcomes to avoid silent drift.
+- Commit ID: 54b2e92
+- Context: project=dashboard-ui, source=issue #30

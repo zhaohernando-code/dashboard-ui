@@ -1,8 +1,59 @@
 # Dashboard UI Rules
 
-- Preserve the existing control-plane visual language unless a deliberate redesign is requested.
-- UI style reference for this dashboard: layered control-plane panels with restrained glassmorphism, clear hierarchy, and focused single-level navigation instead of dense multi-column stacking.
-- Mobile interaction reference for this dashboard: adopt a compact control-center pattern with a floating entry button, bottom/right anchored quick-switch sheet, and horizontally scrollable path pills instead of wrapped multi-row nav controls.
-- Build UI work as a formal TypeScript + React application, using a modern framework/toolchain instead of ad-hoc static scripts.
+## Product Direction
+
+- Preserve the existing control-plane product positioning unless a deliberate redesign is requested.
+- Prefer a structured operations dashboard over experimental custom layouts.
+- Use Ant Design as the default component and layout system for most new UI work.
+- Keep a small repo-native shell layer for branding, background, and a few product-specific interaction patterns.
 - Keep the dashboard deployable to GitHub Pages from a build output directory.
-- Reflect task states, approvals, and summaries clearly; do not surface raw CLI noise by default.
+
+## Layout Baseline
+
+- Prefer Ant Design layout primitives first: `Layout`, `Flex`, `Space`, `Row`, `Col`, `Tabs`, `Drawer`, `Modal`.
+- Use a single primary workspace surface per view, with optional side context panels.
+- Section headers must follow one structure: `title + optional subtitle + optional actions`.
+- Breadcrumb or backflow navigation should stay single-level and horizontally scrollable; do not reintroduce dense multi-row navigation.
+- Mobile interaction should use compact control-center patterns built with `Drawer` instead of custom overlapping layers where possible.
+
+## Typography
+
+- Follow a fixed hierarchy and do not invent one-off font sizes for new blocks.
+- Page title: large, strong, reserved for the top shell only.
+- Section title: medium, strong, used for first-level content groups.
+- Card title: medium, semibold, used for an individual panel or record.
+- Body text: default readable size.
+- Supporting text: one level smaller and lower contrast.
+- Metric value: the only oversized text inside metric cards.
+- Do not reuse one generic utility class for subtitle, helper text, labels, and captions at the same time.
+
+## Spacing
+
+- Follow an 8pt rhythm by default.
+- Section spacing, card padding, stack gaps, and toolbar spacing must come from shared tokens or shared component structure.
+- Do not patch spacing with isolated inline `marginTop` or `marginBottom` unless there is a narrow one-off exception.
+- Subtitle or helper text above a metric/value block must always have explicit spacing below it.
+
+## Component Selection
+
+- Prefer Ant Design components for common UI:
+  - Navigation and switching: `Tabs`, `Segmented`, `Breadcrumb`, `Drawer`
+  - Containers: `Card`, `Collapse`, `Descriptions`, `List`
+  - Data and status: `Tag`, `Badge`, `Alert`, `Progress`, `Empty`
+  - Input and actions: `Form`, `Input`, `Select`, `Checkbox`, `Button`, `Modal`
+- Only build custom DOM + CSS when the interaction is clearly product-specific and not covered well by Ant Design.
+- If a custom surface is needed, keep it thin and compose it from Ant Design typography and spacing conventions.
+
+## State Presentation
+
+- Reflect task states, approvals, anomalies, and summaries clearly; do not surface raw CLI noise by default.
+- Statuses must render through a consistent status mapping, not ad-hoc colors per view.
+- Approval, anomaly, and health panels should use a stable density and identical card rhythm for the same content type.
+- Summaries should prioritize user-facing text over raw worker or execution text.
+
+## Implementation Constraints
+
+- `App.tsx` should remain an orchestration layer, not the long-term home for all page markup.
+- New UI should prefer existing shared components or Ant Design primitives before adding new custom wrappers.
+- When a new token or pattern is needed, add it to the shared theme/style layer first instead of hardcoding values inline.
+- Avoid reintroducing large custom CSS systems when the same behavior can be expressed with Ant Design theme tokens and component props.
