@@ -2,10 +2,10 @@
 
 ## 2026-04-13
 
-- Problem: GitHub Pages direct mode refreshed the issue list every 5 seconds and re-fetched comments for every issue on each poll, which could quickly exhaust the authenticated GitHub API window and break mobile task dispatch with rate-limit errors.
-- Resolution: increased the GitHub-direct poll interval to 30 seconds, cached parsed issue-comment status by `issue.number + updated_at`, and surfaced reset/retry hints when GitHub returns a rate-limit response.
-- Prevention: any browser-side GitHub integration must treat comments/timeline fetches as high-cost requests; poll issue lists separately from comment bodies, and only re-fetch per-issue metadata when the issue update cursor actually changes.
-- Commit ID: `85be838`
+- Problem: desktop/mobile theme and language toggles still used a custom switch card with drifting labels, the toggle helper text added visual noise, the right-side approval panel felt center-aligned, and requirement/detail summaries could still be visually cut off in the dashboard UI.
+- Resolution: installed `antd`, replaced the header/mobile toggle widgets with Ant Design `Switch` and `Segmented`, removed the extra helper copy under theme/language controls, pinned the approval side panel content to the top, and changed requirement/detail summary surfaces to render full wrapped text with full-width detail cards instead of preview-style clamping.
+- Prevention: use framework-provided controls for binary/choice settings instead of maintaining bespoke switch animations, and never reuse preview clamp styles on user-facing task summaries that need to remain fully readable.
+- Commit ID: N/A（当前回合已完成本地校验；远端推送/主线合并受环境限制，若本地提交成功会在后续记录补充 commit ID）
 
 ## 2026-04-13
 
