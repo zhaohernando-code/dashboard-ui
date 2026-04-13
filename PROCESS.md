@@ -1,5 +1,13 @@
 # PROCESS
 
+## 2026-04-13
+
+- Problem: task summaries still looked incomplete in the dashboard because the task list kept showing the clamped description, while the detail summary was rendered inside the same two-column info grid and stayed visually cramped for long multi-line content.
+- Resolution: task cards now prefer summary text over description with a larger four-line preview, and the task detail summary card now spans the full grid width with preserved line breaks so the full summary remains readable.
+- Prevention: when a bug report says “still not fully shown”, verify the exact user path end-to-end instead of stopping at a local overflow fix; for task content, check both the list preview and the detail presentation before considering the requirement complete.
+- Reflection: the previous fix was submitted too early because it only addressed generic wrapping/overflow safety and did not re-check whether the UI surface users actually read was the summary surface itself.
+- Commit ID: N/A（当前环境未执行 git 提交）
+
 ## 2026-04-12
 
 - Problem: no dashboard existed for project/task orchestration and approvals.
