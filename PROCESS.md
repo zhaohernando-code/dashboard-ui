@@ -2,6 +2,13 @@
 
 ## 2026-04-13
 
+- Problem: anomaly queue items could only be viewed, so operators had no way to close the loop on known exceptions and the same requirement kept resurfacing even after manual follow-up.
+- Resolution: added anomaly-level manual handling in the dashboard, persisted handled anomaly fingerprints in local storage, exposed mark-handled/restore actions in both the anomaly queue and task detail, and auto-reactivated alerts when the underlying anomaly content changed.
+- Prevention: any operational queue item that is derived from UI-visible heuristics must provide an explicit close-loop action plus a re-alert rule tied to the anomaly fingerprint, otherwise users cannot distinguish “known and handled” from “still needs attention”.
+- Commit ID: N/A（当前回合已完成本地构建校验；远端推送/主线合并受环境限制，后续提交后补充 commit ID）
+
+## 2026-04-13
+
 - Problem: desktop/mobile theme and language toggles still used a custom switch card with drifting labels, the toggle helper text added visual noise, the right-side approval panel felt center-aligned, and requirement/detail summaries could still be visually cut off in the dashboard UI.
 - Resolution: installed `antd`, replaced the header/mobile toggle widgets with Ant Design `Switch` and `Segmented`, removed the extra helper copy under theme/language controls, pinned the approval side panel content to the top, and changed requirement/detail summary surfaces to render full wrapped text with full-width detail cards instead of preview-style clamping.
 - Prevention: use framework-provided controls for binary/choice settings instead of maintaining bespoke switch animations, and never reuse preview clamp styles on user-facing task summaries that need to remain fully readable.

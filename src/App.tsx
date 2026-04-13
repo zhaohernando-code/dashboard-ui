@@ -224,6 +224,21 @@ type NoticeItem = {
   tone: NoticeTone;
 };
 
+type DismissedAnomaly = {
+  id: string;
+  fingerprint: string;
+  dismissedAt: string;
+};
+
+type WorkspaceAnomaly = {
+  id: string;
+  title: string;
+  status: TaskStatus;
+  detail: string;
+  taskId: string;
+  fingerprint: string;
+};
+
 type Locale = "zh-CN" | "en-US";
 type CopyState = "idle" | "copied";
 type ThemeMode = "light" | "dark";
@@ -237,6 +252,7 @@ const GITHUB_TASK_REPO = (import.meta.env.VITE_GITHUB_TASK_REPO as string | unde
 const GITHUB_SCOPES = (import.meta.env.VITE_GITHUB_OAUTH_SCOPES as string | undefined)?.trim() || "read:user repo";
 const IS_GITHUB_PAGES = typeof window !== "undefined" && window.location.hostname.endsWith("github.io");
 const AUTO_ROUTE_PROJECT_ID = "__auto_route__";
+const DISMISSED_ANOMALIES_STORAGE_KEY = "codex.dismissedAnomalies";
 const REMOTE_PROJECT_CATALOG = [
   {
     id: "dashboard-ui",
@@ -789,6 +805,42 @@ function getRequirementPreview(requirement: Requirement, locale: Locale) {
   return locale === "zh-CN" ? "暂无描述" : "No description";
 }
 
+function getRequirementAnomalies(requirement: Requirement, locale: Locale): WorkspaceAnomaly[] {
+  const result: WorkspaceAnomaly[] = [];
+  const preview = getRequirementPreview(requirement, locale);
+  const pushAnomaly = (idSuffix: string, detail: string) => {
+    const normalizedDetail = normalizeDisplayText(detail) || preview;
+    result.push({
+      id: `${requirement.id}:${idSuffix}`,
+      title: requirement.title,
+      status: requirement.status,
+      detail: normalizedDetail,
+      taskId: requirement.latestAttemptId,
+      fingerprint: JSON.stringify({
+        requirementId: requirement.id,
+        idSuffix,
+        status: requirement.status,
+        detail: normalizedDetail,
+        latestAttemptId: requirement.latestAttemptId,
+        updatedAt: requirement.updatedAt,
+      }),
+    });
+  };
+
+  if (requirement.status === "stopped" || requirement.status === "needs_revision" || requirement.status === "publish_failed") {
+    pushAnomaly(requirement.status, requirement.openFailureReason || requirement.userSummary || preview);
+  }
+
+  if ((requirement.healthFlags || []).length) {
+    pushAnomaly(
+      "health",
+      `${locale === "zh-CN" ? "健康标记" : "Health flags"}: ${(requirement.healthFlags || []).join(", ")}`,
+    );
+  }
+
+  return result;
+}
+
 export default function App() {
   const runtimeMode: RuntimeMode = IS_GITHUB_PAGES ? "github-direct" : "local-api";
   const [locale, setLocale] = useState<Locale>(() => {
@@ -822,6 +874,23 @@ export default function App() {
   const [authStatus, setAuthStatus] = useState("");
   const [deviceLogin, setDeviceLogin] = useState<DeviceLoginSession | null>(null);
   const [notices, setNotices] = useState<NoticeItem[]>([]);
+  const [dismissedAnomalies, setDismissedAnomalies] = useState<DismissedAnomaly[]>(() => {
+    try {
+      const saved = localStorage.getItem(DISMISSED_ANOMALIES_STORAGE_KEY);
+      const parsed = saved ? (JSON.parse(saved) as DismissedAnomaly[]) : [];
+      return Array.isArray(parsed)
+        ? parsed.filter(
+            (item): item is DismissedAnomaly =>
+              Boolean(item) &&
+              typeof item.id === "string" &&
+              typeof item.fingerprint === "string" &&
+              typeof item.dismissedAt === "string",
+          )
+        : [];
+    } catch {
+      return [];
+    }
+  });
   const [copyState, setCopyState] = useState<CopyState>("idle");
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const [isMobileViewDrawerOpen, setIsMobileViewDrawerOpen] = useState(false);
@@ -859,31 +928,25 @@ export default function App() {
     [selectedRequirementId, visibleRequirements],
   );
 
-  const workspaceAnomalies = useMemo(() => {
-    const result: Array<{ id: string; title: string; status: TaskStatus; detail: string; taskId: string }> = [];
-    for (const requirement of visibleRequirements) {
-      if (requirement.status === "stopped" || requirement.status === "needs_revision" || requirement.status === "publish_failed") {
-        result.push({
-          id: `${requirement.id}:${requirement.status}`,
-          title: requirement.title,
-          status: requirement.status,
-          detail: requirement.openFailureReason || requirement.userSummary || getRequirementPreview(requirement, locale),
-          taskId: requirement.latestAttemptId,
-        });
-        continue;
-      }
-      if ((requirement.healthFlags || []).length) {
-        result.push({
-          id: `${requirement.id}:health`,
-          title: requirement.title,
-          status: requirement.status,
-          detail: `${locale === "zh-CN" ? "健康标记" : "Health flags"}: ${(requirement.healthFlags || []).join(", ")}`,
-          taskId: requirement.latestAttemptId,
-        });
-      }
-    }
-    return result;
-  }, [locale, visibleRequirements]);
+  const workspaceAnomalies = useMemo(
+    () => visibleRequirements.flatMap((requirement) => getRequirementAnomalies(requirement, locale)),
+    [locale, visibleRequirements],
+  );
+
+  const dismissedAnomalyFingerprints = useMemo(
+    () => new Set(dismissedAnomalies.map((item) => item.fingerprint)),
+    [dismissedAnomalies],
+  );
+
+  const visibleWorkspaceAnomalies = useMemo(
+    () => workspaceAnomalies.filter((item) => !dismissedAnomalyFingerprints.has(item.fingerprint)),
+    [dismissedAnomalyFingerprints, workspaceAnomalies],
+  );
+
+  const selectedRequirementAnomalies = useMemo(
+    () => (selectedRequirement ? getRequirementAnomalies(selectedRequirement, locale) : []),
+    [locale, selectedRequirement],
+  );
 
   const visibleProjects = useMemo(
     () => (runtimeMode === "github-direct" ? buildRemoteProjects(visibleTasks) : mergeProjectStats(projects, visibleTasks)),
@@ -1110,6 +1173,15 @@ export default function App() {
     );
   }, [optimisticTasks.length, tasks]);
 
+  useEffect(() => {
+    localStorage.setItem(DISMISSED_ANOMALIES_STORAGE_KEY, JSON.stringify(dismissedAnomalies));
+  }, [dismissedAnomalies]);
+
+  useEffect(() => {
+    const activeFingerprintSet = new Set(workspaceAnomalies.map((item) => item.fingerprint));
+    setDismissedAnomalies((current) => current.filter((item) => activeFingerprintSet.has(item.fingerprint)));
+  }, [workspaceAnomalies]);
+
   async function api<T>(path: string, init?: RequestInit): Promise<T> {
     const response = await fetch(`${DEFAULT_API_BASE}${path}`, {
       ...init,
@@ -1155,6 +1227,31 @@ export default function App() {
     window.setTimeout(() => {
       setNotices((current) => current.filter((notice) => notice.id !== id));
     }, 4500);
+  }
+
+  function dismissAnomaly(anomaly: WorkspaceAnomaly) {
+    setDismissedAnomalies((current) => {
+      if (current.some((item) => item.fingerprint === anomaly.fingerprint)) return current;
+      return [
+        {
+          id: anomaly.id,
+          fingerprint: anomaly.fingerprint,
+          dismissedAt: new Date().toISOString(),
+        },
+        ...current,
+      ];
+    });
+    setTransientNotice(locale === "zh-CN" ? "异常已标记为已处理，不再提示" : "Anomaly marked handled and hidden from alerts", "success");
+  }
+
+  function restoreAnomaly(anomaly: WorkspaceAnomaly) {
+    setDismissedAnomalies((current) => current.filter((item) => item.fingerprint !== anomaly.fingerprint));
+    setTransientNotice(locale === "zh-CN" ? "异常提醒已恢复" : "Anomaly alert restored", "info");
+  }
+
+  function clearDismissedAnomalies() {
+    setDismissedAnomalies([]);
+    setTransientNotice(locale === "zh-CN" ? "已恢复全部异常提醒" : "All anomaly alerts restored", "info");
   }
 
   async function refreshAll() {
@@ -2366,7 +2463,17 @@ export default function App() {
 
             {workspaceLevel === "detail" ? (
               selectedTask && selectedRequirement ? (
-                <TaskDetail requirement={selectedRequirement} task={selectedTask} locale={locale} onMutate={mutateTask} onRespond={respondToTask} />
+                <TaskDetail
+                  requirement={selectedRequirement}
+                  task={selectedTask}
+                  locale={locale}
+                  onMutate={mutateTask}
+                  onRespond={respondToTask}
+                  anomalies={selectedRequirementAnomalies}
+                  dismissedAnomalyFingerprints={dismissedAnomalyFingerprints}
+                  onDismissAnomaly={dismissAnomaly}
+                  onRestoreAnomaly={restoreAnomaly}
+                />
               ) : (
                 <div className="detail-empty">{t.noTask}</div>
               )
@@ -2403,28 +2510,39 @@ export default function App() {
             </div>
             <div className="section-head" style={{ marginTop: "1.25rem" }}>
               <h2>{locale === "zh-CN" ? "异常队列" : "Anomaly queue"}</h2>
+              {dismissedAnomalies.length ? (
+                <button className="ghost" type="button" onClick={clearDismissedAnomalies}>
+                  {locale === "zh-CN" ? `恢复已闭环 ${dismissedAnomalies.length}` : `Restore handled ${dismissedAnomalies.length}`}
+                </button>
+              ) : null}
             </div>
             <div className="stack">
-              {workspaceAnomalies.length ? (
-                workspaceAnomalies.map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    className="entity-card task-card"
-                    onClick={() => {
-                      const task = visibleTasks.find((candidate) => candidate.id === item.taskId);
-                      if (!task) return;
-                      const requirement = visibleRequirements.find((candidate) => candidate.latestAttemptId === task.id || candidate.attempts.some((attempt) => attempt.id === task.id));
-                      if (!requirement) return;
-                      openRequirement(requirement);
-                    }}
-                  >
-                    <div className="entity-topline">
-                      <span className="title clamp-2">{item.title}</span>
-                      <span className={`badge status-${item.status}`}>{statusLabel[item.status][locale]}</span>
+              {visibleWorkspaceAnomalies.length ? (
+                visibleWorkspaceAnomalies.map((item) => (
+                  <div key={item.id} className="entity-card task-card anomaly-card">
+                    <button
+                      type="button"
+                      className="anomaly-open"
+                      onClick={() => {
+                        const task = visibleTasks.find((candidate) => candidate.id === item.taskId);
+                        if (!task) return;
+                        const requirement = visibleRequirements.find((candidate) => candidate.latestAttemptId === task.id || candidate.attempts.some((attempt) => attempt.id === task.id));
+                        if (!requirement) return;
+                        openRequirement(requirement);
+                      }}
+                    >
+                      <div className="entity-topline">
+                        <span className="title clamp-2">{item.title}</span>
+                        <span className={`badge status-${item.status}`}>{statusLabel[item.status][locale]}</span>
+                      </div>
+                      <div className="entity-copy entity-preview wrap-anywhere clamp-3">{item.detail}</div>
+                    </button>
+                    <div className="action-row">
+                      <button type="button" className="ghost" onClick={() => dismissAnomaly(item)}>
+                        {locale === "zh-CN" ? "标记已处理" : "Mark handled"}
+                      </button>
                     </div>
-                    <div className="entity-copy entity-preview wrap-anywhere clamp-3">{item.detail}</div>
-                  </button>
+                  </div>
                 ))
               ) : (
                 <div className="detail-empty">{locale === "zh-CN" ? "当前没有异常需求" : "No anomalous requirements"}</div>
@@ -2724,12 +2842,20 @@ function TaskDetail({
   locale,
   onMutate,
   onRespond,
+  anomalies,
+  dismissedAnomalyFingerprints,
+  onDismissAnomaly,
+  onRestoreAnomaly,
 }: {
   requirement: Requirement;
   task: Task;
   locale: Locale;
   onMutate: (taskId: string, action: "stop" | "retry") => Promise<void>;
   onRespond: (taskId: string, decision: "approve" | "reject", feedback: string) => Promise<void>;
+  anomalies: WorkspaceAnomaly[];
+  dismissedAnomalyFingerprints: Set<string>;
+  onDismissAnomaly: (anomaly: WorkspaceAnomaly) => void;
+  onRestoreAnomaly: (anomaly: WorkspaceAnomaly) => void;
 }) {
   const [showRawLogs, setShowRawLogs] = useState(false);
   const logViews = buildLogViews(task.logs);
@@ -2806,6 +2932,39 @@ function TaskDetail({
           <div className="info-card full-width">
             <div className="info-label">{locale === "zh-CN" ? "未完成原因" : "Why not completed"}</div>
             <div className="wrap-anywhere preserve-breaks">{normalizeDisplayText(task.openFailureReason)}</div>
+          </div>
+        ) : null}
+
+        {anomalies.length ? (
+          <div className="info-card full-width">
+            <div className="info-label">{locale === "zh-CN" ? "当前异常闭环" : "Current anomaly handling"}</div>
+            <div className="stack compact">
+              {anomalies.map((anomaly) => {
+                const isDismissed = dismissedAnomalyFingerprints.has(anomaly.fingerprint);
+                return (
+                  <div key={anomaly.id} className="log-item">
+                    <strong>{statusLabel[anomaly.status][locale]}</strong>
+                    <br />
+                    <span className="preserve-breaks">{normalizeDisplayText(anomaly.detail)}</span>
+                    <div className="action-row detail-subactions">
+                      <button
+                        type="button"
+                        className="ghost"
+                        onClick={() => (isDismissed ? onRestoreAnomaly(anomaly) : onDismissAnomaly(anomaly))}
+                      >
+                        {isDismissed
+                          ? locale === "zh-CN"
+                            ? "恢复提醒"
+                            : "Restore alert"
+                          : locale === "zh-CN"
+                            ? "标记已处理"
+                            : "Mark handled"}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         ) : null}
 

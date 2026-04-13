@@ -429,6 +429,25 @@ button.primary:not(:disabled) {
   gap: 0.55rem;
 }
 
+.anomaly-card {
+  padding: 0.9rem 0.95rem;
+}
+
+.anomaly-open {
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.anomaly-open:hover {
+  background: transparent;
+}
+
 .entity-card:hover {
   border-color: var(--line-strong);
   background: color-mix(in srgb, var(--surface-2) 82%, var(--brand-soft) 18%);
@@ -606,6 +625,10 @@ textarea {
 
 .detail-actions {
   justify-content: flex-end;
+}
+
+.detail-subactions {
+  margin-top: 0.55rem;
 }
 
 .usage-grid {
