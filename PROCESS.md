@@ -249,3 +249,10 @@ no changes added to commit (use "git add" and/or "git commit -a")
 - Resolution: increased spacing between usage sections, widened the usage-card gaps/padding, and included the latest CLI status snapshot timestamp in the fallback summary when member used/total quota values are unavailable.
 - Prevention: quota/operator summary surfaces need their own spacing scale instead of inheriting generic card density; when the backend only exposes a partial CLI snapshot, the UI should say which snapshot it is using and why full quota totals are still missing.
 - Commit ID: `a1000e9`
+
+## 2026-04-13
+
+- Problem: status filters were added to the pending-approval rail and anomaly queue even though those queues are already singular-purpose, and the remaining desktop filters rendered on a separate row to the right of the section title which broke the control-plane header rhythm.
+- Resolution: removed status filtering from approvals and anomalies, moved the project/requirement status filter into the same header row as the workspace title, and kept mobile fallback wrapping only for narrow screens.
+- Prevention: only add filters where they reduce ambiguity in multi-state lists, and when a filter belongs to a list header, compose it inside the same header container first instead of bolting on an extra row.
+- Commit ID: pending

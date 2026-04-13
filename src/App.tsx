@@ -904,8 +904,6 @@ export default function App() {
   const [isMobileViewDrawerOpen, setIsMobileViewDrawerOpen] = useState(false);
   const [projectStatusFilter, setProjectStatusFilter] = useState<StatusFilterValue>(STATUS_FILTER_ALL);
   const [requirementStatusFilter, setRequirementStatusFilter] = useState<StatusFilterValue>(STATUS_FILTER_ALL);
-  const [approvalStatusFilter, setApprovalStatusFilter] = useState<StatusFilterValue>(STATUS_FILTER_ALL);
-  const [anomalyStatusFilter, setAnomalyStatusFilter] = useState<StatusFilterValue>(STATUS_FILTER_ALL);
   const pollTokenRef = useRef(0);
   const selectedProjectIdRef = useRef(selectedProjectId);
   const selectedTaskIdRef = useRef(selectedTaskId);
@@ -990,16 +988,6 @@ export default function App() {
   const filteredSelectedProjectRequirements = useMemo(
     () => selectedProjectRequirements.filter((requirement) => matchesStatusFilter(requirement.status, requirementStatusFilter)),
     [requirementStatusFilter, selectedProjectRequirements],
-  );
-
-  const filteredApprovals = useMemo(
-    () => approvals.filter((approval) => matchesStatusFilter(approval.task.status, approvalStatusFilter)),
-    [approvalStatusFilter, approvals],
-  );
-
-  const filteredWorkspaceAnomalies = useMemo(
-    () => visibleWorkspaceAnomalies.filter((item) => matchesStatusFilter(item.status, anomalyStatusFilter)),
-    [anomalyStatusFilter, visibleWorkspaceAnomalies],
   );
 
   const t = useMemo(
@@ -2427,20 +2415,29 @@ export default function App() {
               </div>
             </div>
 
-            <div className="panel-intro">
+            <div className={`panel-intro ${workspaceLevel === "detail" ? "" : "panel-intro-with-filter"}`.trim()}>
               <div>
                 <h2>{workspaceTitle}</h2>
                 <div className="meta">{workspaceDescription}</div>
               </div>
-            </div>
-
-            {workspaceLevel === "projects" ? (
-              <>
+              {workspaceLevel === "projects" ? (
                 <StatusFilterBar
                   locale={locale}
                   value={projectStatusFilter}
                   onChange={setProjectStatusFilter}
                 />
+              ) : null}
+              {workspaceLevel === "tasks" ? (
+                <StatusFilterBar
+                  locale={locale}
+                  value={requirementStatusFilter}
+                  onChange={setRequirementStatusFilter}
+                />
+              ) : null}
+            </div>
+
+            {workspaceLevel === "projects" ? (
+              <>
                 <div className="entity-grid">
                   {filteredProjects.length ? (
                     filteredProjects.map((project) => (
@@ -2477,11 +2474,6 @@ export default function App() {
 
             {workspaceLevel === "tasks" ? (
               <>
-                <StatusFilterBar
-                  locale={locale}
-                  value={requirementStatusFilter}
-                  onChange={setRequirementStatusFilter}
-                />
                 <div className="entity-grid">
                   {filteredSelectedProjectRequirements.length ? (
                     filteredSelectedProjectRequirements.map((requirement) => (
@@ -2535,14 +2527,9 @@ export default function App() {
                 {t.refresh}
               </button>
             </div>
-            <StatusFilterBar
-              locale={locale}
-              value={approvalStatusFilter}
-              onChange={setApprovalStatusFilter}
-            />
             <div className="stack">
-              {filteredApprovals.length ? (
-                filteredApprovals.map((approval) => (
+              {approvals.length ? (
+                approvals.map((approval) => (
                   <ApprovalCard
                     key={approval.id}
                     approval={approval}
@@ -2558,20 +2545,15 @@ export default function App() {
                   />
                 ))
               ) : (
-                <div className="detail-empty">{locale === "zh-CN" ? "当前筛选下没有待审批" : "No approvals match this status filter"}</div>
+                <div className="detail-empty">{locale === "zh-CN" ? "当前没有待审批" : "No pending approvals"}</div>
               )}
             </div>
             <div className="section-head" style={{ marginTop: "1.25rem" }}>
               <h2>{locale === "zh-CN" ? "异常队列" : "Anomaly queue"}</h2>
             </div>
-            <StatusFilterBar
-              locale={locale}
-              value={anomalyStatusFilter}
-              onChange={setAnomalyStatusFilter}
-            />
             <div className="stack">
-              {filteredWorkspaceAnomalies.length ? (
-                filteredWorkspaceAnomalies.map((item) => (
+              {visibleWorkspaceAnomalies.length ? (
+                visibleWorkspaceAnomalies.map((item) => (
                   <div key={item.id} className="entity-card task-card anomaly-card">
                     <button
                       type="button"
@@ -2598,7 +2580,7 @@ export default function App() {
                   </div>
                 ))
               ) : (
-                <div className="detail-empty">{locale === "zh-CN" ? "当前筛选下没有异常需求" : "No anomalies match this status filter"}</div>
+                <div className="detail-empty">{locale === "zh-CN" ? "当前没有异常需求" : "No anomalies"}</div>
               )}
             </div>
           </article>
