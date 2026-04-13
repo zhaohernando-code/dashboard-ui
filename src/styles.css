@@ -52,6 +52,7 @@ body,
 
 body {
   font-family: var(--font-body);
+  line-height: 1.6;
   color: var(--text);
   background:
     radial-gradient(circle at top left, var(--bg-accent), transparent 26rem),
@@ -149,6 +150,7 @@ h2,
 h3 {
   font-family: var(--font-head);
   margin: 0;
+  line-height: 1.3;
 }
 
 .brand-subtitle,
@@ -160,6 +162,7 @@ h3 {
 
 .brand-subtitle {
   font-size: 0.85rem;
+  line-height: 1.55;
 }
 
 .topbar-right {
@@ -176,6 +179,7 @@ h3 {
   font-size: 0.84rem;
   color: var(--text-dim);
   white-space: nowrap;
+  line-height: 1.45;
 }
 
 .status-strip {
@@ -228,7 +232,7 @@ h3 {
 
 .device-card,
 .card {
-  padding: 0.95rem;
+  padding: 1rem;
 }
 
 .device-card {
@@ -285,6 +289,7 @@ button,
   background: var(--surface-3);
   cursor: pointer;
   transition: transform 140ms ease, border-color 140ms ease, background-color 140ms ease;
+  line-height: 1.45;
 }
 
 button:hover,
@@ -412,7 +417,7 @@ button.primary:not(:disabled) {
 
 .entity-card {
   width: 100%;
-  padding: 0.9rem;
+  padding: 0.98rem;
   text-align: left;
 }
 
@@ -449,6 +454,12 @@ button.primary:not(:disabled) {
 
 .entity-copy {
   color: var(--text);
+  font-size: 0.95rem;
+  line-height: 1.65;
+}
+
+.entity-preview {
+  min-height: calc(1.65em * 3);
 }
 
 .stats-pill,
@@ -510,6 +521,7 @@ select {
   background: var(--surface);
   color: var(--text);
   padding: 0.64rem 0.75rem;
+  line-height: 1.55;
 }
 
 textarea {
@@ -553,7 +565,7 @@ textarea {
 .usage-item,
 .tool-item,
 .approval-item {
-  padding: 0.72rem 0.8rem;
+  padding: 0.82rem 0.88rem;
 }
 
 .full-width {
@@ -567,6 +579,15 @@ textarea {
   text-transform: uppercase;
   letter-spacing: 0.04em;
   margin-bottom: 0.35rem;
+}
+
+.meta {
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+
+.title {
+  line-height: 1.4;
 }
 
 .action-row {
@@ -752,9 +773,8 @@ textarea {
 }
 
 .header-switch {
-  min-width: 220px;
   min-height: 62px;
-  padding: 0.72rem 0.78rem;
+  padding: 0.72rem 0.82rem;
 }
 
 .header-switch .mobile-nav-action-label {
@@ -762,7 +782,7 @@ textarea {
 }
 
 .locale-switch-card {
-  min-width: 248px;
+  min-width: 0;
 }
 
 .header-logout {
@@ -778,6 +798,7 @@ textarea {
 
 .mobile-nav-action-label {
   font-weight: 700;
+  line-height: 1.4;
 }
 
 .mobile-nav-action-hint {
@@ -791,24 +812,68 @@ textarea {
   flex: 1;
 }
 
-.switch-state-text {
-  margin-top: 0.2rem;
-  color: var(--text-dim);
-  font-size: 0.78rem;
-  font-weight: 600;
-}
-
-.header-switch .ant-switch {
-  flex: 0 0 auto;
-}
-
 .locale-segmented {
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  min-width: 0;
+  display: inline-flex;
+  padding: 0.22rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-3);
+  gap: 0.22rem;
 }
 
-.locale-segmented .ant-segmented-item-label {
-  min-width: 4.4rem;
+.theme-toggle,
+.locale-segment {
+  position: relative;
+  overflow: hidden;
+}
+
+.theme-toggle {
+  width: 60px;
+  min-width: 60px;
+  min-height: 32px;
+  padding: 3px;
+  border-radius: 999px;
+  border-color: var(--line);
+  background: color-mix(in srgb, var(--surface-3) 88%, var(--line) 12%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.theme-toggle.is-active {
+  background: linear-gradient(135deg, var(--brand), var(--brand-2));
+}
+
+.theme-toggle-handle {
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 4px 10px rgba(17, 30, 52, 0.22);
+  transform: translateX(0);
+  transition: transform 160ms ease;
+}
+
+.theme-toggle.is-active .theme-toggle-handle {
+  transform: translateX(28px);
+}
+
+.locale-segment {
+  min-width: 4rem;
+  padding: 0.42rem 0.76rem;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-dim);
   font-weight: 600;
+}
+
+.locale-segment.is-active {
+  background: color-mix(in srgb, var(--brand) 14%, var(--surface));
+  color: var(--brand);
 }
 
 .icon-button {
@@ -860,6 +925,11 @@ textarea {
 .entity-card {
   overflow-wrap: anywhere;
   word-break: break-word;
+}
+
+.preserve-breaks {
+  white-space: pre-wrap;
+  line-height: 1.68;
 }
 
 .clamp-2,
