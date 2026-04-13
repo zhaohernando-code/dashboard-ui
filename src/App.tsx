@@ -64,6 +64,9 @@ type Task = {
   workspacePath: string;
   branchName: string;
   publishStatus?: string;
+  publishMethod?: string;
+  publishVerified?: boolean;
+  healthFlags?: string[];
   openFailureReason?: string;
   acceptanceCriteria?: Array<{ id: string; text: string }>;
   verificationResults?: Array<{ criterionId: string; type: string; status: string; evidence: string }>;
@@ -86,6 +89,9 @@ type Requirement = {
   acceptanceCompleted: number;
   acceptanceTotal: number;
   publishStatus?: string;
+  publishMethod?: string;
+  publishVerified?: boolean;
+  healthFlags?: string[];
   openFailureReason?: string;
   userSummary?: string;
   acceptanceCriteria?: Array<{ id: string; text: string }>;
@@ -592,6 +598,9 @@ function buildRequirementsFromTasks(tasks: Task[]) {
         acceptanceCompleted: accepted,
         acceptanceTotal: total,
         publishStatus: latest.publishStatus,
+        publishMethod: latest.publishMethod,
+        publishVerified: latest.publishVerified,
+        healthFlags: latest.healthFlags,
         openFailureReason: latest.openFailureReason,
         userSummary: latest.userSummary || latest.summary,
         acceptanceCriteria: latest.acceptanceCriteria,
@@ -751,6 +760,32 @@ export default function App() {
     () => visibleRequirements.find((requirement) => requirement.id === selectedRequirementId) ?? null,
     [selectedRequirementId, visibleRequirements],
   );
+
+  const workspaceAnomalies = useMemo(() => {
+    const result: Array<{ id: string; title: string; status: TaskStatus; detail: string; taskId: string }> = [];
+    for (const requirement of visibleRequirements) {
+      if (requirement.status === "stopped" || requirement.status === "needs_revision" || requirement.status === "publish_failed") {
+        result.push({
+          id: `${requirement.id}:${requirement.status}`,
+          title: requirement.title,
+          status: requirement.status,
+          detail: requirement.openFailureReason || requirement.userSummary || getRequirementPreview(requirement, locale),
+          taskId: requirement.latestAttemptId,
+        });
+        continue;
+      }
+      if ((requirement.healthFlags || []).length) {
+        result.push({
+          id: `${requirement.id}:health`,
+          title: requirement.title,
+          status: requirement.status,
+          detail: `${locale === "zh-CN" ? "健康标记" : "Health flags"}: ${(requirement.healthFlags || []).join(", ")}`,
+          taskId: requirement.latestAttemptId,
+        });
+      }
+    }
+    return result;
+  }, [locale, visibleRequirements]);
 
   const visibleProjects = useMemo(
     () => (runtimeMode === "github-direct" ? buildRemoteProjects(visibleTasks) : mergeProjectStats(projects, visibleTasks)),
@@ -2224,6 +2259,35 @@ export default function App() {
                 ))
               ) : (
                 <div className="detail-empty">{locale === "zh-CN" ? "当前没有待审批" : "No approvals pending"}</div>
+              )}
+            </div>
+            <div className="section-head" style={{ marginTop: "1.25rem" }}>
+              <h2>{locale === "zh-CN" ? "异常队列" : "Anomaly queue"}</h2>
+            </div>
+            <div className="stack">
+              {workspaceAnomalies.length ? (
+                workspaceAnomalies.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className="entity-card task-card"
+                    onClick={() => {
+                      const task = visibleTasks.find((candidate) => candidate.id === item.taskId);
+                      if (!task) return;
+                      const requirement = visibleRequirements.find((candidate) => candidate.latestAttemptId === task.id || candidate.attempts.some((attempt) => attempt.id === task.id));
+                      if (!requirement) return;
+                      openRequirement(requirement);
+                    }}
+                  >
+                    <div className="entity-topline">
+                      <span className="title clamp-2">{item.title}</span>
+                      <span className={`badge status-${item.status}`}>{statusLabel[item.status][locale]}</span>
+                    </div>
+                    <div className="entity-copy entity-preview wrap-anywhere clamp-3">{item.detail}</div>
+                  </button>
+                ))
+              ) : (
+                <div className="detail-empty">{locale === "zh-CN" ? "当前没有异常需求" : "No anomalous requirements"}</div>
               )}
             </div>
           </article>
