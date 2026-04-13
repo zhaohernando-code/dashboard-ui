@@ -95,7 +95,7 @@
 
 ## 2026-04-13
 
-- Problem: the desktop/mobile theme and language switches still used a custom track with overlaid state text, so the text did not move consistently with the thumb; the switch cards also carried extra hint copy, the right-side approvals panel could appear visually centered, and long task summaries in detail view were too easy to truncate in a narrow two-column card.
-- Resolution: replaced the overlaid switch track with a segmented two-state toggle for both desktop and mobile, removed the extra helper text under theme/language controls, pinned the approvals side panel to top-start alignment, and made the task summary card span the full detail width with `pre-wrap` text rendering.
-- Prevention: when a toggle needs explicit state labels, do not place moving text inside the same animated track as the thumb; use a segmented control with fixed label slots, and let long task-detail narrative fields occupy a full-width block instead of sharing a narrow metadata grid.
+- Problem: the create-task dialog regressed again: submit success could still leave the modal open with no visible completion path, and the modal close icon/title spacing no longer matched the expected dashboard dialog spec.
+- Resolution: captured the form element synchronously before any awaited request in both create handlers, then used that stable reference for `reset()` and close; added dialog-scoped header spacing and a borderless close icon treatment aligned with Ant Design style expectations.
+- Prevention: when a previous bug fix depends on an async event-handling invariant, keep that invariant in follow-up refactors and verify the full UX path manually after submit; modal-specific affordances must use dialog-scoped styles instead of inheriting generic icon-button chrome.
 - Commit ID: N/A（当前环境未执行 git 提交）
