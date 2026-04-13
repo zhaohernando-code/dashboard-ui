@@ -274,3 +274,10 @@ no changes added to commit (use "git add" and/or "git commit -a")
 - Prevention: Finalization path now records and surfaces publish outcomes to avoid silent drift.
 - Commit ID: 54b2e92
 - Context: project=dashboard-ui, source=issue #30
+
+## 2026-04-13
+
+- Problem: project/task creation did not let the operator choose a reasoning level, so every new request silently inherited whatever Codex CLI default happened to be on the machine instead of the platform owning an explicit execution profile.
+- Resolution: added `Model` and `Reasoning Level` controls to the create-project/create-task dialogs, defaulted them to `gpt-5.4` + `high`, and embedded the chosen execution profile into both direct GitHub issue payloads and local API issue-task requests.
+- Prevention: creation flows should emit an explicit execution profile instead of relying on ambient CLI defaults; if the UI claims a default model or reasoning level, that value must be serialized into the task payload so retries/imports preserve it.
+- Commit ID: `8b04cf7`
