@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
 type TaskStatus =
+  | "pending_capture"
   | "pending"
   | "running"
   | "waiting_user"
@@ -141,6 +142,7 @@ const tabs = [
 ] as const;
 
 const statusLabel: Record<TaskStatus, Record<Locale, string>> = {
+  pending_capture: { "zh-CN": "待捕获", "en-US": "Awaiting pickup" },
   pending: { "zh-CN": "等待中", "en-US": "Pending" },
   running: { "zh-CN": "运行中", "en-US": "Running" },
   waiting_user: { "zh-CN": "待你确认", "en-US": "Awaiting Approval" },
@@ -210,7 +212,7 @@ function parseStatusFromComments(comments: Array<{ body: string }>, fallbackClos
     if (statusMatch) {
       taskId = statusMatch[1];
       const next = statusMatch[2].toLowerCase() as TaskStatus;
-      if (["pending", "running", "waiting_user", "failed", "completed", "stopped"].includes(next)) {
+      if (["pending_capture", "pending", "running", "waiting_user", "failed", "completed", "stopped"].includes(next)) {
         status = next;
       }
       const summaryMatch = body.match(/Summary:\s*([\s\S]+)/i);
@@ -252,6 +254,54 @@ function buildRemoteProjects(tasks: Task[]) {
         repository: "",
         toolRoute: `/tools/${task.projectId}`,
         taskStats: { total: 0, running: 0, failed: 0, waitingUser: 0, completed: 0 },
+      });
+    }
+    const project = projectMap.get(task.projectId)!;
+    project.taskStats.total += 1;
+    if (task.status === "running") project.taskStats.running += 1;
+    if (task.status === "failed") project.taskStats.failed += 1;
+    if (task.status === "waiting_user") project.taskStats.waitingUser += 1;
+    if (task.status === "completed") project.taskStats.completed += 1;
+  }
+
+  return Array.from(projectMap.values());
+}
+
+function mergeProjectStats(baseProjects: Project[], tasks: Task[]) {
+  const projectMap = new Map(
+    baseProjects.map((project) => [
+      project.id,
+      {
+        ...project,
+        taskStats: {
+          total: 0,
+          running: 0,
+          failed: 0,
+          waitingUser: 0,
+          completed: 0,
+        },
+      },
+    ]),
+  );
+
+  for (const task of tasks) {
+    if (!projectMap.has(task.projectId)) {
+      projectMap.set(task.projectId, {
+        id: task.projectId,
+        name: getProjectDisplayName(task.projectId, "en-US"),
+        description:
+          task.projectId === AUTO_ROUTE_PROJECT_ID
+            ? "Composite or cross-project work waiting for AI routing."
+            : "",
+        repository: "",
+        toolRoute: `/tools/${task.projectId}`,
+        taskStats: {
+          total: 0,
+          running: 0,
+          failed: 0,
+          waitingUser: 0,
+          completed: 0,
+        },
       });
     }
     const project = projectMap.get(task.projectId)!;
@@ -366,6 +416,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<(typeof tabs)[number]["id"]>("quest-center");
   const [projects, setProjects] = useState<Project[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [optimisticTasks, setOptimisticTasks] = useState<Task[]>([]);
   const [approvals, setApprovals] = useState<Approval[]>([]);
   const [tools, setTools] = useState<Array<{ id: string; name: string; route: string; description: string }>>([]);
   const [usage, setUsage] = useState<UsageOverview | null>(null);
@@ -387,18 +438,38 @@ export default function App() {
   const selectedTaskIdRef = useRef(selectedTaskId);
 
   const selectedTask = useMemo(
-    () => tasks.find((task) => task.id === selectedTaskId) ?? null,
-    [selectedTaskId, tasks],
+    () => tasks.find((task) => task.id === selectedTaskId) ?? optimisticTasks.find((task) => task.id === selectedTaskId) ?? null,
+    [optimisticTasks, selectedTaskId, tasks],
+  );
+
+  const visibleTasks = useMemo(() => {
+    if (!optimisticTasks.length) {
+      return tasks;
+    }
+    const resolvedIssueNumbers = new Set(tasks.map((task) => task.issueNumber).filter((value): value is number => typeof value === "number"));
+    const resolvedKeys = new Set(tasks.map((task) => `${task.projectId}::${task.type}::${task.title}::${task.description}`));
+    const pendingOnly = optimisticTasks.filter((task) => {
+      if (typeof task.issueNumber === "number" && resolvedIssueNumbers.has(task.issueNumber)) {
+        return false;
+      }
+      return !resolvedKeys.has(`${task.projectId}::${task.type}::${task.title}::${task.description}`);
+    });
+    return [...pendingOnly, ...tasks];
+  }, [optimisticTasks, tasks]);
+
+  const visibleProjects = useMemo(
+    () => (runtimeMode === "github-direct" ? buildRemoteProjects(visibleTasks) : mergeProjectStats(projects, visibleTasks)),
+    [projects, runtimeMode, visibleTasks],
   );
 
   const selectedProject = useMemo(
-    () => projects.find((project) => project.id === selectedProjectId) ?? null,
-    [projects, selectedProjectId],
+    () => visibleProjects.find((project) => project.id === selectedProjectId) ?? null,
+    [selectedProjectId, visibleProjects],
   );
 
   const selectedProjectTasks = useMemo(
-    () => tasks.filter((task) => task.projectId === selectedProjectId),
-    [selectedProjectId, tasks],
+    () => visibleTasks.filter((task) => task.projectId === selectedProjectId),
+    [selectedProjectId, visibleTasks],
   );
 
   const t = useMemo(
@@ -515,7 +586,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!projects.length) {
+    if (!visibleProjects.length) {
       setSelectedProjectId("");
       setSelectedTaskId("");
       setWorkspaceLevel("projects");
@@ -524,14 +595,14 @@ export default function App() {
 
     if (!selectedProjectId) return;
 
-    if (!projects.some((project) => project.id === selectedProjectId)) {
-      setSelectedProjectId(projects[0].id);
+    if (!visibleProjects.some((project) => project.id === selectedProjectId)) {
+      setSelectedProjectId(visibleProjects[0].id);
       setWorkspaceLevel("projects");
     }
-  }, [projects, selectedProjectId]);
+  }, [selectedProjectId, visibleProjects]);
 
   useEffect(() => {
-    if (!tasks.length) {
+    if (!visibleTasks.length) {
       setSelectedTaskId("");
       if (workspaceLevel === "detail") setWorkspaceLevel("tasks");
       return;
@@ -539,7 +610,7 @@ export default function App() {
 
     if (!selectedTaskId) return;
 
-    const nextTask = tasks.find((task) => task.id === selectedTaskId);
+    const nextTask = visibleTasks.find((task) => task.id === selectedTaskId);
     if (!nextTask) {
       setSelectedTaskId("");
       if (workspaceLevel === "detail") setWorkspaceLevel("tasks");
@@ -549,7 +620,21 @@ export default function App() {
     if (nextTask.projectId !== selectedProjectId) {
       setSelectedProjectId(nextTask.projectId);
     }
-  }, [selectedProjectId, selectedTaskId, tasks, workspaceLevel]);
+  }, [selectedProjectId, selectedTaskId, visibleTasks, workspaceLevel]);
+
+  useEffect(() => {
+    if (!optimisticTasks.length) return;
+    const resolvedIssueNumbers = new Set(tasks.map((task) => task.issueNumber).filter((value): value is number => typeof value === "number"));
+    const resolvedKeys = new Set(tasks.map((task) => `${task.projectId}::${task.type}::${task.title}::${task.description}`));
+    setOptimisticTasks((current) =>
+      current.filter((task) => {
+        if (typeof task.issueNumber === "number" && resolvedIssueNumbers.has(task.issueNumber)) {
+          return false;
+        }
+        return !resolvedKeys.has(`${task.projectId}::${task.type}::${task.title}::${task.description}`);
+      }),
+    );
+  }, [optimisticTasks.length, tasks]);
 
   async function api<T>(path: string, init?: RequestInit): Promise<T> {
     const response = await fetch(`${DEFAULT_API_BASE}${path}`, {
@@ -786,6 +871,9 @@ export default function App() {
         ).sort((left, right) => (right.issueNumber || 0) - (left.issueNumber || 0));
 
         setTasks(taskList);
+        setOptimisticTasks((current) =>
+          current.filter((task) => !(typeof task.issueNumber === "number" && taskList.some((item) => item.issueNumber === task.issueNumber))),
+        );
         setProjects(buildRemoteProjects(taskList));
         setApprovals(
           taskList
@@ -1018,6 +1106,7 @@ export default function App() {
       const projectId = getTaskProjectId(type, String(form.get("projectId") || "").trim());
       const title = String(form.get("title") || "").trim();
       const description = String(form.get("description") || "").trim();
+      let createdTask: Task | null = null;
 
       if (runtimeMode === "github-direct") {
         const [owner, repoName] = GITHUB_TASK_REPO.split("/");
@@ -1045,6 +1134,23 @@ export default function App() {
             labels: ["codex-task"],
           }),
         });
+        createdTask = {
+          id: `pending-issue-${issue.number}`,
+          issueNumber: issue.number,
+          issueUrl: issue.html_url,
+          projectId,
+          projectName: getProjectDisplayName(projectId, locale),
+          type,
+          title,
+          description,
+          status: "pending_capture",
+          summary: "",
+          planPreview: "",
+          workspacePath: "",
+          branchName: "",
+          logs: [],
+          children: [],
+        };
         setTransientNotice(locale === "zh-CN" ? `任务已入队：Issue #${issue.number}` : `Task queued via issue #${issue.number}`);
       } else if (authConfig?.taskBackend === "github-issues") {
         const queued = await api<{ issue: IssueTask }>("/api/issue-tasks", {
@@ -1056,6 +1162,23 @@ export default function App() {
             description,
           }),
         });
+        createdTask = {
+          id: `pending-issue-${queued.issue.number}`,
+          issueNumber: queued.issue.number,
+          issueUrl: queued.issue.url,
+          projectId,
+          projectName: getProjectDisplayName(projectId, locale),
+          type,
+          title,
+          description,
+          status: "pending_capture",
+          summary: "",
+          planPreview: "",
+          workspacePath: "",
+          branchName: "",
+          logs: [],
+          children: [],
+        };
         setTransientNotice(
           locale === "zh-CN"
             ? `任务已入队：Issue #${queued.issue.number}`
@@ -1072,6 +1195,12 @@ export default function App() {
           }),
         });
         setTransientNotice(locale === "zh-CN" ? "任务已创建" : "Task created");
+      }
+      if (createdTask) {
+        setOptimisticTasks((current) => [createdTask as Task, ...current.filter((task) => task.id !== createdTask!.id)]);
+        setSelectedProjectId(projectId);
+        setSelectedTaskId(createdTask.id);
+        setWorkspaceLevel("tasks");
       }
       (event.currentTarget as HTMLFormElement).reset();
       setCreateDialogMode(null);
@@ -1417,30 +1546,32 @@ export default function App() {
           </div>
         </div>
         <div className="topbar-right">
-          <div className="api-pill">
-            {runtimeMode === "github-direct" ? (locale === "zh-CN" ? "任务队列：" : "Task queue:") : t.localApi}
-            <code>{runtimeMode === "github-direct" ? GITHUB_TASK_REPO : DEFAULT_API_BASE}</code>
-          </div>
-          <button type="button" className="ghost" onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>
-            {theme === "dark" ? (locale === "zh-CN" ? "浅色" : "Light") : locale === "zh-CN" ? "深色" : "Dark"}
-          </button>
-          <button type="button" className="ghost" onClick={() => setLocale(locale === "zh-CN" ? "en-US" : "zh-CN")}>
-            {locale === "zh-CN" ? "English" : "中文"}
+          <HeaderSwitch
+            checked={theme === "dark"}
+            label={t.themeSetting}
+            hint={t.themeSettingHint}
+            stateLabel={theme === "dark" ? "Dark" : "Light"}
+            onToggle={() => setTheme(theme === "dark" ? "light" : "dark")}
+          />
+          <HeaderSwitch
+            checked={locale === "en-US"}
+            label={t.languageSetting}
+            hint={t.languageSettingHint}
+            stateLabel={locale === "zh-CN" ? "中文" : "English"}
+            onToggle={() => setLocale(locale === "zh-CN" ? "en-US" : "zh-CN")}
+          />
+          <button type="button" className="ghost header-logout" onClick={() => void logout()} disabled={!authConfig?.user}>
+            {t.logoutButton}
           </button>
         </div>
       </header>
-
-      <section className="status-strip">
-        <div>{connectionStatus}</div>
-        <div>{authStatus}</div>
-      </section>
 
       {deviceLogin ? (
         <section className="device-card">
           <div className="section-head">
             <h3>{locale === "zh-CN" ? "GitHub 设备登录" : "GitHub Device Login"}</h3>
-            <button type="button" className="ghost" onClick={cancelDeviceLogin}>
-              {locale === "zh-CN" ? "关闭" : "Close"}
+            <button type="button" className="icon-button" aria-label={locale === "zh-CN" ? "关闭" : "Close"} onClick={cancelDeviceLogin}>
+              ×
             </button>
           </div>
           <p className="hint">
@@ -1481,9 +1612,6 @@ export default function App() {
             {t.loginButton}
           </button>
         ) : null}
-        <button type="button" className="ghost" onClick={() => void logout()} disabled={!authConfig?.user}>
-          {t.logoutButton}
-        </button>
       </nav>
 
       <div className="mobile-nav-fab">
@@ -1511,8 +1639,8 @@ export default function App() {
           >
             <div className="section-head">
               <h3>{t.mobileControlTitle}</h3>
-              <button type="button" className="ghost" onClick={() => setIsMobileNavOpen(false)}>
-                {locale === "zh-CN" ? "关闭" : "Close"}
+              <button type="button" className="icon-button" aria-label={locale === "zh-CN" ? "关闭" : "Close"} onClick={() => setIsMobileNavOpen(false)}>
+                ×
               </button>
             </div>
             <div className="mobile-nav-actions">
@@ -1586,8 +1714,8 @@ export default function App() {
           >
             <div className="section-head">
               <h3>{t.mobileViewDrawerTitle}</h3>
-              <button type="button" className="ghost" onClick={() => setIsMobileViewDrawerOpen(false)}>
-                {locale === "zh-CN" ? "关闭" : "Close"}
+              <button type="button" className="icon-button" aria-label={locale === "zh-CN" ? "关闭" : "Close"} onClick={() => setIsMobileViewDrawerOpen(false)}>
+                ×
               </button>
             </div>
             <div className="mobile-nav-tablist">
@@ -1655,8 +1783,8 @@ export default function App() {
 
             {workspaceLevel === "projects" ? (
               <div className="entity-grid">
-                {projects.length ? (
-                  projects.map((project) => (
+                {visibleProjects.length ? (
+                  visibleProjects.map((project) => (
                     <button key={project.id} type="button" className="entity-card project-card" onClick={() => openProject(project.id)}>
                       <div className="entity-topline">
                         <span className="entity-icon" aria-hidden="true">
@@ -1731,7 +1859,7 @@ export default function App() {
                     locale={locale}
                     onRespond={respondToTask}
                     onOpenTask={(taskId) => {
-                      const task = tasks.find((item) => item.id === taskId);
+                      const task = visibleTasks.find((item) => item.id === taskId);
                       if (!task) return;
                       openTask(task);
                     }}
@@ -1841,6 +1969,7 @@ export default function App() {
           mode={createDialogMode}
           projects={projects}
           selectedProjectId={selectedProjectId}
+          closeLabel={locale === "zh-CN" ? "关闭" : "Close"}
           onClose={() => setCreateDialogMode(null)}
           onCreateProject={onCreateProject}
           onCreateTask={onCreateTask}
@@ -1855,6 +1984,7 @@ function CreateDialog({
   mode,
   projects,
   selectedProjectId,
+  closeLabel,
   onClose,
   onCreateProject,
   onCreateTask,
@@ -1863,6 +1993,7 @@ function CreateDialog({
   mode: CreateDialogMode;
   projects: Project[];
   selectedProjectId: string;
+  closeLabel: string;
   onClose: () => void;
   onCreateProject: (event: FormEvent<HTMLFormElement>) => Promise<void>;
   onCreateTask: (event: FormEvent<HTMLFormElement>) => Promise<void>;
@@ -1891,8 +2022,8 @@ function CreateDialog({
       >
         <div className="section-head">
           <h3>{title}</h3>
-          <button type="button" className="ghost" onClick={onClose}>
-            {locale === "zh-CN" ? "关闭" : "Close"}
+          <button type="button" className="icon-button" aria-label={closeLabel} onClick={onClose}>
+            ×
           </button>
         </div>
 
@@ -2084,6 +2215,33 @@ function ApprovalCard({
         </button>
       </div>
     </div>
+  );
+}
+
+function HeaderSwitch({
+  checked,
+  label,
+  hint,
+  stateLabel,
+  onToggle,
+}: {
+  checked: boolean;
+  label: string;
+  hint: string;
+  stateLabel: string;
+  onToggle: () => void;
+}) {
+  return (
+    <button type="button" className={`switch-card header-switch ${checked ? "is-on" : ""}`} role="switch" aria-checked={checked} onClick={onToggle}>
+      <span className="switch-copy">
+        <span className="mobile-nav-action-label">{label}</span>
+        <span className="mobile-nav-action-hint">{hint}</span>
+      </span>
+      <span className="switch-track" aria-hidden="true">
+        <span className="switch-thumb" />
+        <span className="switch-state">{stateLabel}</span>
+      </span>
+    </button>
   );
 }
 
