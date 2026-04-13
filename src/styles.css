@@ -71,7 +71,6 @@ a {
 }
 
 .topbar-card,
-.tabs-card,
 .section-card,
 .pane-card {
   background: var(--surface) !important;
@@ -81,10 +80,43 @@ a {
   backdrop-filter: blur(14px);
 }
 
-.tabs-card,
 .section-card,
 .pane-card {
   margin-top: var(--space-4);
+}
+
+.tabs-strip {
+  margin-top: var(--space-2);
+  padding: 0 8px;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 88%, transparent);
+}
+
+.desktop-tabs .ant-tabs-nav {
+  margin-bottom: 0 !important;
+}
+
+.desktop-tabs .ant-tabs-tab {
+  padding: 14px 0 12px !important;
+  font-family: var(--font-head);
+  font-weight: 700;
+}
+
+.desktop-tabs .ant-tabs-tab + .ant-tabs-tab {
+  margin-left: 24px !important;
+}
+
+.desktop-tabs .ant-tabs-tab-btn {
+  color: var(--text-dim);
+}
+
+.desktop-tabs .ant-tabs-tab-active .ant-tabs-tab-btn {
+  color: var(--text) !important;
+}
+
+.desktop-tabs .ant-tabs-ink-bar {
+  height: 3px !important;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--brand), var(--brand-2));
 }
 
 .brand-wrap,
@@ -207,7 +239,7 @@ a {
 
 .workspace-toolbar,
 .section-header {
-  margin-bottom: var(--space-5);
+  margin-bottom: var(--space-4);
 }
 
 .breadcrumb-row {
@@ -249,15 +281,15 @@ a {
 
 .metric-grid {
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  margin-bottom: var(--space-5);
+  margin-bottom: var(--space-4);
 }
 
 .metric-grid-wide {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-.metric-grid-hero {
-  grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+.metric-grid-summary {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .entity-card,
@@ -289,9 +321,30 @@ a {
 .metric-value.ant-typography {
   margin-top: 0 !important;
   margin-bottom: 0 !important;
+}
+
+.metric-value-hero.ant-typography {
   font-size: clamp(1.6rem, 3vw, 2.4rem) !important;
   line-height: 1.05 !important;
   letter-spacing: -0.04em;
+}
+
+.metric-value-compact.ant-typography {
+  font-size: clamp(1.08rem, 2.1vw, 1.34rem) !important;
+  line-height: 1.25 !important;
+  letter-spacing: -0.02em;
+}
+
+.metric-value-body.ant-typography {
+  font-family: var(--font-body);
+  font-size: 1rem !important;
+  line-height: 1.65 !important;
+  font-weight: 400 !important;
+  letter-spacing: normal;
+}
+
+.usage-summary-card .ant-card-body {
+  padding-block: 16px !important;
 }
 
 .detail-grid {
@@ -322,6 +375,15 @@ a {
 .section-stack {
   display: grid;
   gap: 12px;
+}
+
+.view-pane {
+  margin-top: 0 !important;
+}
+
+.workspace-layout.view-pane > .pane-card,
+.workspace-layout.view-pane .workspace-side > .pane-card {
+  margin-top: 0 !important;
 }
 
 .header-switch-card {
@@ -415,7 +477,7 @@ a {
   .metric-grid,
   .detail-grid,
   .metric-grid-wide,
-  .metric-grid-hero {
+  .metric-grid-summary {
     grid-template-columns: 1fr;
   }
 

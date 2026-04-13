@@ -12,6 +12,7 @@
 
 - Prefer Ant Design layout primitives first: `Layout`, `Flex`, `Space`, `Row`, `Col`, `Tabs`, `Drawer`, `Modal`.
 - Use a single primary workspace surface per view, with optional side context panels.
+- Desktop top-level view switching should render as a slim page-tab strip attached to the content area; do not duplicate auth actions inside that switcher.
 - Section headers must follow one structure: `title + optional subtitle + optional actions`.
 - Breadcrumb or backflow navigation should stay single-level and horizontally scrollable; do not reintroduce dense multi-row navigation.
 - Mobile interaction should use compact control-center patterns built with `Drawer` instead of custom overlapping layers where possible.
@@ -25,6 +26,7 @@
 - Body text: default readable size.
 - Supporting text: one level smaller and lower contrast.
 - Metric value: the only oversized text inside metric cards.
+- Long-form summaries, timestamps, and other sentence-like strings must use body/supporting sizes instead of hero metric numerals.
 - Do not reuse one generic utility class for subtitle, helper text, labels, and captions at the same time.
 
 ## Spacing

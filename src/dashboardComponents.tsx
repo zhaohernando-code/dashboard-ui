@@ -106,6 +106,8 @@ type MetricCardProps = {
   value: string;
   badge?: string;
   extra?: ReactNode;
+  className?: string;
+  valueTone?: "hero" | "compact" | "body";
 };
 
 export function CreateDialog({
@@ -631,10 +633,20 @@ export function SectionHeader({ title, subtitle, actions }: SectionHeaderProps) 
   );
 }
 
-export function MetricCard({ subtitle, title, value, badge, extra }: MetricCardProps) {
+export function MetricCard({
+  subtitle,
+  title,
+  value,
+  badge,
+  extra,
+  className,
+  valueTone = "hero",
+}: MetricCardProps) {
+  const cardClassName = ["metric-card", className].filter(Boolean).join(" ");
+
   return (
-    <Card size="small" className="metric-card">
-      <Space direction="vertical" size={12} className="full-width">
+    <Card size="small" className={cardClassName}>
+      <Space direction="vertical" size={valueTone === "hero" ? 12 : 10} className="full-width">
         <Flex justify="space-between" align="flex-start" gap={12}>
           <Space direction="vertical" size={2}>
             <Typography.Text type="secondary">{subtitle}</Typography.Text>
@@ -646,9 +658,18 @@ export function MetricCard({ subtitle, title, value, badge, extra }: MetricCardP
           </Space>
           {badge ? <Tag>{badge}</Tag> : null}
         </Flex>
-        <Typography.Title level={2} className="metric-value wrap-anywhere">
-          {value}
-        </Typography.Title>
+        {valueTone === "body" ? (
+          <Typography.Paragraph className="metric-value metric-value-body wrap-anywhere">
+            {value}
+          </Typography.Paragraph>
+        ) : (
+          <Typography.Title
+            level={valueTone === "hero" ? 2 : 4}
+            className={`metric-value metric-value-${valueTone} wrap-anywhere`}
+          >
+            {value}
+          </Typography.Title>
+        )}
         {extra ? <div>{extra}</div> : null}
       </Space>
     </Card>

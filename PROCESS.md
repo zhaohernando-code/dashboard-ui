@@ -298,6 +298,11 @@ no changes added to commit (use "git add" and/or "git commit -a")
 
 ## 2026-04-14
 
+- Problem: the desktop dashboard still showed a duplicate login CTA under the top navigation, the view switch row sat too far from the header/content, and the usage overview treated the right-side summary and timestamp fields like oversized metrics, which made the page feel bloated and visually imprecise.
+- Resolution: moved desktop primary view switching to a slim Ant Design tab strip with no duplicate auth button, removed the member quota card from usage, and added compact/body metric value tiers so summaries and time values render at supporting text scale instead of hero-number scale.
+- Prevention: when a value is descriptive text or a timestamp, never reuse the same oversized metric typography as percentage/count hero cards; desktop page-level navigation should stay attached to the content edge and should not repeat header authentication actions.
+- Commit ID: N/A（本回合已完成本地 `npm run check` / `npm run build` 校验，但沙箱禁止创建 `/Users/hernando_zhao/codex/dashboard-ui/.git/worktrees/task-mnxezpgl-hudqcd/index.lock`，无法在当前环境执行 `git add` / `git commit`）
+
 - Problem: clicking the usage overview could blank the entire dashboard because the GitHub-backed status issue intentionally emits a slimmed-down health snapshot without `anomaly.taskIds`, while the usage page still rendered `anomaly.taskIds.length` as if every anomaly always carried a full task list.
 - Resolution: added frontend normalization for platform-health snapshots so missing anomaly task lists are filled with empty arrays before state is stored, and hardened the anomaly renderer to tolerate absent `taskIds`.
 - Prevention: any payload read from the GitHub status issue must be normalized into the dashboard's full runtime shape before rendering; the UI should never assume optional diagnostic arrays are present just because the local API includes them.

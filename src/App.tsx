@@ -16,6 +16,7 @@ import {
   Segmented,
   Space,
   Tag,
+  Tabs,
   Typography,
   theme as antdTheme,
 } from "antd";
@@ -985,44 +986,6 @@ export default function App() {
     [locale],
   );
 
-  const memberUsageSnapshot = useMemo(() => {
-    if (!usage) return null;
-    const hasQuotaNumbers = usage.memberUsageUsed !== null && usage.memberUsageUsed !== undefined
-      && usage.memberUsageTotal !== null && usage.memberUsageTotal !== undefined;
-    const safeRatio = usage.memberUsageRatio !== null && usage.memberUsageRatio !== undefined
-      ? Math.min(Math.max(usage.memberUsageRatio, 0), 1)
-      : hasQuotaNumbers && usage.memberUsageTotal! > 0
-        ? Math.min(Math.max((usage.memberUsageUsed as number) / (usage.memberUsageTotal as number), 0), 1)
-        : null;
-
-    if (!hasQuotaNumbers) {
-      return {
-        available: false,
-        reason:
-          usage.memberUsageReason ||
-          (locale === "zh-CN"
-            ? "接口未返回当前会员的算力总量或已用值。"
-            : "The API did not return the current member quota total or used value."),
-        label: locale === "zh-CN" ? "暂无会员算力数据" : "Member quota unavailable",
-      };
-    }
-
-    const unitSuffix = usage.memberUsageUnit ? ` ${usage.memberUsageUnit}` : "";
-    return {
-      available: true,
-      reason: "",
-      label:
-        locale === "zh-CN"
-          ? `${usage.memberUsageUsed}${unitSuffix} / ${usage.memberUsageTotal}${unitSuffix}`
-          : `${usage.memberUsageUsed}${unitSuffix} / ${usage.memberUsageTotal}${unitSuffix}`,
-      ratio: safeRatio ?? 0,
-      percent: `${Math.round((safeRatio ?? 0) * 100)}%`,
-    };
-  }, [locale, usage]);
-
-  const memberUsagePercentText =
-    memberUsageSnapshot && memberUsageSnapshot.available ? String(memberUsageSnapshot.percent || "0%") : "0%";
-  const memberUsagePercentValue = Number(memberUsagePercentText.replace("%", ""));
   const usageLimitSnapshots = useMemo(() => {
     const primary = usage?.rateLimits?.primary;
     const secondary = usage?.rateLimits?.secondary;
@@ -2340,24 +2303,17 @@ export default function App() {
             ) : null}
 
             {!isMobile ? (
-              <Card className="tabs-card" bordered={false}>
-                <Flex justify="space-between" align="center" gap={16} wrap>
-                  <Segmented
-                    options={tabs.map((tab) => ({ label: tab.label[locale], value: tab.id }))}
-                    value={activeTab}
-                    onChange={(value) => setActiveTab(value as (typeof tabs)[number]["id"])}
-                  />
-                  {!authConfig?.user ? (
-                    <Button
-                      type="primary"
-                      onClick={() => void loginWithGithub()}
-                      disabled={runtimeMode !== "github-direct" && !authConfig?.enabled}
-                    >
-                      {t.loginButton}
-                    </Button>
-                  ) : null}
-                </Flex>
-              </Card>
+              <div className="tabs-strip">
+                <Tabs
+                  activeKey={activeTab}
+                  onChange={(value) => setActiveTab(value as (typeof tabs)[number]["id"])}
+                  items={tabs.map((tab) => ({
+                    key: tab.id,
+                    label: tab.label[locale],
+                  }))}
+                  className="desktop-tabs"
+                />
+              </div>
             ) : (
               <Button
                 type="primary"
@@ -2428,7 +2384,7 @@ export default function App() {
             </Drawer>
 
             {activeTab === "quest-center" ? (
-              <div className="workspace-layout">
+              <div className={isMobile ? "workspace-layout" : "workspace-layout view-pane"}>
                 <Card className="pane-card workspace-main-card" bordered={false}>
                   <Flex justify="space-between" gap={16} wrap className="workspace-toolbar">
                     <div className="breadcrumb-row" aria-label="Breadcrumb">
@@ -2662,7 +2618,7 @@ export default function App() {
             ) : null}
 
             {activeTab === "tools" ? (
-              <Card className="pane-card" bordered={false}>
+              <Card className={isMobile ? "pane-card" : "pane-card view-pane"} bordered={false}>
                 <SectionHeader title={locale === "zh-CN" ? "工具路由" : "Tool routes"} />
                 {tools.length ? (
                   <List
@@ -2690,7 +2646,7 @@ export default function App() {
             ) : null}
 
             {activeTab === "usage" ? (
-              <Card className="pane-card" bordered={false}>
+              <Card className={isMobile ? "pane-card" : "pane-card view-pane"} bordered={false}>
                 <SectionHeader title={locale === "zh-CN" ? "运行用量快照" : "Usage snapshot"} />
                 <div className="metric-grid metric-grid-wide">
                   {usageLimitSnapshots.map((item) => (
@@ -2715,32 +2671,13 @@ export default function App() {
                   ))}
                 </div>
 
-                <div className="metric-grid metric-grid-hero">
-                  <MetricCard
-                    subtitle={locale === "zh-CN" ? "当前会员算力" : "Current member quota"}
-                    title={locale === "zh-CN" ? "会员额度" : "Member quota"}
-                    value={
-                      memberUsageSnapshot?.available
-                        ? memberUsageSnapshot.label
-                        : memberUsageSnapshot?.label || (locale === "zh-CN" ? "暂无会员算力数据" : "Member quota unavailable")
-                    }
-                    extra={
-                      <>
-                        <Progress percent={memberUsagePercentValue} size="small" showInfo={false} />
-                        <Typography.Text type="secondary">
-                          {memberUsageSnapshot?.available
-                            ? locale === "zh-CN"
-                              ? `已使用 ${memberUsageSnapshot.percent}`
-                              : `${memberUsageSnapshot.percent} used`
-                            : memberUsageSnapshot?.reason || usageSummary || (locale === "zh-CN" ? "暂无说明" : "No details")}
-                        </Typography.Text>
-                      </>
-                    }
-                  />
+                <div className="metric-grid metric-grid-summary">
                   <MetricCard
                     subtitle={locale === "zh-CN" ? "摘要" : "Summary"}
                     title={locale === "zh-CN" ? "用量说明" : "Usage overview"}
                     value={usageSummary || (locale === "zh-CN" ? "暂无用量摘要。" : "No usage summary.")}
+                    valueTone="body"
+                    className="usage-summary-card"
                   />
                 </div>
 
@@ -2748,16 +2685,21 @@ export default function App() {
                 {usage ? (
                   <div className="metric-grid">
                     {[
-                      [locale === "zh-CN" ? "总任务数" : "Total tasks", usage.totalTasks],
-                      [locale === "zh-CN" ? "活动任务" : "Active tasks", usage.activeTasks],
-                      [locale === "zh-CN" ? "待审批" : "Pending approvals", usage.pendingApprovals],
-                      [locale === "zh-CN" ? "已完成" : "Completed", usage.completedTasks],
-                      [locale === "zh-CN" ? "失败" : "Failed", usage.failedTasks],
-                      [locale === "zh-CN" ? "预估 token" : "Token estimate", usage.estimatedTokens],
-                      [locale === "zh-CN" ? "Worker 运行次数" : "Worker runs", usage.totalRuns],
-                      [locale === "zh-CN" ? "最近运行" : "Last run", usage.lastRunAt || "n/a"],
-                    ].map(([label, value]) => (
-                      <MetricCard key={String(label)} subtitle={String(label)} value={String(value)} />
+                      { label: locale === "zh-CN" ? "总任务数" : "Total tasks", value: usage.totalTasks, valueTone: "compact" as const },
+                      { label: locale === "zh-CN" ? "活动任务" : "Active tasks", value: usage.activeTasks, valueTone: "compact" as const },
+                      { label: locale === "zh-CN" ? "待审批" : "Pending approvals", value: usage.pendingApprovals, valueTone: "compact" as const },
+                      { label: locale === "zh-CN" ? "已完成" : "Completed", value: usage.completedTasks, valueTone: "compact" as const },
+                      { label: locale === "zh-CN" ? "失败" : "Failed", value: usage.failedTasks, valueTone: "compact" as const },
+                      { label: locale === "zh-CN" ? "预估 token" : "Token estimate", value: usage.estimatedTokens, valueTone: "compact" as const },
+                      { label: locale === "zh-CN" ? "Worker 运行次数" : "Worker runs", value: usage.totalRuns, valueTone: "compact" as const },
+                      { label: locale === "zh-CN" ? "最近运行" : "Last run", value: usage.lastRunAt || "n/a", valueTone: "body" as const },
+                    ].map((item) => (
+                      <MetricCard
+                        key={item.label}
+                        subtitle={item.label}
+                        value={String(item.value)}
+                        valueTone={item.valueTone}
+                      />
                     ))}
                   </div>
                 ) : (
@@ -2768,16 +2710,45 @@ export default function App() {
                 {platformHealth ? (
                   <div className="metric-grid">
                     {[
-                      [locale === "zh-CN" ? "任务后端" : "Task backend", platformHealth.taskBackend || "n/a"],
-                      [locale === "zh-CN" ? "Issue Poller" : "Issue poller", platformHealth.issuePoller.status],
-                      [locale === "zh-CN" ? "轮询周期" : "Poll interval", platformHealth.issuePoller.intervalMs ? `${platformHealth.issuePoller.intervalMs}ms` : "n/a"],
-                      [locale === "zh-CN" ? "最近成功轮询" : "Last poll success", platformHealth.issuePoller.lastSuccessAt || "n/a"],
-                      [locale === "zh-CN" ? "GitHub API 余量" : "GitHub API remaining", platformHealth.githubApi.remaining ?? "n/a"],
-                      [locale === "zh-CN" ? "最近发布方式" : "Last publish method", platformHealth.publishing.lastPublishMethod || "n/a"],
-                      [locale === "zh-CN" ? "待验收需求" : "Awaiting acceptance", platformHealth.taskState.awaitingAcceptance],
-                      [locale === "zh-CN" ? "待返修需求" : "Needs revision", platformHealth.taskState.needsRevision + platformHealth.taskState.publishFailed],
-                    ].map(([label, value]) => (
-                      <MetricCard key={String(label)} subtitle={String(label)} value={String(value)} />
+                      { label: locale === "zh-CN" ? "任务后端" : "Task backend", value: platformHealth.taskBackend || "n/a", valueTone: "body" as const },
+                      { label: locale === "zh-CN" ? "Issue Poller" : "Issue poller", value: platformHealth.issuePoller.status, valueTone: "compact" as const },
+                      {
+                        label: locale === "zh-CN" ? "轮询周期" : "Poll interval",
+                        value: platformHealth.issuePoller.intervalMs ? `${platformHealth.issuePoller.intervalMs}ms` : "n/a",
+                        valueTone: "compact" as const,
+                      },
+                      {
+                        label: locale === "zh-CN" ? "最近成功轮询" : "Last poll success",
+                        value: platformHealth.issuePoller.lastSuccessAt || "n/a",
+                        valueTone: "body" as const,
+                      },
+                      {
+                        label: locale === "zh-CN" ? "GitHub API 余量" : "GitHub API remaining",
+                        value: platformHealth.githubApi.remaining ?? "n/a",
+                        valueTone: "compact" as const,
+                      },
+                      {
+                        label: locale === "zh-CN" ? "最近发布方式" : "Last publish method",
+                        value: platformHealth.publishing.lastPublishMethod || "n/a",
+                        valueTone: "body" as const,
+                      },
+                      {
+                        label: locale === "zh-CN" ? "待验收需求" : "Awaiting acceptance",
+                        value: platformHealth.taskState.awaitingAcceptance,
+                        valueTone: "compact" as const,
+                      },
+                      {
+                        label: locale === "zh-CN" ? "待返修需求" : "Needs revision",
+                        value: platformHealth.taskState.needsRevision + platformHealth.taskState.publishFailed,
+                        valueTone: "compact" as const,
+                      },
+                    ].map((item) => (
+                      <MetricCard
+                        key={item.label}
+                        subtitle={item.label}
+                        value={String(item.value)}
+                        valueTone={item.valueTone}
+                      />
                     ))}
                   </div>
                 ) : (
