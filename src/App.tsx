@@ -120,6 +120,17 @@ type UsageOverview = {
   memberUsageRatio?: number | null;
   memberUsageUnit?: string;
   memberUsageReason?: string;
+  rateLimits?: {
+    primary: UsageLimitWindow | null;
+    secondary: UsageLimitWindow | null;
+  };
+};
+
+type UsageLimitWindow = {
+  usedPercent: number | null;
+  windowMinutes: number | null;
+  resetsAt: string;
+  sourceLabel?: string;
 };
 
 type PlatformHealth = {
@@ -504,6 +515,73 @@ function toFiniteNumber(value: unknown): number | null {
   return null;
 }
 
+function toIsoTimestamp(value: unknown): string {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return new Date(value > 1e12 ? value : value * 1000).toISOString();
+  }
+  if (typeof value === "string" && value.trim()) {
+    const numeric = Number(value);
+    if (Number.isFinite(numeric)) {
+      return new Date(numeric > 1e12 ? numeric : numeric * 1000).toISOString();
+    }
+    const parsed = Date.parse(value);
+    if (!Number.isNaN(parsed)) {
+      return new Date(parsed).toISOString();
+    }
+  }
+  return "";
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : null;
+}
+
+function normalizeLimitWindow(raw: unknown, fallbackWindowMinutes: number): UsageLimitWindow | null {
+  const record = asRecord(raw);
+  if (!record) return null;
+
+  const usedPercentRaw =
+    toFiniteNumber(record.usedPercent) ??
+    toFiniteNumber(record.used_percent) ??
+    toFiniteNumber(record.percent) ??
+    toFiniteNumber(record.percentUsed);
+  const usedPercent = usedPercentRaw === null
+    ? null
+    : usedPercentRaw > 1 && usedPercentRaw <= 100
+      ? usedPercentRaw
+      : usedPercentRaw <= 1
+        ? usedPercentRaw * 100
+        : Math.min(usedPercentRaw, 100);
+  const windowMinutes =
+    toFiniteNumber(record.windowMinutes) ??
+    toFiniteNumber(record.window_minutes) ??
+    toFiniteNumber(record.window) ??
+    fallbackWindowMinutes;
+  const resetsAt = toIsoTimestamp(record.resetsAt ?? record.resets_at ?? record.resetAt);
+  const sourceLabel = String(record.limitName || record.limit_name || "").trim() || undefined;
+
+  if (usedPercent === null && !resetsAt) return null;
+
+  return {
+    usedPercent,
+    windowMinutes,
+    resetsAt,
+    sourceLabel,
+  };
+}
+
+function formatUsageLimitReset(value: string, locale: Locale) {
+  if (!value) return locale === "zh-CN" ? "重置时间未知" : "Reset time unavailable";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return locale === "zh-CN" ? "重置时间未知" : "Reset time unavailable";
+  return date.toLocaleString(locale, {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function normalizeUsageOverview(raw: unknown): UsageOverview {
   const base = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
   const membership =
@@ -542,6 +620,20 @@ function normalizeUsageOverview(raw: unknown): UsageOverview {
       base.quotaReason ||
       "",
     ).trim() || undefined;
+  const rateLimitSources = [
+    asRecord(base.rateLimits),
+    asRecord(base.rate_limits),
+    asRecord(asRecord(base.status)?.rateLimits),
+    asRecord(asRecord(base.status)?.rate_limits),
+  ].filter(Boolean) as Array<Record<string, unknown>>;
+  const primaryLimit =
+    normalizeLimitWindow(rateLimitSources.map((source) => source.primary).find(Boolean), 300) ||
+    normalizeLimitWindow(rateLimitSources.map((source) => source.fiveHour).find(Boolean), 300) ||
+    normalizeLimitWindow(rateLimitSources.map((source) => source["5h"]).find(Boolean), 300);
+  const secondaryLimit =
+    normalizeLimitWindow(rateLimitSources.map((source) => source.secondary).find(Boolean), 10080) ||
+    normalizeLimitWindow(rateLimitSources.map((source) => source.weekly).find(Boolean), 10080) ||
+    normalizeLimitWindow(rateLimitSources.map((source) => source.week).find(Boolean), 10080);
 
   return {
     totalTasks: toFiniteNumber(base.totalTasks) ?? 0,
@@ -557,6 +649,10 @@ function normalizeUsageOverview(raw: unknown): UsageOverview {
     memberUsageRatio,
     memberUsageUnit: String(membershipRecord.unit || base.memberUsageUnit || base.quotaUnit || "").trim() || undefined,
     memberUsageReason,
+    rateLimits: {
+      primary: primaryLimit,
+      secondary: secondaryLimit,
+    },
   };
 }
 
@@ -875,6 +971,48 @@ export default function App() {
   const memberUsagePercentText =
     memberUsageSnapshot && memberUsageSnapshot.available ? String(memberUsageSnapshot.percent || "0%") : "0%";
   const memberUsagePercentValue = Number(memberUsagePercentText.replace("%", ""));
+  const usageLimitSnapshots = useMemo(() => {
+    const primary = usage?.rateLimits?.primary;
+    const secondary = usage?.rateLimits?.secondary;
+
+    return [
+      {
+        key: "primary",
+        title: "5h limit",
+        subtitle: locale === "zh-CN" ? "主窗口" : "Primary window",
+        snapshot: primary,
+      },
+      {
+        key: "secondary",
+        title: "Weekly limit",
+        subtitle: locale === "zh-CN" ? "周窗口" : "Secondary window",
+        snapshot: secondary,
+      },
+    ].map((item) => {
+      const percent = item.snapshot?.usedPercent ?? null;
+      const clampedPercent = percent === null ? 0 : Math.max(0, Math.min(percent, 100));
+      const resetText = item.snapshot?.resetsAt
+        ? formatUsageLimitReset(item.snapshot.resetsAt, locale)
+        : locale === "zh-CN"
+          ? "接口未返回重置时间"
+          : "The API did not return a reset time";
+      return {
+        ...item,
+        available: Boolean(item.snapshot),
+        percentLabel: percent === null
+          ? locale === "zh-CN" ? "暂无百分比" : "No percentage"
+          : `${Math.round(clampedPercent)}%`,
+        progressValue: clampedPercent,
+        resetText,
+        detail: item.snapshot?.windowMinutes
+          ? locale === "zh-CN"
+            ? `${item.snapshot.windowMinutes} 分钟窗口`
+            : `${item.snapshot.windowMinutes} minute window`
+          : item.subtitle,
+        sourceLabel: item.snapshot?.sourceLabel || "",
+      };
+    });
+  }, [locale, usage]);
 
   useEffect(() => {
     localStorage.setItem("codex.locale", locale);
@@ -2327,6 +2465,36 @@ export default function App() {
             <div className="section-head">
               <h2>{locale === "zh-CN" ? "运行用量快照" : "Usage snapshot"}</h2>
             </div>
+            <div className="usage-limit-grid">
+              {usageLimitSnapshots.map((item) => (
+                <section key={item.key} className="usage-limit-card">
+                  <div className="usage-limit-head">
+                    <div>
+                      <div className="meta">{item.subtitle}</div>
+                      <h3>{item.title}</h3>
+                    </div>
+                    {item.sourceLabel ? <span className="stats-pill">{item.sourceLabel}</span> : null}
+                  </div>
+                  <div className="usage-limit-value">
+                    {item.percentLabel}
+                  </div>
+                  <div
+                    className="usage-progress usage-progress-tight"
+                    role="progressbar"
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={item.progressValue}
+                    aria-label={item.title}
+                  >
+                    <div className="usage-progress-bar" style={{ width: `${item.progressValue}%` }} />
+                  </div>
+                  <div className="usage-limit-meta">
+                    <span>{item.available ? item.detail : (locale === "zh-CN" ? "当前接口暂无该窗口数据" : "This API does not currently expose this window")}</span>
+                    <span>{item.resetText}</span>
+                  </div>
+                </section>
+              ))}
+            </div>
             <div className="usage-hero">
               <div className="usage-member-card">
                 <div className="meta">{locale === "zh-CN" ? "当前会员算力" : "Current member quota"}</div>
@@ -2363,7 +2531,10 @@ export default function App() {
                 </div>
               </div>
             </div>
-            <div className="usage-grid">
+            <div className="section-head">
+              <h2>{locale === "zh-CN" ? "运行指标" : "Runtime metrics"}</h2>
+            </div>
+            <div className="usage-grid usage-grid-roomy">
               {usage
                 ? [
                     [locale === "zh-CN" ? "总任务数" : "Total tasks", usage.totalTasks],

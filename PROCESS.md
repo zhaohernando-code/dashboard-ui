@@ -209,3 +209,10 @@ no changes added to commit (use "git add" and/or "git commit -a")
 - Resolution: added a `superseded` task status label and parser support so archived historical attempts render as resolved history instead of active failures.
 - Prevention: whenever the control plane introduces a new operator-facing presentation state, the dashboard status model and parser must be updated in the same rollout.
 - Commit ID: pending
+
+## 2026-04-13
+
+- Problem: the workspace project layer could read as vertically centered instead of anchored to the top, and the usage overview was too cramped while also lacking Codex CLI-style `5h limit` and `weekly limit` surfaces.
+- Resolution: anchored workspace panels and entity grids to top-start, loosened card spacing for the usage page, and added frontend-compatible parsing/rendering for `rate_limits.primary/secondary` style usage windows with graceful fallbacks when the backend does not expose them yet.
+- Prevention: operator dashboards should explicitly pin browse/listing surfaces to top-start and treat quota windows as first-class summary cards instead of burying them inside dense statistic grids; when a CLI status shape is the reference, add tolerant field parsing before backend rollout completes.
+- Commit ID: pending

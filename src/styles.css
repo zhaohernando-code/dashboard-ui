@@ -318,6 +318,7 @@ button.primary:not(:disabled) {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 360px;
   gap: 0.8rem;
+  align-items: start;
 }
 
 .workspace-panel,
@@ -325,6 +326,7 @@ button.primary:not(:disabled) {
 .single-panel {
   display: grid;
   gap: 0.75rem;
+  align-content: start;
 }
 
 .approval-panel {
@@ -406,19 +408,25 @@ button.primary:not(:disabled) {
 .detail-grid,
 .log-list,
 .usage-grid,
-.usage-hero {
+.usage-hero,
+.usage-limit-grid {
   display: grid;
   gap: 0.65rem;
 }
 
 .entity-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-content: start;
+  align-items: start;
 }
 
 .entity-card {
   width: 100%;
-  padding: 0.98rem;
+  padding: 1.05rem 1.05rem 1rem;
   text-align: left;
+  display: grid;
+  align-content: start;
+  gap: 0.55rem;
 }
 
 .entity-card:hover {
@@ -601,17 +609,24 @@ textarea {
 }
 
 .usage-grid {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.9rem;
 }
 
 .usage-hero {
-  grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
-  margin-bottom: 0.8rem;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+  gap: 0.9rem;
 }
 
+.usage-limit-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-bottom: 0.15rem;
+}
+
+.usage-limit-card,
 .usage-member-card,
 .usage-summary-card {
-  padding: 0.9rem 1rem;
+  padding: 1.15rem 1.15rem 1.05rem;
   border: 1px solid var(--line);
   border-radius: 18px;
   background:
@@ -619,8 +634,36 @@ textarea {
     var(--surface);
 }
 
+.usage-limit-card,
 .usage-member-card {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.usage-limit-head,
+.usage-limit-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.8rem;
+}
+
+.usage-limit-head {
+  align-items: flex-start;
+}
+
+.usage-limit-meta {
+  color: var(--text-dim);
+  font-size: 0.84rem;
+  line-height: 1.5;
+  flex-wrap: wrap;
+}
+
+.usage-limit-value {
+  margin-top: 0.45rem;
+  font-family: var(--font-head);
+  font-size: clamp(1.8rem, 4vw, 2.7rem);
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 1;
 }
 
 .usage-member-value {
@@ -634,9 +677,13 @@ textarea {
   position: relative;
   overflow: hidden;
   height: 0.8rem;
-  margin: 0.9rem 0 0.65rem;
+  margin: 1rem 0 0.75rem;
   border-radius: 999px;
   background: color-mix(in srgb, var(--surface-2) 70%, var(--line) 30%);
+}
+
+.usage-progress-tight {
+  margin: 0.9rem 0 0.55rem;
 }
 
 .usage-progress-bar {
@@ -644,6 +691,12 @@ textarea {
   border-radius: inherit;
   background: linear-gradient(90deg, var(--brand), var(--brand-2));
   transition: width 180ms ease;
+}
+
+.usage-grid-roomy .usage-item,
+.usage-grid-roomy .info-card,
+.usage-grid-roomy .log-item {
+  padding: 1rem 1rem 0.95rem;
 }
 
 .dialog-backdrop {
@@ -962,6 +1015,7 @@ button:disabled {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .usage-limit-grid,
   .usage-hero {
     grid-template-columns: 1fr;
   }
@@ -996,9 +1050,10 @@ button:disabled {
     grid-template-columns: 1fr;
   }
 
+  .usage-limit-card,
   .usage-member-card,
   .usage-summary-card {
-    padding: 0.8rem 0.85rem;
+    padding: 0.95rem 0.95rem 0.9rem;
   }
 
   button,
