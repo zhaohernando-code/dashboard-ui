@@ -83,7 +83,6 @@ code {
 
 .topbar,
 .status-strip,
-.notice,
 .device-card,
 .card,
 .dialog-card {
@@ -179,16 +178,51 @@ h3 {
   white-space: nowrap;
 }
 
-.status-strip,
-.notice {
+.status-strip {
   margin-top: 0.75rem;
   padding: 0.72rem 0.9rem;
   display: grid;
   gap: 0.35rem;
 }
 
+.notice-stack {
+  position: fixed;
+  top: 1rem;
+  left: 50%;
+  z-index: 60;
+  display: grid;
+  gap: 0.7rem;
+  width: min(30rem, calc(100vw - 2rem));
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
 .notice {
-  background: color-mix(in srgb, var(--brand-soft) 75%, var(--surface) 25%);
+  padding: 0.8rem 1rem;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--surface) 90%, white 10%);
+  box-shadow: 0 18px 40px rgba(24, 35, 52, 0.16);
+  backdrop-filter: blur(16px);
+  color: var(--text);
+  pointer-events: auto;
+}
+
+.notice-success {
+  border-color: color-mix(in srgb, var(--ok) 34%, var(--line));
+  background: color-mix(in srgb, var(--ok) 14%, var(--surface));
+  color: var(--ok);
+}
+
+.notice-error {
+  border-color: color-mix(in srgb, var(--danger) 34%, var(--line));
+  background: color-mix(in srgb, var(--danger) 12%, var(--surface));
+  color: var(--danger);
+}
+
+.notice-info {
+  border-color: color-mix(in srgb, var(--brand) 30%, var(--line));
+  background: color-mix(in srgb, var(--brand-soft) 72%, var(--surface) 28%);
   color: var(--brand);
 }
 
@@ -843,8 +877,7 @@ textarea {
 }
 
 .clamp-2,
-.clamp-3,
-.clamp-4 {
+.clamp-3 {
   display: -webkit-box;
   -webkit-box-orient: vertical;
   overflow: hidden;
@@ -856,22 +889,6 @@ textarea {
 
 .clamp-3 {
   -webkit-line-clamp: 3;
-}
-
-.clamp-4 {
-  -webkit-line-clamp: 4;
-}
-
-.entity-copy-label {
-  margin-bottom: 0.18rem;
-}
-
-.summary-card {
-  grid-column: 1 / -1;
-}
-
-.summary-card .wrap-anywhere {
-  white-space: pre-wrap;
 }
 
 button:disabled {
