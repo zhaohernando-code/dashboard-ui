@@ -322,3 +322,11 @@ no changes added to commit (use "git add" and/or "git commit -a")
 - Resolution: added frontend normalization for platform-health snapshots so missing anomaly task lists are filled with empty arrays before state is stored, and hardened the anomaly renderer to tolerate absent `taskIds`.
 - Prevention: any payload read from the GitHub status issue must be normalized into the dashboard's full runtime shape before rendering; the UI should never assume optional diagnostic arrays are present just because the local API includes them.
 - Commit ID: pending
+
+## 2026-04-14
+
+- Problem: new `project_create` requirements could reach `waiting_user` in GitHub-direct mode while the dashboard still showed an empty approval/detail surface, because issue polling only reconstructed status/summary and dropped `requestedProject`, `planPreview`, and `userAction`.
+- Resolution: preserved embedded `requestedProject` data from issue payloads, rebuilt GitHub-direct `planPreview`/approval details for `project_create` and `composite_task`, and taught the comment parser to consume future hidden `codex-task-status` snapshots so task detail and approval cards stay aligned.
+- Prevention: when GitHub issues act as the transport, the dashboard must reconstruct or parse the full operator-facing approval payload, not just the coarse task status; any new structured task field added by the control plane needs a GitHub-direct parsing path in the same rollout.
+- Commit ID: pending
+- Context: project=dashboard-ui, source=task-mnxfojvn-m0aej7

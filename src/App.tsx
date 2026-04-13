@@ -205,6 +205,107 @@ function parseTaskType(value: string) {
   return "task";
 }
 
+function requiresPlan(type: string) {
+  const normalized = parseTaskType(type);
+  return normalized === "project_create" || normalized === "composite_task";
+}
+
+function isHighRiskRequest(type: string, title: string, description: string) {
+  if (parseTaskType(type) !== "task") {
+    return false;
+  }
+  return /(delete|destroy|drop table|rm -rf|reset --hard|force push|rotate secret|publish|deploy prod|production)/i.test(
+    `${title}\n${description}`,
+  );
+}
+
+function getApprovalReason(type: string, risky: boolean) {
+  if (parseTaskType(type) === "project_create") {
+    return "Plan confirmation required before creating a new project.";
+  }
+  if (parseTaskType(type) === "composite_task") {
+    return "Plan confirmation required before decomposing a composite task.";
+  }
+  if (risky) {
+    return "Potentially high-risk request detected; explicit approval required.";
+  }
+  return "Approval required.";
+}
+
+function deriveCompositeSteps(description: string) {
+  const bullets = String(description || "")
+    .split(/\n+/)
+    .map((line) => line.replace(/^[-*\d.\s]+/, "").trim())
+    .filter(Boolean);
+  if (bullets.length >= 2) {
+    return bullets.slice(0, 5);
+  }
+  const sentences = String(description || "")
+    .split(/[.。!?！？]/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (sentences.length >= 2) {
+    return sentences.slice(0, 5);
+  }
+  return [
+    "Clarify and inspect the relevant project context.",
+    "Implement the primary requested changes.",
+    "Verify behavior and summarize follow-up actions.",
+  ];
+}
+
+function buildGithubDirectPlanPreview(input: {
+  type: string;
+  title: string;
+  description: string;
+  requestedProject?: { name?: string; description?: string } | null;
+}) {
+  if (parseTaskType(input.type) === "project_create" && input.requestedProject) {
+    return [
+      `Project: ${input.requestedProject.name || "Untitled project"}`,
+      `Description: ${input.requestedProject.description || "No description"}`,
+      "Execution shape:",
+      "- scaffold a new project directory under ~/codex",
+      "- generate project-specific rules and process documents",
+      "- initialize a project repository and remote metadata if provided",
+      "- hand future implementation tasks to Codex workers via task worktrees",
+    ].join("\n");
+  }
+
+  if (parseTaskType(input.type) === "composite_task") {
+    return [
+      `Composite task: ${input.title || "Untitled"}`,
+      "Proposed child tasks:",
+      ...deriveCompositeSteps(input.description).map((item, index) => `${index + 1}. ${item}`),
+    ].join("\n");
+  }
+
+  return "";
+}
+
+function buildGithubDirectUserAction(input: {
+  status: TaskStatus;
+  type: string;
+  title: string;
+  description: string;
+  planPreview: string;
+  userAction?: Task["userAction"];
+}) {
+  if (input.status !== "waiting_user") {
+    return null;
+  }
+  if (input.userAction) {
+    return input.userAction;
+  }
+  const risky = isHighRiskRequest(input.type, input.title, input.description);
+  return {
+    type: risky ? "high_risk_approval" : requiresPlan(input.type) ? "plan_approval" : "approval_required",
+    title: getApprovalReason(input.type, risky),
+    detail: input.planPreview || input.description || input.title,
+    risk: risky ? "high" : "medium",
+  } satisfies NonNullable<Task["userAction"]>;
+}
+
 function parseIssueBody(body: string) {
   const embedded = body.match(/<!--\s*codex-task-payload\s*([\s\S]*?)\s*-->/i);
   if (embedded) {
@@ -219,6 +320,7 @@ function parseIssueBody(body: string) {
         description: String(payload.description || "").trim(),
         model: normalizeRequestedModel(String(payload.model || "")),
         reasoningEffort: normalizeRequestedReasoningEffort(String(payload.reasoningEffort || payload.reasoningLevel || "")),
+        requestedProject,
       };
     } catch {
       // Fall through to plain parsing.
@@ -238,6 +340,7 @@ function parseIssueBody(body: string) {
     description: String(body || "").replace(/<!--[\s\S]*?-->/g, "").trim(),
     model: normalizeRequestedModel(meta.model || ""),
     reasoningEffort: normalizeRequestedReasoningEffort(meta.reasoning || meta.reasoninglevel || meta.reasoning_effort || ""),
+    requestedProject: null,
   };
 }
 
@@ -248,6 +351,27 @@ function parseEmbeddedStatusPayload(body: string) {
   }
   try {
     return JSON.parse(match[1]);
+  } catch {
+    return null;
+  }
+}
+
+function parseEmbeddedTaskStatusPayload(body: string) {
+  const match = String(body || "").match(/<!--\s*codex-task-status\s*([\s\S]*?)\s*-->/i);
+  if (!match) {
+    return null;
+  }
+  try {
+    return JSON.parse(match[1]) as {
+      taskId?: string;
+      status?: TaskStatus;
+      summary?: string;
+      userSummary?: string;
+      planPreview?: string;
+      userAction?: Task["userAction"];
+      openFailureReason?: string;
+      publishStatus?: string;
+    };
   } catch {
     return null;
   }
@@ -289,13 +413,54 @@ function normalizeRequestedReasoningEffort(value: string): NonNullable<Task["rea
   return DEFAULT_REASONING_EFFORT;
 }
 
-function parseStatusFromComments(comments: IssueComment[], fallbackClosed: boolean): { status: TaskStatus; taskId: string; summary: string } {
+function parseStatusFromComments(comments: IssueComment[], fallbackClosed: boolean): {
+  status: TaskStatus;
+  taskId: string;
+  summary: string;
+  userSummary: string;
+  planPreview: string;
+  userAction: Task["userAction"];
+  openFailureReason: string;
+  publishStatus: string;
+} {
   let status: TaskStatus = fallbackClosed ? "completed" : "pending";
   let taskId = "";
   let summary = "";
+  let userSummary = "";
+  let planPreview = "";
+  let userAction: Task["userAction"] = null;
+  let openFailureReason = "";
+  let publishStatus = "";
 
   for (const comment of comments) {
-    const body = String(comment.body || "");
+    const rawBody = String(comment.body || "");
+    const body = normalizeCommentLogMessage(rawBody);
+    const embedded = parseEmbeddedTaskStatusPayload(rawBody);
+    if (embedded?.taskId) {
+      taskId = String(embedded.taskId).trim() || taskId;
+    }
+    if (embedded?.status && Object.prototype.hasOwnProperty.call(statusLabel, embedded.status)) {
+      status = embedded.status;
+    }
+    if (typeof embedded?.summary === "string" && embedded.summary.trim()) {
+      summary = embedded.summary.trim();
+    }
+    if (typeof embedded?.userSummary === "string" && embedded.userSummary.trim()) {
+      userSummary = embedded.userSummary.trim();
+    }
+    if (typeof embedded?.planPreview === "string" && embedded.planPreview.trim()) {
+      planPreview = embedded.planPreview.trim();
+    }
+    if (embedded?.userAction && typeof embedded.userAction === "object") {
+      userAction = embedded.userAction;
+    }
+    if (typeof embedded?.openFailureReason === "string" && embedded.openFailureReason.trim()) {
+      openFailureReason = embedded.openFailureReason.trim();
+    }
+    if (typeof embedded?.publishStatus === "string" && embedded.publishStatus.trim()) {
+      publishStatus = embedded.publishStatus.trim();
+    }
+
     const imported = body.match(/Task imported as\s+`([^`]+)`/i);
     if (imported) {
       taskId = imported[1];
@@ -311,10 +476,29 @@ function parseStatusFromComments(comments: IssueComment[], fallbackClosed: boole
       if (summaryMatch) {
         summary = summaryMatch[1].trim();
       }
+      const publishMatch = body.match(/Publish:\s*`?([^`\n]+)`?/i);
+      if (publishMatch) {
+        publishStatus = publishMatch[1].trim();
+      }
+      const openReasonLine = body
+        .split("\n")
+        .find((line) => /^Open reason:\s*/i.test(line));
+      if (openReasonLine) {
+        openFailureReason = openReasonLine.replace(/^Open reason:\s*/i, "").trim();
+      }
     }
   }
 
-  return { status, taskId, summary };
+  return {
+    status,
+    taskId,
+    summary,
+    userSummary: userSummary || summary,
+    planPreview,
+    userAction,
+    openFailureReason,
+    publishStatus,
+  };
 }
 
 function buildLogsFromComments(comments: IssueComment[]) {
@@ -1545,6 +1729,24 @@ export default function App() {
                 const statusMeta = parseStatusFromComments(comments, issue.state === "closed");
                 const logs = buildLogsFromComments(comments);
                 const projectId = parsed.projectId || "dashboard-ui";
+                const title = parsed.title || issue.title;
+                const description = parsed.description || issue.body || "";
+                const planPreview =
+                  statusMeta.planPreview ||
+                  buildGithubDirectPlanPreview({
+                    type: parsed.type,
+                    title,
+                    description,
+                    requestedProject: parsed.requestedProject,
+                  });
+                const userAction = buildGithubDirectUserAction({
+                  status: statusMeta.status,
+                  type: parsed.type,
+                  title,
+                  description,
+                  planPreview,
+                  userAction: statusMeta.userAction,
+                });
                 return {
                   id: statusMeta.taskId || `issue-${issue.number}`,
                   updatedAt: issue.updated_at,
@@ -1553,14 +1755,17 @@ export default function App() {
                   projectId,
                   projectName: getProjectDisplayName(projectId, locale),
                   type: parsed.type,
-                  title: parsed.title || issue.title,
-                  description: parsed.description || issue.body || "",
+                  title,
+                  description,
                   model: parsed.model,
                   reasoningEffort: parsed.reasoningEffort,
                   status: statusMeta.status,
                   summary: statusMeta.summary,
-                  userSummary: statusMeta.summary,
-                  planPreview: "",
+                  userSummary: statusMeta.userSummary,
+                  userAction,
+                  planPreview,
+                  publishStatus: statusMeta.publishStatus || undefined,
+                  openFailureReason: statusMeta.openFailureReason || undefined,
                   workspacePath: "",
                   branchName: "",
                   logs,
@@ -1580,7 +1785,9 @@ export default function App() {
             .filter((task) => task.status === "waiting_user")
             .map((task) => ({
               id: `approval-${task.issueNumber || task.id}`,
-              reason: locale === "zh-CN" ? "请在 GitHub Pages 审批后继续执行" : "Approve in GitHub Pages to continue execution",
+              reason:
+                task.userAction?.title ||
+                (locale === "zh-CN" ? "请在 GitHub Pages 审批后继续执行" : "Approve in GitHub Pages to continue execution"),
               task,
             })),
         );
