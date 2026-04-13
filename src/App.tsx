@@ -67,6 +67,11 @@ type UsageOverview = {
   estimatedTokens: number;
   totalRuns: number;
   lastRunAt: string;
+  memberUsageUsed?: number | null;
+  memberUsageTotal?: number | null;
+  memberUsageRatio?: number | null;
+  memberUsageUnit?: string;
+  memberUsageReason?: string;
 };
 
 type AuthConfig = {
@@ -279,6 +284,71 @@ function getProjectDisplayName(projectId: string, locale: Locale) {
   return projectId;
 }
 
+function toFiniteNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+}
+
+function normalizeUsageOverview(raw: unknown): UsageOverview {
+  const base = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const membership =
+    (base.membershipUsage && typeof base.membershipUsage === "object" ? base.membershipUsage : null) ||
+    (base.memberUsage && typeof base.memberUsage === "object" ? base.memberUsage : null) ||
+    (base.quota && typeof base.quota === "object" ? base.quota : null);
+  const membershipRecord = (membership || {}) as Record<string, unknown>;
+
+  const memberUsageUsed =
+    toFiniteNumber(membershipRecord.used) ??
+    toFiniteNumber(membershipRecord.current) ??
+    toFiniteNumber(base.memberUsageUsed) ??
+    toFiniteNumber(base.quotaUsed);
+  const memberUsageTotal =
+    toFiniteNumber(membershipRecord.total) ??
+    toFiniteNumber(membershipRecord.limit) ??
+    toFiniteNumber(base.memberUsageTotal) ??
+    toFiniteNumber(base.quotaTotal);
+  const explicitRatio =
+    toFiniteNumber(membershipRecord.ratio) ??
+    toFiniteNumber(base.memberUsageRatio) ??
+    toFiniteNumber(base.quotaRatio);
+  const memberUsageRatio =
+    explicitRatio !== null
+      ? explicitRatio > 1
+        ? explicitRatio / 100
+        : explicitRatio
+      : memberUsageUsed !== null && memberUsageTotal !== null && memberUsageTotal > 0
+        ? memberUsageUsed / memberUsageTotal
+        : null;
+  const memberUsageReason =
+    String(
+      membershipRecord.reason ||
+      membershipRecord.unavailableReason ||
+      base.memberUsageReason ||
+      base.quotaReason ||
+      "",
+    ).trim() || undefined;
+
+  return {
+    totalTasks: toFiniteNumber(base.totalTasks) ?? 0,
+    activeTasks: toFiniteNumber(base.activeTasks) ?? 0,
+    pendingApprovals: toFiniteNumber(base.pendingApprovals) ?? 0,
+    completedTasks: toFiniteNumber(base.completedTasks) ?? 0,
+    failedTasks: toFiniteNumber(base.failedTasks) ?? 0,
+    estimatedTokens: toFiniteNumber(base.estimatedTokens) ?? 0,
+    totalRuns: toFiniteNumber(base.totalRuns) ?? 0,
+    lastRunAt: String(base.lastRunAt || ""),
+    memberUsageUsed,
+    memberUsageTotal,
+    memberUsageRatio,
+    memberUsageUnit: String(membershipRecord.unit || base.memberUsageUnit || base.quotaUnit || "").trim() || undefined,
+    memberUsageReason,
+  };
+}
+
 export default function App() {
   const runtimeMode: RuntimeMode = IS_GITHUB_PAGES ? "github-direct" : "local-api";
   const [locale, setLocale] = useState<Locale>(() => {
@@ -299,6 +369,7 @@ export default function App() {
   const [approvals, setApprovals] = useState<Approval[]>([]);
   const [tools, setTools] = useState<Array<{ id: string; name: string; route: string; description: string }>>([]);
   const [usage, setUsage] = useState<UsageOverview | null>(null);
+  const [usageSummary, setUsageSummary] = useState("");
   const [authConfig, setAuthConfig] = useState<AuthConfig | null>(null);
   const [connectionStatus, setConnectionStatus] = useState("");
   const [selectedTaskId, setSelectedTaskId] = useState("");
@@ -364,6 +435,45 @@ export default function App() {
       }) satisfies Record<string, string>,
     [locale],
   );
+
+  const memberUsageSnapshot = useMemo(() => {
+    if (!usage) return null;
+    const hasQuotaNumbers = usage.memberUsageUsed !== null && usage.memberUsageUsed !== undefined
+      && usage.memberUsageTotal !== null && usage.memberUsageTotal !== undefined;
+    const safeRatio = usage.memberUsageRatio !== null && usage.memberUsageRatio !== undefined
+      ? Math.min(Math.max(usage.memberUsageRatio, 0), 1)
+      : hasQuotaNumbers && usage.memberUsageTotal! > 0
+        ? Math.min(Math.max((usage.memberUsageUsed as number) / (usage.memberUsageTotal as number), 0), 1)
+        : null;
+
+    if (!hasQuotaNumbers) {
+      return {
+        available: false,
+        reason:
+          usage.memberUsageReason ||
+          (locale === "zh-CN"
+            ? "接口未返回当前会员的算力总量或已用值。"
+            : "The API did not return the current member quota total or used value."),
+        label: locale === "zh-CN" ? "暂无会员算力数据" : "Member quota unavailable",
+      };
+    }
+
+    const unitSuffix = usage.memberUsageUnit ? ` ${usage.memberUsageUnit}` : "";
+    return {
+      available: true,
+      reason: "",
+      label:
+        locale === "zh-CN"
+          ? `${usage.memberUsageUsed}${unitSuffix} / ${usage.memberUsageTotal}${unitSuffix}`
+          : `${usage.memberUsageUsed}${unitSuffix} / ${usage.memberUsageTotal}${unitSuffix}`,
+      ratio: safeRatio ?? 0,
+      percent: `${Math.round((safeRatio ?? 0) * 100)}%`,
+    };
+  }, [locale, usage]);
+
+  const memberUsagePercentText =
+    memberUsageSnapshot && memberUsageSnapshot.available ? String(memberUsageSnapshot.percent || "0%") : "0%";
+  const memberUsagePercentValue = Number(memberUsagePercentText.replace("%", ""));
 
   useEffect(() => {
     localStorage.setItem("codex.locale", locale);
@@ -695,7 +805,16 @@ export default function App() {
           estimatedTokens: 0,
           totalRuns: taskList.length,
           lastRunAt: issues[0]?.updated_at || "",
+          memberUsageReason:
+            locale === "zh-CN"
+              ? "GitHub Pages 直连模式只能统计任务数据，无法读取当前会员算力配额。"
+              : "GitHub Pages direct mode can summarize task activity, but cannot read the current member quota.",
         });
+        setUsageSummary(
+          locale === "zh-CN"
+            ? "当前处于 GitHub Pages 直连模式，已展示任务运行统计；会员算力已用/总量依赖后端配额接口，当前不可用。"
+            : "GitHub Pages direct mode can show task activity, but member used/total quota depends on a backend quota endpoint and is unavailable here.",
+        );
 
         if (!taskList.length) {
           setSelectedTaskId("");
@@ -773,9 +892,26 @@ export default function App() {
     }
     try {
       const payload = await api<{ overview: UsageOverview }>("/api/usage");
-      setUsage(payload.overview);
-    } catch {
+      const normalized = normalizeUsageOverview(payload.overview);
+      setUsage(normalized);
+      const hasMemberUsage = normalized.memberUsageUsed !== null && normalized.memberUsageTotal !== null;
+      setUsageSummary(
+        hasMemberUsage
+          ? locale === "zh-CN"
+            ? `当前会员算力已使用 ${normalized.memberUsageUsed}${normalized.memberUsageUnit ? ` ${normalized.memberUsageUnit}` : ""}，总量 ${normalized.memberUsageTotal}${normalized.memberUsageUnit ? ` ${normalized.memberUsageUnit}` : ""}。`
+            : `Current member quota used: ${normalized.memberUsageUsed}${normalized.memberUsageUnit ? ` ${normalized.memberUsageUnit}` : ""} out of ${normalized.memberUsageTotal}${normalized.memberUsageUnit ? ` ${normalized.memberUsageUnit}` : ""}.`
+          : normalized.memberUsageReason ||
+            (locale === "zh-CN"
+              ? "已拿到运行统计，但接口没有返回当前会员的算力已用/总量。"
+              : "Runtime statistics loaded, but the API did not return current member used/total quota."),
+      );
+    } catch (error) {
       setUsage(null);
+      setUsageSummary(
+        locale === "zh-CN"
+          ? `无法获取用量概览：${summarizeError(error)}`
+          : `Unable to load usage overview: ${summarizeError(error)}`,
+      );
     }
   }
 
@@ -1639,6 +1775,42 @@ export default function App() {
           <article className="card">
             <div className="section-head">
               <h2>{locale === "zh-CN" ? "运行用量快照" : "Usage snapshot"}</h2>
+            </div>
+            <div className="usage-hero">
+              <div className="usage-member-card">
+                <div className="meta">{locale === "zh-CN" ? "当前会员算力" : "Current member quota"}</div>
+                <div className="usage-member-value">
+                  {memberUsageSnapshot?.available
+                    ? memberUsageSnapshot.label
+                    : memberUsageSnapshot?.label || (locale === "zh-CN" ? "暂无会员算力数据" : "Member quota unavailable")}
+                </div>
+                <div
+                  className="usage-progress"
+                  role="progressbar"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={memberUsagePercentValue}
+                  aria-label={locale === "zh-CN" ? "会员算力用量比例" : "Member quota usage ratio"}
+                >
+                  <div
+                    className="usage-progress-bar"
+                    style={{ width: memberUsagePercentText }}
+                  />
+                </div>
+                <div className="meta">
+                  {memberUsageSnapshot?.available
+                    ? locale === "zh-CN"
+                      ? `已使用 ${memberUsageSnapshot.percent}`
+                      : `${memberUsageSnapshot.percent} used`
+                    : memberUsageSnapshot?.reason || usageSummary || (locale === "zh-CN" ? "暂无说明" : "No details")}
+                </div>
+              </div>
+              <div className="usage-summary-card">
+                <div className="meta">{locale === "zh-CN" ? "摘要" : "Summary"}</div>
+                <div className="wrap-anywhere">
+                  {usageSummary || (locale === "zh-CN" ? "暂无用量摘要。" : "No usage summary.")}
+                </div>
+              </div>
             </div>
             <div className="usage-grid">
               {usage
