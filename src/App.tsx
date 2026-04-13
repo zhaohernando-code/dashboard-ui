@@ -8,6 +8,7 @@ type TaskStatus =
   | "awaiting_acceptance"
   | "needs_revision"
   | "publish_failed"
+  | "superseded"
   | "implemented"
   | "failed"
   | "completed"
@@ -256,6 +257,7 @@ const statusLabel: Record<TaskStatus, Record<Locale, string>> = {
   awaiting_acceptance: { "zh-CN": "待验收", "en-US": "Awaiting acceptance" },
   needs_revision: { "zh-CN": "待返修", "en-US": "Needs revision" },
   publish_failed: { "zh-CN": "发布失败", "en-US": "Publish failed" },
+  superseded: { "zh-CN": "已归档", "en-US": "Superseded" },
   implemented: { "zh-CN": "已实现", "en-US": "Implemented" },
   failed: { "zh-CN": "失败", "en-US": "Failed" },
   completed: { "zh-CN": "完成", "en-US": "Completed" },
@@ -344,7 +346,7 @@ function parseStatusFromComments(comments: IssueComment[], fallbackClosed: boole
     if (statusMatch) {
       taskId = statusMatch[1];
       const next = statusMatch[2].toLowerCase() as TaskStatus;
-      if (["pending_capture", "pending", "running", "waiting_user", "awaiting_acceptance", "needs_revision", "publish_failed", "implemented", "failed", "completed", "stopped"].includes(next)) {
+      if (["pending_capture", "pending", "running", "waiting_user", "awaiting_acceptance", "needs_revision", "publish_failed", "superseded", "implemented", "failed", "completed", "stopped"].includes(next)) {
         status = next;
       }
       const summaryMatch = body.match(/Summary:\s*([\s\S]+)/i);

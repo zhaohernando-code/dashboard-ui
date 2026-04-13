@@ -202,3 +202,10 @@ no changes added to commit (use "git add" and/or "git commit -a")
 - Resolution: added a platform-health section to the usage view, including issue-poller state, GitHub API pressure, recent publish method, and anomaly backlog counts.
 - Prevention: if the product depends on a background task platform, the UI must expose platform-level health directly; otherwise users will keep discovering infrastructure problems only after task delivery fails.
 - Commit ID: `42a74a9`
+
+## 2026-04-13
+
+- Problem: after the backend started classifying old resolved failures as archived history, the dashboard status enum still had no presentation state for those superseded attempts, which would make the UI treat them like unknown data.
+- Resolution: added a `superseded` task status label and parser support so archived historical attempts render as resolved history instead of active failures.
+- Prevention: whenever the control plane introduces a new operator-facing presentation state, the dashboard status model and parser must be updated in the same rollout.
+- Commit ID: pending
