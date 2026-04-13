@@ -92,3 +92,10 @@
 - Resolution: added transient creation/error notices, auto-closed the create dialog on success, inserted optimistic `pending_capture` tasks so newly queued work stays visible with a dedicated “待捕获” state, converted PC theme/language controls to switch cards, replaced close text buttons with `×`, removed the old queue/current-user strip, and moved logout to the far right of the desktop header.
 - Prevention: any queue-backed creation flow must render an optimistic record immediately after a successful submit, and desktop control-bar requests should be implemented by sharing the same interaction primitive across mobile/desktop instead of maintaining separate button patterns that drift.
 - Commit ID: N/A（当前环境未执行 git 提交）
+
+## 2026-04-13
+
+- Problem: the desktop/mobile theme and language switches still used a custom track with overlaid state text, so the text did not move consistently with the thumb; the switch cards also carried extra hint copy, the right-side approvals panel could appear visually centered, and long task summaries in detail view were too easy to truncate in a narrow two-column card.
+- Resolution: replaced the overlaid switch track with a segmented two-state toggle for both desktop and mobile, removed the extra helper text under theme/language controls, pinned the approvals side panel to top-start alignment, and made the task summary card span the full detail width with `pre-wrap` text rendering.
+- Prevention: when a toggle needs explicit state labels, do not place moving text inside the same animated track as the thumb; use a segmented control with fixed label slots, and let long task-detail narrative fields occupy a full-width block instead of sharing a narrow metadata grid.
+- Commit ID: N/A（当前环境未执行 git 提交）
