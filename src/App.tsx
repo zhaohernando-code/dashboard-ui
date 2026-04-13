@@ -115,6 +115,59 @@ type UsageOverview = {
   memberUsageReason?: string;
 };
 
+type PlatformHealth = {
+  generatedAt: string;
+  taskBackend: string;
+  githubTaskRepo: string;
+  issuePoller: {
+    enabled: boolean;
+    status: string;
+    intervalMs: number;
+    inFlight: boolean;
+    lastStartedAt: string;
+    lastSuccessAt: string;
+    lastDurationMs: number;
+    lastError: string;
+  };
+  githubApi: {
+    inFlight: number;
+    queued: number;
+    lastRequestAt: string;
+    lastError: string;
+    lastRateLimitAt: string;
+    lastRetryAt: string;
+    remaining: string | null;
+    resetAt: string;
+  };
+  publishing: {
+    lastPublishedAt: string;
+    lastPublishedTaskId: string;
+    lastPublishedTaskTitle: string;
+    lastPublishMethod: string;
+    lastPublishError: string;
+    publishedTasks: number;
+    noopTasks: number;
+    publishFailedTasks: number;
+    completedWithoutVerifiedPublish: number;
+  };
+  taskState: {
+    total: number;
+    running: number;
+    waitingUser: number;
+    awaitingAcceptance: number;
+    needsRevision: number;
+    publishFailed: number;
+    stoppedLatest: number;
+  };
+  anomalies: Array<{
+    id: string;
+    severity: string;
+    count: number;
+    description: string;
+    taskIds: string[];
+  }>;
+};
+
 type AuthConfig = {
   enabled: boolean;
   mode: string;
@@ -651,6 +704,7 @@ export default function App() {
   const [tools, setTools] = useState<Array<{ id: string; name: string; route: string; description: string }>>([]);
   const [usage, setUsage] = useState<UsageOverview | null>(null);
   const [usageSummary, setUsageSummary] = useState("");
+  const [platformHealth, setPlatformHealth] = useState<PlatformHealth | null>(null);
   const [authConfig, setAuthConfig] = useState<AuthConfig | null>(null);
   const [connectionStatus, setConnectionStatus] = useState("");
   const [selectedTaskId, setSelectedTaskId] = useState("");
@@ -939,17 +993,79 @@ export default function App() {
           ? `GitHub Issue 队列模式 · ${GITHUB_TASK_REPO}`
           : `GitHub issue queue mode · ${GITHUB_TASK_REPO}`,
       );
+      setPlatformHealth({
+        generatedAt: new Date().toISOString(),
+        taskBackend: "github-issues",
+        githubTaskRepo: GITHUB_TASK_REPO,
+        issuePoller: {
+          enabled: false,
+          status: githubToken ? "remote" : "unauthenticated",
+          intervalMs: 30000,
+          inFlight: false,
+          lastStartedAt: "",
+          lastSuccessAt: "",
+          lastDurationMs: 0,
+          lastError: githubToken ? "" : (locale === "zh-CN" ? "GitHub Token 未连接。" : "GitHub token not connected."),
+        },
+        githubApi: {
+          inFlight: 0,
+          queued: 0,
+          lastRequestAt: "",
+          lastError: "",
+          lastRateLimitAt: "",
+          lastRetryAt: "",
+          remaining: null,
+          resetAt: "",
+        },
+        publishing: {
+          lastPublishedAt: "",
+          lastPublishedTaskId: "",
+          lastPublishedTaskTitle: "",
+          lastPublishMethod: "",
+          lastPublishError: "",
+          publishedTasks: visibleTasks.filter((task) => task.publishStatus === "published").length,
+          noopTasks: visibleTasks.filter((task) => task.publishStatus === "noop").length,
+          publishFailedTasks: visibleTasks.filter((task) => task.status === "publish_failed").length,
+          completedWithoutVerifiedPublish: visibleTasks.filter((task) => task.status === "completed" && task.publishStatus !== "published" && task.publishStatus !== "noop").length,
+        },
+        taskState: {
+          total: visibleTasks.length,
+          running: visibleTasks.filter((task) => task.status === "running").length,
+          waitingUser: visibleTasks.filter((task) => task.status === "waiting_user").length,
+          awaitingAcceptance: visibleTasks.filter((task) => task.status === "awaiting_acceptance").length,
+          needsRevision: visibleTasks.filter((task) => task.status === "needs_revision").length,
+          publishFailed: visibleTasks.filter((task) => task.status === "publish_failed").length,
+          stoppedLatest: visibleRequirements.filter((requirement) => requirement.status === "stopped").length,
+        },
+        anomalies: [
+          {
+            id: "completed_without_verified_publish",
+            severity: "medium",
+            count: visibleTasks.filter((task) => task.status === "completed" && task.publishStatus !== "published" && task.publishStatus !== "noop").length,
+            description: locale === "zh-CN" ? "已完成但未带可验证发布结果的任务。" : "Completed tasks without a verified publish result.",
+            taskIds: visibleTasks
+              .filter((task) => task.status === "completed" && task.publishStatus !== "published" && task.publishStatus !== "noop")
+              .slice(0, 10)
+              .map((task) => task.id),
+          },
+        ],
+      });
       return;
     }
     try {
-      const payload = await api<{ serverName: string; host: string }>("/api/health");
+      const [payload, platform] = await Promise.all([
+        api<{ serverName: string; host: string }>("/api/health"),
+        api<{ health: PlatformHealth }>("/api/platform-health"),
+      ]);
       setConnectionStatus(
         locale === "zh-CN"
           ? `已连接 ${payload.serverName} @ ${payload.host}`
           : `Connected to ${payload.serverName} @ ${payload.host}`,
       );
+      setPlatformHealth(platform.health);
     } catch (error) {
       setConnectionStatus(summarizeError(error));
+      setPlatformHealth(null);
     }
   }
 
@@ -2199,6 +2315,48 @@ export default function App() {
                     </div>
                   ))
                 : <div className="detail-empty">{locale === "zh-CN" ? "暂无用量数据" : "No usage data"}</div>}
+            </div>
+            <div className="section-head">
+              <h2>{locale === "zh-CN" ? "平台健康" : "Platform health"}</h2>
+            </div>
+            <div className="usage-grid">
+              {platformHealth
+                ? [
+                    [locale === "zh-CN" ? "任务后端" : "Task backend", platformHealth.taskBackend || "n/a"],
+                    [locale === "zh-CN" ? "Issue Poller" : "Issue poller", platformHealth.issuePoller.status],
+                    [locale === "zh-CN" ? "轮询周期" : "Poll interval", platformHealth.issuePoller.intervalMs ? `${platformHealth.issuePoller.intervalMs}ms` : "n/a"],
+                    [locale === "zh-CN" ? "最近成功轮询" : "Last poll success", platformHealth.issuePoller.lastSuccessAt || "n/a"],
+                    [locale === "zh-CN" ? "GitHub API 余量" : "GitHub API remaining", platformHealth.githubApi.remaining ?? "n/a"],
+                    [locale === "zh-CN" ? "最近发布方式" : "Last publish method", platformHealth.publishing.lastPublishMethod || "n/a"],
+                    [locale === "zh-CN" ? "待验收需求" : "Awaiting acceptance", platformHealth.taskState.awaitingAcceptance],
+                    [locale === "zh-CN" ? "待返修需求" : "Needs revision", platformHealth.taskState.needsRevision + platformHealth.taskState.publishFailed],
+                  ].map(([label, value]) => (
+                    <div key={String(label)} className="usage-item">
+                      <div className="meta">{label}</div>
+                      <div className="title wrap-anywhere">{String(value)}</div>
+                    </div>
+                  ))
+                : <div className="detail-empty">{locale === "zh-CN" ? "暂无平台健康数据" : "No platform health data"}</div>}
+            </div>
+            <div className="section-head">
+              <h2>{locale === "zh-CN" ? "异常与风险" : "Anomalies and risks"}</h2>
+            </div>
+            <div className="stack compact">
+              {platformHealth?.anomalies?.length
+                ? platformHealth.anomalies.map((anomaly) => (
+                    <div key={anomaly.id} className="log-item">
+                      <strong>{anomaly.id}</strong> · {anomaly.count} · {anomaly.severity}
+                      <br />
+                      <span className="preserve-breaks">{anomaly.description}</span>
+                      {anomaly.taskIds.length ? (
+                        <>
+                          <br />
+                          <span className="meta">{anomaly.taskIds.join(", ")}</span>
+                        </>
+                      ) : null}
+                    </div>
+                  ))
+                : <div className="detail-empty">{locale === "zh-CN" ? "当前没有异常项" : "No anomalies detected"}</div>}
             </div>
           </article>
         </section>
