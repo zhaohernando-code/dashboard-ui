@@ -65,6 +65,10 @@ const GITHUB_CLIENT_ID = (import.meta.env.VITE_GITHUB_CLIENT_ID as string | unde
 const GITHUB_TASK_REPO = (import.meta.env.VITE_GITHUB_TASK_REPO as string | undefined)?.trim() || "zhaohernando-code/dashboard-ui";
 const GITHUB_SCOPES = (import.meta.env.VITE_GITHUB_OAUTH_SCOPES as string | undefined)?.trim() || "read:user repo";
 const IS_GITHUB_PAGES = typeof window !== "undefined" && window.location.hostname.endsWith("github.io");
+const HAS_MIXED_CONTENT_LOCAL_API =
+  typeof window !== "undefined" &&
+  window.location.protocol === "https:" &&
+  /^http:\/\/(?:localhost|127(?:\.\d+){3}|0\.0\.0\.0)(?::\d+)?(?:\/|$)/i.test(DEFAULT_API_BASE);
 const AUTO_ROUTE_PROJECT_ID = "__auto_route__";
 const CLOSED_ANOMALIES_STORAGE_KEY = "codex.dismissedAnomalies";
 const STATUS_FILTER_ALL = "all";
@@ -526,6 +530,33 @@ function normalizeUsageOverview(raw: unknown): UsageOverview {
     },
     statusCollectedAt: String(base.statusCollectedAt || ""),
     statusSource: String(base.statusSource || ""),
+  };
+}
+
+function buildGithubDirectUsageFallback(taskList: Task[], locale: Locale): UsageOverview {
+  const lastUpdatedTask = [...taskList]
+    .filter((task) => task.updatedAt)
+    .sort((left, right) => Date.parse(right.updatedAt || "") - Date.parse(left.updatedAt || ""))[0];
+
+  return {
+    totalTasks: taskList.length,
+    activeTasks: taskList.filter((task) => task.status === "running").length,
+    pendingApprovals: taskList.filter((task) => task.status === "waiting_user").length,
+    completedTasks: taskList.filter((task) => task.status === "completed").length,
+    failedTasks: taskList.filter((task) => task.status === "failed" || task.status === "publish_failed").length,
+    estimatedTokens: 0,
+    totalRuns: taskList.length,
+    lastRunAt: lastUpdatedTask?.updatedAt || "",
+    memberUsageReason:
+      locale === "zh-CN"
+        ? "当前仅展示 GitHub Issue 任务统计；CLI 用量快照需要可访问的后端 API。"
+        : "Showing GitHub issue activity only; CLI quota snapshots still require a reachable backend API.",
+    rateLimits: {
+      primary: null,
+      secondary: null,
+    },
+    statusCollectedAt: "",
+    statusSource: "github-direct-fallback",
   };
 }
 
@@ -1317,7 +1348,6 @@ export default function App() {
       if (!githubToken) {
         setTasks([]);
         setApprovals([]);
-        setUsage(null);
         setProjects(buildRemoteProjects([]));
         return;
       }
@@ -1349,6 +1379,7 @@ export default function App() {
                 const projectId = parsed.projectId || "dashboard-ui";
                 return {
                   id: statusMeta.taskId || `issue-${issue.number}`,
+                  updatedAt: issue.updated_at,
                   issueNumber: issue.number,
                   issueUrl: issue.html_url,
                   projectId,
@@ -1385,25 +1416,14 @@ export default function App() {
               task,
             })),
         );
-        setUsage({
-          totalTasks: taskList.length,
-          activeTasks: taskList.filter((task) => task.status === "running").length,
-          pendingApprovals: taskList.filter((task) => task.status === "waiting_user").length,
-          completedTasks: taskList.filter((task) => task.status === "completed").length,
-          failedTasks: taskList.filter((task) => task.status === "failed").length,
-          estimatedTokens: 0,
-          totalRuns: taskList.length,
-          lastRunAt: issues[0]?.updated_at || "",
-          memberUsageReason:
-            locale === "zh-CN"
-              ? "GitHub Pages 直连模式只能统计任务数据，无法读取当前会员算力配额。"
-              : "GitHub Pages direct mode can summarize task activity, but cannot read the current member quota.",
+        setUsage((current) => {
+          const hasRuntimeSnapshot = Boolean(
+            current?.rateLimits?.primary ||
+            current?.rateLimits?.secondary ||
+            current?.statusCollectedAt,
+          );
+          return hasRuntimeSnapshot ? current : buildGithubDirectUsageFallback(taskList, locale);
         });
-        setUsageSummary(
-          locale === "zh-CN"
-            ? "当前处于 GitHub Pages 直连模式，已展示任务运行统计；会员算力已用/总量依赖后端配额接口，当前不可用。"
-            : "GitHub Pages direct mode can show task activity, but member used/total quota depends on a backend quota endpoint and is unavailable here.",
-        );
 
         if (!taskList.length) {
           setSelectedTaskId("");
@@ -1476,7 +1496,13 @@ export default function App() {
   }
 
   async function refreshUsage() {
-    if (runtimeMode === "github-direct") {
+    if (runtimeMode === "github-direct" && HAS_MIXED_CONTENT_LOCAL_API) {
+      setUsage(buildGithubDirectUsageFallback(tasks, locale));
+      setUsageSummary(
+        locale === "zh-CN"
+          ? `当前页面通过 HTTPS 打开，但后端地址是 ${DEFAULT_API_BASE}。浏览器会拦截 GitHub Pages 到本机 HTTP API 的请求，因此无法直接读取本机 CLI 的 /status。请把 VITE_DEFAULT_API_BASE 改成可访问的 HTTPS 地址，或改用本地开发地址打开。`
+          : `This page is served over HTTPS, but the backend is configured as ${DEFAULT_API_BASE}. Browsers block GitHub Pages from calling a local HTTP API, so the page cannot read the local CLI /status directly. Point VITE_DEFAULT_API_BASE to a reachable HTTPS endpoint, or open the dashboard from a local dev server instead.`,
+      );
       return;
     }
     try {
@@ -1503,11 +1529,19 @@ export default function App() {
               : `Runtime statistics loaded${statusSnapshotTime ? ` from the latest CLI status snapshot at ${statusSnapshotTime}` : ""}, but the API did not return current member used/total quota.`),
       );
     } catch (error) {
-      setUsage(null);
+      if (runtimeMode === "github-direct") {
+        setUsage(buildGithubDirectUsageFallback(tasks, locale));
+      } else {
+        setUsage(null);
+      }
       setUsageSummary(
-        locale === "zh-CN"
-          ? `无法获取用量概览：${summarizeError(error)}`
-          : `Unable to load usage overview: ${summarizeError(error)}`,
+        runtimeMode === "github-direct"
+          ? locale === "zh-CN"
+            ? `无法读取本机用量快照，已回退到 GitHub Issue 任务统计：${summarizeError(error)}`
+            : `Unable to read the local usage snapshot. Falling back to GitHub issue activity: ${summarizeError(error)}`
+          : locale === "zh-CN"
+            ? `无法获取用量概览：${summarizeError(error)}`
+            : `Unable to load usage overview: ${summarizeError(error)}`,
       );
     }
   }

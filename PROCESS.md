@@ -281,3 +281,10 @@ no changes added to commit (use "git add" and/or "git commit -a")
 - Resolution: added `Model` and `Reasoning Level` controls to the create-project/create-task dialogs, defaulted them to `gpt-5.4` + `high`, and embedded the chosen execution profile into both direct GitHub issue payloads and local API issue-task requests.
 - Prevention: creation flows should emit an explicit execution profile instead of relying on ambient CLI defaults; if the UI claims a default model or reasoning level, that value must be serialized into the task payload so retries/imports preserve it.
 - Commit ID: `8b04cf7`
+
+## 2026-04-13
+
+- Problem: the GitHub Pages dashboard left the usage surface effectively blank even though the local control server could already return CLI status snapshots, because `github-direct` task refreshes cleared `usage`, usage loading returned early, and the deployed Pages build still pointed to `http://localhost:8787`, which browsers block from an HTTPS page.
+- Resolution: decoupled usage state from issue-task refreshes, allowed the usage panel to keep backend snapshots when available, added a GitHub-direct fallback usage model, and surfaced an explicit mixed-content explanation when Pages is configured against a local HTTP API.
+- Prevention: observational panels must not be mutated by unrelated task-refresh code, and any GitHub Pages build that depends on a backend origin must detect HTTPS-to-HTTP local API mismatches and explain them instead of silently rendering empty states.
+- Commit ID: pending
