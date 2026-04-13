@@ -124,6 +124,8 @@ type UsageOverview = {
     primary: UsageLimitWindow | null;
     secondary: UsageLimitWindow | null;
   };
+  statusCollectedAt?: string;
+  statusSource?: string;
 };
 
 type UsageLimitWindow = {
@@ -674,6 +676,8 @@ function normalizeUsageOverview(raw: unknown): UsageOverview {
       primary: primaryLimit,
       secondary: secondaryLimit,
     },
+    statusCollectedAt: String(base.statusCollectedAt || ""),
+    statusSource: String(base.statusSource || ""),
   };
 }
 
@@ -1640,6 +1644,14 @@ export default function App() {
       const normalized = normalizeUsageOverview(payload.overview);
       setUsage(normalized);
       const hasMemberUsage = normalized.memberUsageUsed !== null && normalized.memberUsageTotal !== null;
+      const statusSnapshotTime = normalized.statusCollectedAt
+        ? new Date(normalized.statusCollectedAt).toLocaleString(locale, {
+            month: "short",
+            day: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+          })
+        : "";
       setUsageSummary(
         hasMemberUsage
           ? locale === "zh-CN"
@@ -1647,8 +1659,8 @@ export default function App() {
             : `Current member quota used: ${normalized.memberUsageUsed}${normalized.memberUsageUnit ? ` ${normalized.memberUsageUnit}` : ""} out of ${normalized.memberUsageTotal}${normalized.memberUsageUnit ? ` ${normalized.memberUsageUnit}` : ""}.`
           : normalized.memberUsageReason ||
             (locale === "zh-CN"
-              ? "已拿到运行统计，但接口没有返回当前会员的算力已用/总量。"
-              : "Runtime statistics loaded, but the API did not return current member used/total quota."),
+              ? `已拿到运行统计${statusSnapshotTime ? `，最近一次 CLI 状态快照时间为 ${statusSnapshotTime}` : ""}，但接口没有返回当前会员的算力已用/总量。`
+              : `Runtime statistics loaded${statusSnapshotTime ? ` from the latest CLI status snapshot at ${statusSnapshotTime}` : ""}, but the API did not return current member used/total quota.`),
       );
     } catch (error) {
       setUsage(null);
@@ -2621,7 +2633,7 @@ export default function App() {
       {activeTab === "usage" && (
         <section className="single-panel">
           <article className="card">
-            <div className="section-head">
+            <div className="section-head usage-section-head">
               <h2>{locale === "zh-CN" ? "运行用量快照" : "Usage snapshot"}</h2>
             </div>
             <div className="usage-limit-grid">
@@ -2690,7 +2702,7 @@ export default function App() {
                 </div>
               </div>
             </div>
-            <div className="section-head">
+            <div className="section-head usage-section-head">
               <h2>{locale === "zh-CN" ? "运行指标" : "Runtime metrics"}</h2>
             </div>
             <div className="usage-grid usage-grid-roomy">
@@ -2712,7 +2724,7 @@ export default function App() {
                   ))
                 : <div className="detail-empty">{locale === "zh-CN" ? "暂无用量数据" : "No usage data"}</div>}
             </div>
-            <div className="section-head">
+            <div className="section-head usage-section-head">
               <h2>{locale === "zh-CN" ? "平台健康" : "Platform health"}</h2>
             </div>
             <div className="usage-grid">
