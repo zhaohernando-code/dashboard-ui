@@ -1,13 +1,5 @@
 # PROCESS
 
-## 2026-04-13
-
-- Problem: task summaries still looked incomplete in the dashboard because the task list kept showing the clamped description, while the detail summary was rendered inside the same two-column info grid and stayed visually cramped for long multi-line content.
-- Resolution: task cards now prefer summary text over description with a larger four-line preview, and the task detail summary card now spans the full grid width with preserved line breaks so the full summary remains readable.
-- Prevention: when a bug report says “still not fully shown”, verify the exact user path end-to-end instead of stopping at a local overflow fix; for task content, check both the list preview and the detail presentation before considering the requirement complete.
-- Reflection: the previous fix was submitted too early because it only addressed generic wrapping/overflow safety and did not re-check whether the UI surface users actually read was the summary surface itself.
-- Commit ID: N/A（当前环境未执行 git 提交）
-
 ## 2026-04-12
 
 - Problem: no dashboard existed for project/task orchestration and approvals.
@@ -64,6 +56,13 @@
 - Problem: composite/fuzzy task creation still lived inside a concrete project context, which forced users to guess `projectId` even when the task spanned multiple projects or needed AI to decide the target project.
 - Resolution: moved the composite-task entry to the project level, split create flows into project/direct-task/composite-task modes, and encoded AI-routed work with a dedicated `__auto_route__` project marker so the payload keeps the routing intent instead of silently falling back to a fixed project.
 - Prevention: when a workflow explicitly says “AI decides the target project”, the UI must not collect or infer a fixed project selector just to satisfy the current form shape; preserve that routing intent in the submitted payload and in the dashboard presentation.
+- Commit ID: N/A（当前环境未执行 git 提交）
+
+## 2026-04-13
+
+- Problem: task creation could still report `Cannot read properties of null (reading 'reset')` after the backend already accepted the request, because the submit cleanup path still depended on a React form event object; the in-page notice also sat inside normal layout flow instead of behaving like a fixed toast.
+- Resolution: changed create handlers to accept a concrete `HTMLFormElement` from the dialog submit wrapper, so `FormData`, `reset()`, and modal close no longer rely on async event lifetimes; replaced the single inline notice with a fixed top-center toast stack that supports success/error/info tones similar to Ant Design `message`.
+- Prevention: for async form submissions, pass the DOM form node into the async action instead of keeping React event objects alive across awaits; transient feedback for dashboard actions should use a fixed overlay container rather than a layout-bound banner.
 - Commit ID: N/A（当前环境未执行 git 提交）
 
 ## 2026-04-13
