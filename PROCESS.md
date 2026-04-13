@@ -2,6 +2,13 @@
 
 ## 2026-04-13
 
+- Problem: GitHub Pages direct mode refreshed the issue list every 5 seconds and re-fetched comments for every issue on each poll, which could quickly exhaust the authenticated GitHub API window and break mobile task dispatch with rate-limit errors.
+- Resolution: increased the GitHub-direct poll interval to 30 seconds, cached parsed issue-comment status by `issue.number + updated_at`, and surfaced reset/retry hints when GitHub returns a rate-limit response.
+- Prevention: any browser-side GitHub integration must treat comments/timeline fetches as high-cost requests; poll issue lists separately from comment bodies, and only re-fetch per-issue metadata when the issue update cursor actually changes.
+- Commit ID: `85be838`
+
+## 2026-04-13
+
 - Problem: task-pool fixes had been landing as isolated issue responses, so remote `main` could still drift away from the combined historical requirement set even when individual tasks looked “done”.
 - Resolution: audited dashboard task-pool issues `#4`-`#21`, grouped them into queue/publish, IA/mobile, create-feedback, and usage/log readability requirement clusters, added `REQUIREMENTS_COVERAGE.md` as the baseline checklist, and tightened task detail logs to show important events by default with raw-log expansion on demand.
 - Prevention: future dashboard closures must validate against the consolidated requirement groups, not only the newest issue text; when a view mixes operational and verbose logs, default to key-event mode and make raw logs an explicit opt-in.
