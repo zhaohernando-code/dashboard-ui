@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { ConfigProvider, Segmented, Switch, theme as antdTheme } from "antd";
 
 type TaskStatus =
   | "pending_capture"
@@ -142,13 +143,6 @@ type NoticeItem = {
   id: number;
   message: string;
   tone: NoticeTone;
-};
-
-type IssueCommentStatusCache = {
-  updatedAt: string;
-  status: TaskStatus;
-  taskId: string;
-  summary: string;
 };
 
 type Locale = "zh-CN" | "en-US";
@@ -578,7 +572,6 @@ export default function App() {
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const [isMobileViewDrawerOpen, setIsMobileViewDrawerOpen] = useState(false);
   const pollTokenRef = useRef(0);
-  const issueStatusCacheRef = useRef<Record<number, IssueCommentStatusCache>>({});
   const selectedProjectIdRef = useRef(selectedProjectId);
   const selectedTaskIdRef = useRef(selectedTaskId);
 
@@ -655,11 +648,39 @@ export default function App() {
         mobileViewDrawerTitle: locale === "zh-CN" ? "工作区视图" : "Workspace views",
         openViewDrawer: locale === "zh-CN" ? "切换工作区视图" : "Switch workspace view",
         themeSetting: locale === "zh-CN" ? "主题色" : "Theme",
-        themeSettingHint: locale === "zh-CN" ? "切换浅色与深色界面" : "Switch between light and dark mode",
         languageSetting: locale === "zh-CN" ? "界面语言" : "Language",
-        languageSettingHint: locale === "zh-CN" ? "切换中文与 English" : "Switch between Chinese and English",
       }) satisfies Record<string, string>,
     [locale],
+  );
+
+  const antThemeConfig = useMemo(
+    () => ({
+      algorithm: theme === "dark" ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm,
+      token: {
+        colorPrimary: "#1f66ff",
+        borderRadius: 14,
+        colorBgContainer: "var(--surface)",
+        colorBgElevated: "var(--surface)",
+        colorText: "var(--text)",
+        colorTextSecondary: "var(--text-dim)",
+        colorBorder: "var(--line)",
+      },
+      components: {
+        Switch: {
+          trackHeight: 32,
+          trackMinWidth: 60,
+          trackPadding: 3,
+          handleSize: 26,
+        },
+        Segmented: {
+          itemActiveBg: "color-mix(in srgb, var(--brand) 14%, var(--surface))",
+          itemColor: "var(--text-dim)",
+          itemHoverBg: "var(--surface-3)",
+          trackBg: "var(--surface-3)",
+        },
+      },
+    }),
+    [theme],
   );
 
   const memberUsageSnapshot = useMemo(() => {
@@ -725,15 +746,14 @@ export default function App() {
 
   useEffect(() => {
     void refreshAll();
-    const intervalMs = runtimeMode === "github-direct" ? 30000 : 5000;
     const interval = window.setInterval(() => {
       void refreshTasks();
       void refreshApprovals();
       void refreshUsage();
       void refreshAuth();
-    }, intervalMs);
+    }, 5000);
     return () => window.clearInterval(interval);
-  }, [githubToken, runtimeMode, sessionToken]);
+  }, [sessionToken, githubToken]);
 
   useEffect(() => {
     return () => {
@@ -828,22 +848,6 @@ export default function App() {
     });
     if (!response.ok) {
       const payload = (await response.json().catch(() => ({}))) as { message?: string };
-      const resetAt = response.headers.get("x-ratelimit-reset");
-      const retryAfter = response.headers.get("retry-after");
-      if (response.status === 403 && payload.message?.toLowerCase().includes("rate limit")) {
-        const waitHint = retryAfter
-          ? `${retryAfter}s`
-          : resetAt
-            ? new Date(Number(resetAt) * 1000).toLocaleString(locale)
-            : locale === "zh-CN"
-              ? "下一窗口"
-              : "the next window";
-        throw new Error(
-          locale === "zh-CN"
-            ? `GitHub API 已触发限流，请在 ${waitHint} 后重试。`
-            : `GitHub API rate limited. Retry after ${waitHint}.`,
-        );
-      }
       throw new Error(payload.message || `GitHub API failed: ${response.status}`);
     }
     return (await response.json()) as T;
@@ -1025,23 +1029,10 @@ export default function App() {
               .filter((issue) => !issue.pull_request)
               .map(async (issue) => {
                 const parsed = parseIssueBody(issue.body || "");
-                const cached = issueStatusCacheRef.current[issue.number];
-                let statusMeta =
-                  cached && cached.updatedAt === issue.updated_at
-                    ? { status: cached.status, taskId: cached.taskId, summary: cached.summary }
-                    : null;
-                if (!statusMeta) {
-                  const comments = await githubRequest<Array<{ body: string }>>(
-                    `/repos/${owner}/${repo}/issues/${issue.number}/comments?per_page=100&sort=created&direction=asc`,
-                  );
-                  statusMeta = parseStatusFromComments(comments, issue.state === "closed");
-                  issueStatusCacheRef.current[issue.number] = {
-                    updatedAt: issue.updated_at,
-                    status: statusMeta.status,
-                    taskId: statusMeta.taskId,
-                    summary: statusMeta.summary,
-                  };
-                }
+                const comments = await githubRequest<Array<{ body: string }>>(
+                  `/repos/${owner}/${repo}/issues/${issue.number}/comments?per_page=100&sort=created&direction=asc`,
+                );
+                const statusMeta = parseStatusFromComments(comments, issue.state === "closed");
                 const projectId = parsed.projectId || "dashboard-ui";
                 return {
                   id: statusMeta.taskId || `issue-${issue.number}`,
@@ -1734,7 +1725,8 @@ export default function App() {
         : "";
 
   return (
-    <div className="app-root">
+    <ConfigProvider theme={antThemeConfig}>
+      <div className="app-root">
       <header className="topbar">
         <div className="brand-wrap">
           <div className="brand-mark" aria-hidden="true">
@@ -1749,16 +1741,13 @@ export default function App() {
           <HeaderSwitch
             checked={theme === "dark"}
             label={t.themeSetting}
-            hint={t.themeSettingHint}
             stateLabel={theme === "dark" ? "Dark" : "Light"}
             onToggle={() => setTheme(theme === "dark" ? "light" : "dark")}
           />
-          <HeaderSwitch
-            checked={locale === "en-US"}
+          <HeaderLocaleSwitch
             label={t.languageSetting}
-            hint={t.languageSettingHint}
-            stateLabel={locale === "zh-CN" ? "中文" : "English"}
-            onToggle={() => setLocale(locale === "zh-CN" ? "en-US" : "zh-CN")}
+            value={locale}
+            onChange={setLocale}
           />
           <button type="button" className="ghost header-logout" onClick={() => void logout()} disabled={!authConfig?.user}>
             {t.logoutButton}
@@ -1856,42 +1845,17 @@ export default function App() {
                 <span className="mobile-nav-action-label">{t.openViewDrawer}</span>
                 <span className="mobile-nav-action-hint">{tabs.find((tab) => tab.id === activeTab)?.label[locale]}</span>
               </button>
-              <button
-                type="button"
-                className={`switch-card ${theme === "dark" ? "is-on" : ""}`}
-                role="switch"
-                aria-checked={theme === "dark"}
-                onClick={() => {
-                  setTheme(theme === "dark" ? "light" : "dark");
-                }}
-              >
-                <span className="switch-copy">
-                  <span className="mobile-nav-action-label">{t.themeSetting}</span>
-                  <span className="mobile-nav-action-hint">{t.themeSettingHint}</span>
-                </span>
-                <span className="switch-track" aria-hidden="true">
-                  <span className="switch-thumb" />
-                  <span className="switch-state">{theme === "dark" ? "Dark" : "Light"}</span>
-                </span>
-              </button>
-              <button
-                type="button"
-                className={`switch-card ${locale === "en-US" ? "is-on" : ""}`}
-                role="switch"
-                aria-checked={locale === "en-US"}
-                onClick={() => {
-                  setLocale(locale === "zh-CN" ? "en-US" : "zh-CN");
-                }}
-              >
-                <span className="switch-copy">
-                  <span className="mobile-nav-action-label">{t.languageSetting}</span>
-                  <span className="mobile-nav-action-hint">{t.languageSettingHint}</span>
-                </span>
-                <span className="switch-track" aria-hidden="true">
-                  <span className="switch-thumb" />
-                  <span className="switch-state">{locale === "zh-CN" ? "中文" : "English"}</span>
-                </span>
-              </button>
+              <HeaderSwitch
+                checked={theme === "dark"}
+                label={t.themeSetting}
+                stateLabel={theme === "dark" ? "Dark" : "Light"}
+                onToggle={() => setTheme(theme === "dark" ? "light" : "dark")}
+              />
+              <HeaderLocaleSwitch
+                label={t.languageSetting}
+                value={locale}
+                onChange={setLocale}
+              />
               {!authConfig?.user ? (
                 <button
                   type="button"
@@ -2038,7 +2002,7 @@ export default function App() {
                         {requirement.acceptanceCompleted}/{requirement.acceptanceTotal}
                         {requirement.publishStatus ? ` · ${requirement.publishStatus}` : ""}
                       </div>
-                      <div className="clamp-3 entity-copy">{requirement.openFailureReason || requirement.attempts[0]?.summary || requirement.attempts[0]?.description || (locale === "zh-CN" ? "暂无描述" : "No description")}</div>
+                      <div className="entity-copy wrap-anywhere">{requirement.openFailureReason || requirement.attempts[0]?.summary || requirement.attempts[0]?.description || (locale === "zh-CN" ? "暂无描述" : "No description")}</div>
                     </button>
                   ))
                 ) : (
@@ -2056,7 +2020,7 @@ export default function App() {
             ) : null}
           </article>
 
-          <article className="card side-panel">
+          <article className="card side-panel approval-panel">
             <div className="section-head">
               <h2>{t.pendingApprovals}</h2>
               <button className="ghost" type="button" onClick={() => void refreshApprovals()}>
@@ -2190,7 +2154,8 @@ export default function App() {
           onCreateTask={onCreateTask}
         />
       ) : null}
-    </div>
+      </div>
+    </ConfigProvider>
   );
 }
 
@@ -2362,27 +2327,27 @@ function TaskDetail({
       </div>
 
       <div className="detail-grid">
-        <div className="info-card">
+        <div className="info-card full-width">
           <div className="info-label">{locale === "zh-CN" ? "描述" : "Description"}</div>
           <div className="wrap-anywhere">{task.description || (locale === "zh-CN" ? "暂无描述" : "No description")}</div>
         </div>
 
         {task.planPreview ? (
-          <div className="info-card">
+          <div className="info-card full-width">
             <div className="info-label">{locale === "zh-CN" ? "计划预览" : "Plan preview"}</div>
             <div className="wrap-anywhere">{task.planPreview}</div>
           </div>
         ) : null}
 
         {task.summary ? (
-          <div className="info-card">
+          <div className="info-card full-width">
             <div className="info-label">{locale === "zh-CN" ? "摘要" : "Summary"}</div>
             <div className="wrap-anywhere">{task.summary}</div>
           </div>
         ) : null}
 
         {task.openFailureReason ? (
-          <div className="info-card">
+          <div className="info-card full-width">
             <div className="info-label">{locale === "zh-CN" ? "未完成原因" : "Why not completed"}</div>
             <div className="wrap-anywhere">{task.openFailureReason}</div>
           </div>
@@ -2518,27 +2483,49 @@ function ApprovalCard({
 function HeaderSwitch({
   checked,
   label,
-  hint,
   stateLabel,
   onToggle,
 }: {
   checked: boolean;
   label: string;
-  hint: string;
   stateLabel: string;
   onToggle: () => void;
 }) {
   return (
-    <button type="button" className={`switch-card header-switch ${checked ? "is-on" : ""}`} role="switch" aria-checked={checked} onClick={onToggle}>
+    <div className="switch-card header-switch">
       <span className="switch-copy">
         <span className="mobile-nav-action-label">{label}</span>
-        <span className="mobile-nav-action-hint">{hint}</span>
+        <span className="switch-state-text">{stateLabel}</span>
       </span>
-      <span className="switch-track" aria-hidden="true">
-        <span className="switch-thumb" />
-        <span className="switch-state">{stateLabel}</span>
+      <Switch checked={checked} checkedChildren={stateLabel} unCheckedChildren={stateLabel} onChange={onToggle} />
+    </div>
+  );
+}
+
+function HeaderLocaleSwitch({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: Locale;
+  onChange: (next: Locale) => void;
+}) {
+  return (
+    <div className="switch-card header-switch locale-switch-card">
+      <span className="switch-copy">
+        <span className="mobile-nav-action-label">{label}</span>
       </span>
-    </button>
+      <Segmented
+        className="locale-segmented"
+        value={value}
+        options={[
+          { label: "中文", value: "zh-CN" },
+          { label: "English", value: "en-US" },
+        ]}
+        onChange={(next) => onChange(next as Locale)}
+      />
+    </div>
   );
 }
 
