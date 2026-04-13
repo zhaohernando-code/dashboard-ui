@@ -843,7 +843,8 @@ textarea {
 }
 
 .clamp-2,
-.clamp-3 {
+.clamp-3,
+.clamp-4 {
   display: -webkit-box;
   -webkit-box-orient: vertical;
   overflow: hidden;
@@ -855,6 +856,22 @@ textarea {
 
 .clamp-3 {
   -webkit-line-clamp: 3;
+}
+
+.clamp-4 {
+  -webkit-line-clamp: 4;
+}
+
+.entity-copy-label {
+  margin-bottom: 0.18rem;
+}
+
+.summary-card {
+  grid-column: 1 / -1;
+}
+
+.summary-card .wrap-anywhere {
+  white-space: pre-wrap;
 }
 
 button:disabled {
