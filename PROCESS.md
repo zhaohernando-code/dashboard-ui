@@ -106,3 +106,10 @@
 - Resolution: captured the form element synchronously before any awaited request in both create handlers, then used that stable reference for `reset()` and close; added dialog-scoped header spacing and a borderless close icon treatment aligned with Ant Design style expectations.
 - Prevention: when a previous bug fix depends on an async event-handling invariant, keep that invariant in follow-up refactors and verify the full UX path manually after submit; modal-specific affordances must use dialog-scoped styles instead of inheriting generic icon-button chrome.
 - Commit ID: N/A（当前环境未执行 git 提交）
+
+## 2026-04-13
+
+- Problem: task detail summaries still ended with `...` because the issue-status sync path reused a log-style truncation helper when posting `Summary:` back to GitHub, so the dashboard could only read the shortened text.
+- Resolution: removed summary truncation from `local-control-server/server.js` issue status comments so task detail views can render the full summary text while keeping log-line truncation unchanged elsewhere.
+- Prevention: never reuse preview/log truncation helpers for persisted detail fields; if a string is later used as canonical detail content, store the full text and clamp only in explicitly preview-only UI surfaces.
+- Commit ID: N/A（当前环境未执行 git 提交）
