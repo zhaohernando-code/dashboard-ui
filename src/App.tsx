@@ -3439,7 +3439,7 @@ export default function App() {
         const command = decision === "feedback"
           ? `/feedback ${feedback}`.trim()
           : decision === "approve"
-            ? "/approve"
+            ? `/approve ${feedback}`.trim()
             : `/reject ${feedback}`.trim();
         await githubRequest(`/repos/${owner}/${repoName}/issues/${task.issueNumber}/comments`, {
           method: "POST",
