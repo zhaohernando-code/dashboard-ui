@@ -46,7 +46,7 @@ type CreateDialogProps = {
   onClose: () => void;
   onCreateProject: (values: CreateProjectValues) => Promise<void>;
   onCreateTask: (values: CreateTaskValues) => Promise<void>;
-  getProjectDisplayName: (projectId: string, locale: Locale) => string;
+  getProjectDisplayName: (projectId: string, locale: Locale, displayName?: string) => string;
 };
 
 type StatusFilterBarProps = {
@@ -68,7 +68,7 @@ type TaskDetailProps = {
   onDismissAnomaly: (anomaly: WorkspaceAnomaly) => void;
   statusLabel: StatusLabelMap;
   statusTagColor: StatusTagColorMap;
-  getProjectDisplayName: (projectId: string, locale: Locale) => string;
+  getProjectDisplayName: (projectId: string, locale: Locale, displayName?: string) => string;
   normalizeDisplayText: (value: string) => string;
   buildLogViews: (logs: TaskLog[]) => { important: TaskLog[]; raw: TaskLog[] };
 };
@@ -80,7 +80,7 @@ type ApprovalCardProps = {
   onOpenTask: (taskId: string) => void;
   statusLabel: StatusLabelMap;
   statusTagColor: StatusTagColorMap;
-  getProjectDisplayName: (projectId: string, locale: Locale) => string;
+  getProjectDisplayName: (projectId: string, locale: Locale, displayName?: string) => string;
 };
 
 type HeaderSwitchProps = {
@@ -224,7 +224,7 @@ export function CreateDialog({
             <Form.Item name="projectId" label={locale === "zh-CN" ? "项目" : "Project"}>
               <Select
                 options={projects.map((project) => ({
-                  label: getProjectDisplayName(project.id, locale),
+                  label: getProjectDisplayName(project.id, locale, project.name),
                   value: project.id,
                 }))}
               />
@@ -331,7 +331,7 @@ export function TaskDetail({
         <Flex justify="space-between" align="flex-start" gap={16} wrap>
           <Space direction="vertical" size={8}>
             <Typography.Text type="secondary">
-              {getProjectDisplayName(task.projectId, locale)} · {task.type} · requirement #{requirement.latestAttemptNumber}
+              {getProjectDisplayName(task.projectId, locale, task.projectName)} · {task.type} · requirement #{requirement.latestAttemptNumber}
             </Typography.Text>
             <Typography.Title level={4} className="card-title wrap-anywhere">
               {task.title}
@@ -573,7 +573,7 @@ export function ApprovalCard({
         <Space wrap>
           <Tag color={statusTagColor[approval.task.status]}>{statusLabel[approval.task.status][locale]}</Tag>
           <Typography.Text type="secondary">
-            {getProjectDisplayName(approval.task.projectId, locale)} · {approval.task.type}
+            {getProjectDisplayName(approval.task.projectId, locale, approval.task.projectName)} · {approval.task.type}
           </Typography.Text>
         </Space>
         <Input.TextArea

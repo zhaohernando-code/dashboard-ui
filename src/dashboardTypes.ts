@@ -45,6 +45,12 @@ export type Task = {
   attemptNumber?: number;
   projectId: string;
   projectName: string;
+  requestedProject?: {
+    id?: string;
+    name?: string;
+    description?: string;
+    repository?: string;
+  } | null;
   type: string;
   title: string;
   description: string;

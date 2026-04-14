@@ -167,13 +167,30 @@ function normalizeProjectIdentifier(value: string) {
     .slice(0, 64);
 }
 
+function hasNonAscii(value: string) {
+  return /[^\x00-\x7F]/.test(String(value || ""));
+}
+
+function shouldPreferUnicodeProjectId(name: string, asciiCandidate: string, normalizedCandidate: string) {
+  return Boolean(
+    String(name || "").trim()
+    && asciiCandidate
+    && normalizedCandidate
+    && asciiCandidate !== normalizedCandidate
+    && hasNonAscii(name),
+  );
+}
+
 function deriveRequestedProjectId(name: string, repository: string, allowGeneratedFallback = true) {
-  const normalizedExplicitId = normalizeProjectIdentifier(name);
+  const normalizedNameId = normalizeProjectIdentifier(name);
   const asciiNameId = slugify(name);
+  if (shouldPreferUnicodeProjectId(name, asciiNameId, normalizedNameId)) {
+    return normalizedNameId;
+  }
   if (asciiNameId) return asciiNameId;
   const asciiRepositoryId = slugify(extractRepositoryName(repository));
   if (asciiRepositoryId) return asciiRepositoryId;
-  if (normalizedExplicitId) return normalizedExplicitId;
+  if (normalizedNameId) return normalizedNameId;
   const normalizedRepositoryId = normalizeProjectIdentifier(extractRepositoryName(repository));
   if (normalizedRepositoryId) return normalizedRepositoryId;
   return allowGeneratedFallback ? `project-${Date.now().toString(36)}` : "";
@@ -186,9 +203,14 @@ function resolveTaskProjectId(
   fallbackProjectId = "dashboard-ui",
 ) {
   if (parseTaskType(type) === "project_create") {
+    const explicitProjectId = normalizeProjectIdentifier(String(requestedProject?.id || ""));
+    const normalizedNameId = normalizeProjectIdentifier(String(requestedProject?.name || ""));
+    const asciiNameId = slugify(String(requestedProject?.name || ""));
     const requestedProjectId =
-      normalizeProjectIdentifier(String(requestedProject?.id || "")) ||
-      deriveRequestedProjectId(String(requestedProject?.name || ""), String(requestedProject?.repository || ""), false);
+      (explicitProjectId && shouldPreferUnicodeProjectId(String(requestedProject?.name || ""), asciiNameId, normalizedNameId) && explicitProjectId === asciiNameId
+        ? normalizedNameId
+        : explicitProjectId)
+      || deriveRequestedProjectId(String(requestedProject?.name || ""), String(requestedProject?.repository || ""), false);
     if (requestedProjectId) {
       return requestedProjectId;
     }
@@ -254,6 +276,38 @@ function deriveCompositeSteps(description: string) {
   ];
 }
 
+function isGenericProjectDescriptionLine(value: string) {
+  const normalized = String(value || "")
+    .trim()
+    .replace(/[：:。.!！?？]/g, "");
+  if (!normalized) {
+    return true;
+  }
+  return /^(希望有如下功能|希望具备如下功能|功能需求|需求如下|需求|项目需求|包括以下|包括如下|以上为|以上是|以上内容)/.test(normalized);
+}
+
+function extractProjectScopeItems(description: string) {
+  return String(description || "")
+    .split(/\n+/)
+    .map((line) => line.replace(/^\s*(?:[-*•]+|\d+[.)、]?|[a-zA-Z][.)])\s*/, "").trim())
+    .filter((line) => line && !isGenericProjectDescriptionLine(line))
+    .slice(0, 6);
+}
+
+function summarizeProjectIntent(description: string) {
+  const scopeItems = extractProjectScopeItems(description);
+  if (scopeItems.length) {
+    return scopeItems[0];
+  }
+  return (
+    String(description || "")
+      .split(/\n+/)
+      .map((line) => line.trim())
+      .find((line) => line && !isGenericProjectDescriptionLine(line))
+    || "New Codex-managed project request."
+  );
+}
+
 function buildGithubDirectPlanPreview(input: {
   type: string;
   title: string;
@@ -261,14 +315,25 @@ function buildGithubDirectPlanPreview(input: {
   requestedProject?: { name?: string; description?: string } | null;
 }) {
   if (parseTaskType(input.type) === "project_create" && input.requestedProject) {
+    const projectDescription = input.requestedProject.description || input.description || "";
+    const scopeItems = extractProjectScopeItems(projectDescription);
+    const scopeSummary = scopeItems.slice(0, 3).join(" / ");
     return [
       `Project: ${input.requestedProject.name || "Untitled project"}`,
-      `Description: ${input.requestedProject.description || "No description"}`,
-      "Execution shape:",
-      "- scaffold a new project directory under ~/codex",
-      "- generate project-specific rules and process documents",
-      "- initialize a project repository and remote metadata if provided",
-      "- hand future implementation tasks to Codex workers via task worktrees",
+      `Intent: ${summarizeProjectIntent(projectDescription)}`,
+      ...(scopeItems.length
+        ? [
+            "Requested scope:",
+            ...scopeItems.map((item) => `- ${item}`),
+          ]
+        : []),
+      "Proposed plan:",
+      "1. Clarify scope, target users, constraints, and success criteria.",
+      "2. Research reusable open-source baselines, data sources, and critical dependencies.",
+      scopeSummary
+        ? `3. Turn the requested scope into delivery milestones, starting with ${scopeSummary}.`
+        : "3. Turn the requested scope into delivery milestones and execution order.",
+      "4. After approval, scaffold the repository/workspace, write project rules/process docs, and start the first milestone.",
     ].join("\n");
   }
 
@@ -528,6 +593,25 @@ function buildLogsFromComments(comments: IssueComment[]) {
     .map(({ timestamp, message }) => ({ timestamp, message }));
 }
 
+function getTaskProjectDisplayName(task: Pick<Task, "projectId" | "projectName" | "type" | "requestedProject">) {
+  if (task.projectId === AUTO_ROUTE_PROJECT_ID) {
+    return "AI-routed";
+  }
+  const requestedName = String(task.requestedProject?.name || "").trim();
+  return requestedName || String(task.projectName || "").trim() || task.projectId;
+}
+
+function getTaskProjectDescription(task: Pick<Task, "projectId" | "description" | "requestedProject">) {
+  if (task.projectId === AUTO_ROUTE_PROJECT_ID) {
+    return "Composite or cross-project work waiting for AI routing.";
+  }
+  return String(task.requestedProject?.description || "").trim() || "";
+}
+
+function getTaskProjectRepository(task: Pick<Task, "requestedProject">) {
+  return String(task.requestedProject?.repository || "").trim();
+}
+
 function buildRemoteProjects(tasks: Task[]) {
   const projectMap = new Map(
     REMOTE_PROJECT_CATALOG.map((project) => [
@@ -549,12 +633,9 @@ function buildRemoteProjects(tasks: Task[]) {
     if (!projectMap.has(task.projectId)) {
       projectMap.set(task.projectId, {
         id: task.projectId,
-        name: task.projectId === AUTO_ROUTE_PROJECT_ID ? "AI-routed" : task.projectId,
-        description:
-          task.projectId === AUTO_ROUTE_PROJECT_ID
-            ? "Composite or cross-project work waiting for AI routing."
-            : "",
-        repository: "",
+        name: getTaskProjectDisplayName(task),
+        description: getTaskProjectDescription(task),
+        repository: getTaskProjectRepository(task),
         toolRoute: `/tools/${task.projectId}`,
         taskStats: { total: 0, running: 0, failed: 0, waitingUser: 0, completed: 0 },
       });
@@ -591,12 +672,9 @@ function mergeProjectStats(baseProjects: Project[], tasks: Task[]) {
     if (!projectMap.has(task.projectId)) {
       projectMap.set(task.projectId, {
         id: task.projectId,
-        name: getProjectDisplayName(task.projectId, "en-US"),
-        description:
-          task.projectId === AUTO_ROUTE_PROJECT_ID
-            ? "Composite or cross-project work waiting for AI routing."
-            : "",
-        repository: "",
+        name: getTaskProjectDisplayName(task),
+        description: getTaskProjectDescription(task),
+        repository: getTaskProjectRepository(task),
         toolRoute: `/tools/${task.projectId}`,
         taskStats: {
           total: 0,
@@ -630,11 +708,11 @@ function getTaskProjectId(type: string, rawProjectId: string) {
   return normalizedProjectId || "dashboard-ui";
 }
 
-function getProjectDisplayName(projectId: string, locale: Locale) {
+function getProjectDisplayName(projectId: string, locale: Locale, displayName?: string) {
   if (projectId === AUTO_ROUTE_PROJECT_ID) {
     return locale === "zh-CN" ? "AI 待判定项目" : "AI-routed";
   }
-  return projectId;
+  return String(displayName || "").trim() || projectId;
 }
 
 function matchesStatusFilter(status: TaskStatus, filter: StatusFilterValue) {
@@ -1010,6 +1088,9 @@ function normalizeDisplayText(value: string) {
 
 function getRequirementPreview(requirement: Requirement, locale: Locale) {
   const latestAttempt = requirement.attempts[0];
+  const planPreview = normalizeDisplayText(latestAttempt?.status === "waiting_user" ? latestAttempt?.planPreview || "" : "");
+  if (planPreview) return planPreview;
+
   const summary = normalizeDisplayText(requirement.userSummary || latestAttempt?.userSummary || latestAttempt?.summary || "");
   if (summary) return summary;
 
@@ -1753,7 +1834,8 @@ export default function App() {
                   issueNumber: issue.number,
                   issueUrl: issue.html_url,
                   projectId,
-                  projectName: getProjectDisplayName(projectId, locale),
+                  projectName: getProjectDisplayName(projectId, locale, parsed.requestedProject?.name || ""),
+                  requestedProject: parsed.requestedProject,
                   type: parsed.type,
                   title,
                   description,
@@ -1855,7 +1937,7 @@ export default function App() {
       setTools(
         REMOTE_PROJECT_CATALOG.map((project) => ({
           id: project.id,
-          name: getProjectDisplayName(project.id, locale),
+          name: getProjectDisplayName(project.id, locale, project.name),
           route: project.repository,
           description: project.description,
         })),
@@ -2431,7 +2513,7 @@ export default function App() {
       ? [
           {
             key: "tasks",
-            label: getProjectDisplayName(selectedProject.id, locale),
+            label: getProjectDisplayName(selectedProject.id, locale, selectedProject.name),
             active: workspaceLevel === "tasks",
             onClick: () => {
               setSelectedProjectId(selectedProject.id);
@@ -2472,8 +2554,8 @@ export default function App() {
         : "Choose a project first, then inspect its tasks."
       : workspaceLevel === "tasks"
         ? locale === "zh-CN"
-          ? `${getProjectDisplayName(selectedProject?.id || "", locale) || "当前项目"} 下的需求线程`
-          : `Requirement threads under ${getProjectDisplayName(selectedProject?.id || "", locale) || "the current project"}`
+          ? `${getProjectDisplayName(selectedProject?.id || "", locale, selectedProject?.name) || "当前项目"} 下的需求线程`
+          : `Requirement threads under ${getProjectDisplayName(selectedProject?.id || "", locale, selectedProject?.name) || "the current project"}`
         : locale === "zh-CN"
           ? "展示当前需求线程的最新 attempt、验收项和失败原因。"
           : "Focused detail view for the active requirement, including attempts and acceptance.";
@@ -2751,7 +2833,7 @@ export default function App() {
                             <Flex justify="space-between" align="flex-start" gap={12}>
                               <Space direction="vertical" size={6} className="full-width">
                                 <Typography.Title level={5} className="card-title">
-                                  {getProjectDisplayName(project.id, locale)}
+                                  {getProjectDisplayName(project.id, locale, project.name)}
                                 </Typography.Title>
                                 <Typography.Text type="secondary">
                                   {(project.id === AUTO_ROUTE_PROJECT_ID
@@ -2796,7 +2878,7 @@ export default function App() {
                                   <Tag color={statusTagColor[requirement.status]}>{statusLabel[requirement.status][locale]}</Tag>
                                 </Flex>
                                 <Typography.Text type="secondary">
-                                  {getProjectDisplayName(requirement.projectId, locale)} · attempt #{requirement.latestAttemptNumber}
+                                  {getProjectDisplayName(requirement.projectId, locale, requirement.projectName)} · attempt #{requirement.latestAttemptNumber}
                                 </Typography.Text>
                                 <Typography.Text type="secondary">
                                   {locale === "zh-CN" ? "验收：" : "Acceptance: "}
