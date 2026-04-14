@@ -65,7 +65,7 @@ type TaskDetailProps = {
   task: Task;
   locale: Locale;
   onMutate: (taskId: string, action: "stop" | "retry") => Promise<void>;
-  onRespond: (taskId: string, decision: "approve" | "reject" | "feedback", feedback: string) => Promise<void>;
+  onRespond: (taskId: string, decision: "approve" | "reject" | "feedback", feedback: string) => Promise<boolean>;
   anomalies: WorkspaceAnomaly[];
   dismissedAnomalyIds: Set<string>;
   onDismissAnomaly: (anomaly: WorkspaceAnomaly) => void;
@@ -413,8 +413,10 @@ export function TaskDetail({
     if (!serialized || serialized === (locale === "zh-CN" ? "本轮计划反馈" : "Plan feedback")) {
       return;
     }
-    await onRespond(task.id, "feedback", serialized);
-    planResponseForm.resetFields();
+    const submitted = await onRespond(task.id, "feedback", serialized);
+    if (submitted) {
+      planResponseForm.resetFields();
+    }
   }
 
   return (

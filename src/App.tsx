@@ -2586,7 +2586,58 @@ export default function App() {
     }
   }
 
-  async function respondToTask(taskId: string, decision: "approve" | "reject" | "feedback", feedback: string) {
+  function applyOptimisticPlanningFeedback(taskId: string, feedback: string) {
+    const updatedAt = new Date().toISOString();
+    const summary = locale === "zh-CN"
+      ? "反馈已提交，正在继续生成下一版计划。"
+      : "Feedback submitted. Generating the next plan draft.";
+    const nextTasks = (current: Task[]) => current.map((task) => {
+      if (task.id !== taskId) {
+        return task;
+      }
+      return {
+        ...task,
+        updatedAt,
+        status: "waiting_user" as const,
+        summary,
+        userSummary: summary,
+        planDraftPending: true,
+      };
+    });
+    setTasks(nextTasks);
+    setApprovals((current) => current.map((approval) => (
+      approval.task.id !== taskId
+        ? approval
+        : {
+            ...approval,
+            task: {
+              ...approval.task,
+              updatedAt,
+              status: "waiting_user" as const,
+              summary,
+              userSummary: summary,
+              planDraftPending: true,
+            },
+          }
+    )));
+    setOptimisticTasks((current) => current.map((task) => (
+      task.id !== taskId
+        ? task
+        : {
+            ...task,
+            updatedAt,
+            status: "waiting_user" as const,
+            summary,
+            userSummary: summary,
+            planDraftPending: true,
+          }
+    )));
+    if (feedback.trim()) {
+      setTransientNotice(summary, "success");
+    }
+  }
+
+  async function respondToTask(taskId: string, decision: "approve" | "reject" | "feedback", feedback: string): Promise<boolean> {
     try {
       const task = tasks.find((item) => item.id === taskId);
       if (runtimeMode === "github-direct") {
@@ -2604,6 +2655,13 @@ export default function App() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ body: command }),
         });
+        if (decision === "feedback") {
+          applyOptimisticPlanningFeedback(taskId, feedback);
+          window.setTimeout(() => {
+            void refreshAll();
+          }, 1500);
+          return true;
+        }
       } else {
         await api(`/api/tasks/${taskId}/respond`, {
           method: "POST",
@@ -2619,8 +2677,10 @@ export default function App() {
         "success",
       );
       await refreshAll();
+      return true;
     } catch (error) {
       setTransientNotice(summarizeError(error), "error");
+      return false;
     }
   }
 
