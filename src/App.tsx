@@ -573,7 +573,7 @@ function buildLogsFromComments(comments: IssueComment[]) {
       if (!message) return null;
 
       const command = parseCommentCommand(message);
-      if (["/approve", "/reject", "/retry", "/stop"].includes(command)) {
+      if (["/approve", "/reject", "/feedback", "/retry", "/stop"].includes(command)) {
         return null;
       }
 
@@ -2452,7 +2452,7 @@ export default function App() {
     }
   }
 
-  async function respondToTask(taskId: string, decision: "approve" | "reject", feedback: string) {
+  async function respondToTask(taskId: string, decision: "approve" | "reject" | "feedback", feedback: string) {
     try {
       const task = tasks.find((item) => item.id === taskId);
       if (runtimeMode === "github-direct") {
@@ -2460,7 +2460,11 @@ export default function App() {
           throw new Error(locale === "zh-CN" ? "当前任务没有对应的 Issue 编号" : "This task is missing an issue number");
         }
         const [owner, repoName] = GITHUB_TASK_REPO.split("/");
-        const command = decision === "approve" ? `/approve ${feedback}`.trim() : `/reject ${feedback}`.trim();
+        const command = decision === "feedback"
+          ? `/feedback ${feedback}`.trim()
+          : decision === "approve"
+            ? "/approve"
+            : `/reject ${feedback}`.trim();
         await githubRequest(`/repos/${owner}/${repoName}/issues/${task.issueNumber}/comments`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -2469,10 +2473,17 @@ export default function App() {
       } else {
         await api(`/api/tasks/${taskId}/respond`, {
           method: "POST",
-          body: JSON.stringify({ decision, feedback }),
+          body: JSON.stringify({ decision, feedback, finalize: decision === "approve" }),
         });
       }
-      setTransientNotice(locale === "zh-CN" ? "审批结果已提交" : "Decision submitted", "success");
+      setTransientNotice(
+        decision === "feedback"
+          ? (locale === "zh-CN" ? "反馈已提交，正在更新计划" : "Feedback submitted. Updating plan.")
+          : locale === "zh-CN"
+            ? "审批结果已提交"
+            : "Decision submitted",
+        "success",
+      );
       await refreshAll();
     } catch (error) {
       setTransientNotice(summarizeError(error), "error");

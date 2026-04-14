@@ -1,4 +1,4 @@
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import {
   Alert,
   Button,
@@ -62,7 +62,7 @@ type TaskDetailProps = {
   task: Task;
   locale: Locale;
   onMutate: (taskId: string, action: "stop" | "retry") => Promise<void>;
-  onRespond: (taskId: string, decision: "approve" | "reject", feedback: string) => Promise<void>;
+  onRespond: (taskId: string, decision: "approve" | "reject" | "feedback", feedback: string) => Promise<void>;
   anomalies: WorkspaceAnomaly[];
   dismissedAnomalyIds: Set<string>;
   onDismissAnomaly: (anomaly: WorkspaceAnomaly) => void;
@@ -76,7 +76,7 @@ type TaskDetailProps = {
 type ApprovalCardProps = {
   approval: Approval;
   locale: Locale;
-  onRespond: (taskId: string, decision: "approve" | "reject", feedback: string) => Promise<void>;
+  onRespond: (taskId: string, decision: "approve" | "reject" | "feedback", feedback: string) => Promise<void>;
   onOpenTask: (taskId: string) => void;
   statusLabel: StatusLabelMap;
   statusTagColor: StatusTagColorMap;
@@ -322,8 +322,15 @@ export function TaskDetail({
   buildLogViews,
 }: TaskDetailProps) {
   const [showRawLogs, setShowRawLogs] = useState(false);
+  const [approvalFeedback, setApprovalFeedback] = useState("");
   const logViews = buildLogViews(task.logs);
   const visibleLogs = showRawLogs ? logViews.raw : logViews.important;
+  const supportsPlanFeedback = task.status === "waiting_user" && Boolean(task.planPreview);
+
+  useEffect(() => {
+    setApprovalFeedback("");
+    setShowRawLogs(false);
+  }, [task.id]);
 
   return (
     <Space direction="vertical" size={16} className="full-width">
@@ -339,16 +346,6 @@ export function TaskDetail({
             <Tag color={statusTagColor[task.status]}>{statusLabel[task.status][locale]}</Tag>
           </Space>
           <Flex gap={8} wrap justify="flex-end">
-            {task.status === "waiting_user" ? (
-              <>
-                <Button type="primary" onClick={() => void onRespond(task.id, "approve", "")}>
-                  {locale === "zh-CN" ? "通过" : "Approve"}
-                </Button>
-                <Button onClick={() => void onRespond(task.id, "reject", "")}>
-                  {locale === "zh-CN" ? "拒绝" : "Reject"}
-                </Button>
-              </>
-            ) : null}
             {task.status === "awaiting_acceptance" ? (
               <>
                 <Button type="primary" onClick={() => void onRespond(task.id, "approve", "")}>
@@ -387,6 +384,59 @@ export function TaskDetail({
             <Typography.Paragraph className="preserve-breaks wrap-anywhere detail-text">
               {normalizeDisplayText(task.planPreview)}
             </Typography.Paragraph>
+          </Card>
+        ) : null}
+
+        {supportsPlanFeedback ? (
+          <Card size="small" className="full-width">
+            <Typography.Text type="secondary">
+              {locale === "zh-CN" ? "计划反馈" : "Plan feedback"}
+            </Typography.Text>
+            <Typography.Paragraph className="detail-text">
+              {locale === "zh-CN"
+                ? "有疑问、取舍或范围调整时先提交反馈继续规划；确认当前计划无误后，再开始执行。"
+                : "Submit feedback to keep refining the plan. Only start execution when the current plan is final."}
+            </Typography.Paragraph>
+            <Input.TextArea
+              value={approvalFeedback}
+              onChange={(event) => setApprovalFeedback(event.target.value)}
+              rows={4}
+              placeholder={
+                locale === "zh-CN"
+                  ? "回复待确认项、补充限制条件，或说明你希望调整的一期范围"
+                  : "Reply to open questions, add constraints, or adjust the phase-1 scope"
+              }
+            />
+            <Flex gap={8} wrap style={{ marginTop: 12 }}>
+              <Button
+                onClick={() => void onRespond(task.id, "feedback", approvalFeedback)}
+                disabled={!approvalFeedback.trim()}
+              >
+                {locale === "zh-CN" ? "提交反馈继续规划" : "Submit feedback"}
+              </Button>
+              <Button type="primary" onClick={() => void onRespond(task.id, "approve", "")}>
+                {locale === "zh-CN" ? "确认计划并开始执行" : "Start execution"}
+              </Button>
+              <Button onClick={() => void onRespond(task.id, "reject", approvalFeedback)}>
+                {locale === "zh-CN" ? "拒绝" : "Reject"}
+              </Button>
+            </Flex>
+          </Card>
+        ) : null}
+
+        {task.status === "waiting_user" && !supportsPlanFeedback ? (
+          <Card size="small" className="full-width">
+            <Typography.Text type="secondary">
+              {locale === "zh-CN" ? "审批操作" : "Approval actions"}
+            </Typography.Text>
+            <Flex gap={8} wrap style={{ marginTop: 12 }}>
+              <Button type="primary" onClick={() => void onRespond(task.id, "approve", "")}>
+                {locale === "zh-CN" ? "通过" : "Approve"}
+              </Button>
+              <Button onClick={() => void onRespond(task.id, "reject", approvalFeedback)}>
+                {locale === "zh-CN" ? "拒绝" : "Reject"}
+              </Button>
+            </Flex>
           </Card>
         ) : null}
 
@@ -555,6 +605,7 @@ export function ApprovalCard({
   getProjectDisplayName,
 }: ApprovalCardProps) {
   const [feedback, setFeedback] = useState("");
+  const supportsPlanFeedback = approval.task.status === "waiting_user" && Boolean(approval.task.planPreview);
 
   return (
     <Card size="small" className="list-card">
@@ -580,11 +631,26 @@ export function ApprovalCard({
           value={feedback}
           onChange={(event) => setFeedback(event.target.value)}
           rows={3}
-          placeholder={locale === "zh-CN" ? "可选：审批反馈或限制条件" : "Optional feedback or constraints"}
+          placeholder={
+            supportsPlanFeedback
+              ? locale === "zh-CN"
+                ? "回复待确认项、补充限制条件，或说明你希望调整的一期范围"
+                : "Reply to open questions, add constraints, or adjust the phase-1 scope"
+              : locale === "zh-CN"
+                ? "可选：补充审批说明"
+                : "Optional approval note"
+          }
         />
         <Flex gap={8} wrap>
-          <Button type="primary" onClick={() => void onRespond(approval.task.id, "approve", feedback)}>
-            {locale === "zh-CN" ? "通过" : "Approve"}
+          {supportsPlanFeedback ? (
+            <Button onClick={() => void onRespond(approval.task.id, "feedback", feedback)} disabled={!feedback.trim()}>
+              {locale === "zh-CN" ? "提交反馈继续规划" : "Submit feedback"}
+            </Button>
+          ) : null}
+          <Button type="primary" onClick={() => void onRespond(approval.task.id, "approve", "")}>
+            {supportsPlanFeedback
+              ? (locale === "zh-CN" ? "确认计划并开始执行" : "Start execution")
+              : (locale === "zh-CN" ? "通过" : "Approve")}
           </Button>
           <Button onClick={() => void onRespond(approval.task.id, "reject", feedback)}>
             {locale === "zh-CN" ? "拒绝" : "Reject"}
