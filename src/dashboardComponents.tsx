@@ -177,11 +177,12 @@ function findStatusTimestamp(task: Task, status: Task["status"]) {
 
 function getTaskFailureDiagnosis(task: Task, locale: Locale) {
   const reason = String(task.openFailureReason || task.summary || "").trim();
-  if (!reason && !["failed", "stopped", "needs_revision", "publish_failed"].includes(task.status)) {
+  const hasFailureStatus = ["failed", "stopped", "needs_revision", "publish_failed"].includes(task.status);
+  if (!reason && !hasFailureStatus) {
     return null;
   }
 
-  if (task.executionMode === "orchestrated" && task.failureType === "step_failed") {
+  if (task.executionMode === "orchestrated" && hasFailureStatus && task.failureType === "step_failed") {
     const currentStep = task.projectExecution?.steps?.find((step) => step.id === task.projectExecution?.currentStepId);
     return {
       type: "error" as const,
@@ -201,7 +202,7 @@ function getTaskFailureDiagnosis(task: Task, locale: Locale) {
     };
   }
 
-  if (task.executionMode === "orchestrated" && task.failureType === "stalled_project_flow") {
+  if (task.executionMode === "orchestrated" && hasFailureStatus && task.failureType === "stalled_project_flow") {
     return {
       type: "warning" as const,
       title: locale === "zh-CN"

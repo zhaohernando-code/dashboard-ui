@@ -1042,59 +1042,61 @@ function parseStatusFromComments(comments: IssueComment[], fallbackClosed: boole
     const rawBody = String(comment.body || "");
     const body = normalizeCommentLogMessage(rawBody);
     const embedded = parseEmbeddedTaskStatusPayload(rawBody);
-    if (embedded?.taskId) {
-      taskId = String(embedded.taskId).trim() || taskId;
+    const embeddedRecord = embedded;
+    const hasEmbeddedField = (field: string) => Boolean(embedded && Object.prototype.hasOwnProperty.call(embedded, field));
+    if (hasEmbeddedField("taskId")) {
+      taskId = String(embedded?.taskId || "").trim() || taskId;
     }
-    if (embedded?.status && Object.prototype.hasOwnProperty.call(statusLabel, embedded.status)) {
+    if (hasEmbeddedField("status") && embedded?.status && Object.prototype.hasOwnProperty.call(statusLabel, embedded.status)) {
       status = embedded.status;
     }
-    if (typeof embedded?.summary === "string" && embedded.summary.trim()) {
-      summary = embedded.summary.trim();
+    if (hasEmbeddedField("summary")) {
+      summary = typeof embedded?.summary === "string" ? embedded.summary.trim() : "";
     }
-    if (typeof embedded?.userSummary === "string" && embedded.userSummary.trim()) {
-      userSummary = embedded.userSummary.trim();
+    if (hasEmbeddedField("userSummary")) {
+      userSummary = typeof embedded?.userSummary === "string" ? embedded.userSummary.trim() : "";
     }
-    if (typeof embedded?.planPreview === "string" && embedded.planPreview.trim()) {
-      planPreview = embedded.planPreview.trim();
+    if (hasEmbeddedField("planPreview")) {
+      planPreview = typeof embedded?.planPreview === "string" ? embedded.planPreview.trim() : "";
     }
-    if (embedded && Object.prototype.hasOwnProperty.call(embedded, "planForm")) {
-      planForm = normalizePlanForm(embedded.planForm);
+    if (hasEmbeddedField("planForm")) {
+      planForm = normalizePlanForm(embeddedRecord?.planForm);
     }
-    if (embedded && Object.prototype.hasOwnProperty.call(embedded, "planDraftPending")) {
-      planDraftPending = Boolean(embedded.planDraftPending);
+    if (hasEmbeddedField("planDraftPending")) {
+      planDraftPending = Boolean(embeddedRecord?.planDraftPending);
     }
-    if (typeof embedded?.lastStatusCommentAt === "string" && embedded.lastStatusCommentAt.trim()) {
-      lastStatusCommentAt = embedded.lastStatusCommentAt.trim();
+    if (hasEmbeddedField("lastStatusCommentAt")) {
+      lastStatusCommentAt = typeof embedded?.lastStatusCommentAt === "string" ? embedded.lastStatusCommentAt.trim() : "";
     }
-    if (embedded?.userAction && typeof embedded.userAction === "object") {
-      userAction = embedded.userAction;
+    if (hasEmbeddedField("userAction")) {
+      userAction = embedded?.userAction && typeof embedded.userAction === "object" ? embedded.userAction : null;
     }
-    if (typeof embedded?.openFailureReason === "string" && embedded.openFailureReason.trim()) {
-      openFailureReason = embedded.openFailureReason.trim();
+    if (hasEmbeddedField("openFailureReason")) {
+      openFailureReason = typeof embedded?.openFailureReason === "string" ? embedded.openFailureReason.trim() : "";
     }
-    if (typeof embedded?.publishStatus === "string" && embedded.publishStatus.trim()) {
-      publishStatus = embedded.publishStatus.trim();
+    if (hasEmbeddedField("publishStatus")) {
+      publishStatus = typeof embedded?.publishStatus === "string" ? embedded.publishStatus.trim() : "";
     }
-    if (typeof embedded?.executionMode === "string" && embedded.executionMode.trim()) {
-      executionMode = embedded.executionMode.trim();
+    if (hasEmbeddedField("executionMode")) {
+      executionMode = typeof embedded?.executionMode === "string" ? embedded.executionMode.trim() : "";
     }
-    if (embedded && Object.prototype.hasOwnProperty.call(embedded, "projectExecution")) {
-      projectExecution = normalizeProjectExecution(embedded.projectExecution);
+    if (hasEmbeddedField("projectExecution")) {
+      projectExecution = normalizeProjectExecution(embeddedRecord?.projectExecution);
     }
-    if (embedded && Object.prototype.hasOwnProperty.call(embedded, "executionDecisionGate")) {
-      executionDecisionGate = normalizeExecutionDecisionGate(embedded.executionDecisionGate);
+    if (hasEmbeddedField("executionDecisionGate")) {
+      executionDecisionGate = normalizeExecutionDecisionGate(embeddedRecord?.executionDecisionGate);
     }
-    if (embedded && Object.prototype.hasOwnProperty.call(embedded, "resumeEligible")) {
-      resumeEligible = Boolean(embedded.resumeEligible);
+    if (hasEmbeddedField("resumeEligible")) {
+      resumeEligible = Boolean(embeddedRecord?.resumeEligible);
     }
-    if (typeof embedded?.failureType === "string" && embedded.failureType.trim()) {
-      failureType = embedded.failureType.trim();
+    if (hasEmbeddedField("failureType")) {
+      failureType = typeof embedded?.failureType === "string" ? embedded.failureType.trim() : "";
     }
-    if (typeof embedded?.failurePhase === "string" && embedded.failurePhase.trim()) {
-      failurePhase = embedded.failurePhase.trim();
+    if (hasEmbeddedField("failurePhase")) {
+      failurePhase = typeof embedded?.failurePhase === "string" ? embedded.failurePhase.trim() : "";
     }
-    if (embedded && Object.prototype.hasOwnProperty.call(embedded, "internalOnly")) {
-      internalOnly = Boolean(embedded.internalOnly);
+    if (hasEmbeddedField("internalOnly")) {
+      internalOnly = Boolean(embeddedRecord?.internalOnly);
     }
 
     const imported = body.match(/Task imported as\s+`([^`]+)`/i);
@@ -1116,6 +1118,9 @@ function parseStatusFromComments(comments: IssueComment[], fallbackClosed: boole
       const publishMatch = body.match(/Publish:\s*`?([^`\n]+)`?/i);
       if (publishMatch) {
         publishStatus = publishMatch[1].trim();
+      }
+      if (!hasEmbeddedField("openFailureReason")) {
+        openFailureReason = "";
       }
       const openReasonLine = body
         .split("\n")
@@ -1705,16 +1710,17 @@ function getTaskFailurePreview(task: Task | null | undefined, locale: Locale) {
     return "";
   }
   const reason = String(task.openFailureReason || task.summary || "").trim();
-  if (!reason && !["failed", "stopped", "needs_revision", "publish_failed"].includes(task.status)) {
+  const hasFailureStatus = ["failed", "stopped", "needs_revision", "publish_failed"].includes(task.status);
+  if (!reason && !hasFailureStatus) {
     return "";
   }
-  if (task.executionMode === "orchestrated" && task.failureType === "step_failed") {
+  if (task.executionMode === "orchestrated" && hasFailureStatus && task.failureType === "step_failed") {
     const currentStep = task.projectExecution?.steps?.find((step) => step.id === task.projectExecution?.currentStepId);
     return locale === "zh-CN"
       ? `项目流在步骤「${currentStep?.title || task.failurePhase || "当前步骤"}」失败，可直接恢复执行，不需要重新审批计划。`
       : `The project flow failed on "${currentStep?.title || task.failurePhase || "the current step"}". You can resume without re-approving the plan.`;
   }
-  if (task.executionMode === "orchestrated" && task.failureType === "stalled_project_flow") {
+  if (task.executionMode === "orchestrated" && hasFailureStatus && task.failureType === "stalled_project_flow") {
     return locale === "zh-CN"
       ? "项目流失去了活动步骤，已暂停；直接恢复执行即可继续保留的项目流。"
       : "The project flow lost its active step and paused. Resume to continue from the preserved project-flow state.";
