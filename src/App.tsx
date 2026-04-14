@@ -1516,6 +1516,8 @@ function getRequirementPreview(requirement: Requirement, locale: Locale) {
   const latestAttempt = requirement.attempts[0];
   const pendingMessage = normalizeDisplayText(latestAttempt?.pendingAction?.message || "");
   if (pendingMessage) return pendingMessage;
+  const failurePreview = normalizeDisplayText(getTaskFailurePreview(latestAttempt, locale));
+  if (failurePreview) return failurePreview;
   const planPreview = normalizeDisplayText(
     latestAttempt && (latestAttempt.status === "waiting_user" || latestAttempt.planDraftPending || Boolean(latestAttempt.pendingAction))
       ? latestAttempt.planPreview || ""
@@ -1533,6 +1535,42 @@ function getRequirementPreview(requirement: Requirement, locale: Locale) {
   if (failureReason) return failureReason;
 
   return locale === "zh-CN" ? "暂无描述" : "No description";
+}
+
+function getTaskFailurePreview(task: Task | null | undefined, locale: Locale) {
+  if (!task) {
+    return "";
+  }
+  const reason = String(task.openFailureReason || task.summary || "").trim();
+  if (!reason && !["failed", "stopped", "needs_revision", "publish_failed"].includes(task.status)) {
+    return "";
+  }
+  if (task.status === "failed" && /prolonged inactivity without a final summary/i.test(reason)) {
+    return locale === "zh-CN"
+      ? "执行阶段长时间没有新的进度或最终总结，系统已自动将任务判定为失败。"
+      : "The task stopped producing progress or a final summary during execution and was auto-failed by the recovery monitor.";
+  }
+  if (task.status === "publish_failed") {
+    return locale === "zh-CN"
+      ? "实现已完成，但发布或同步环节失败。打开详情可查看具体错误和建议动作。"
+      : "Implementation finished, but publish or sync failed. Open the detail view for the exact error and next steps.";
+  }
+  if (task.status === "needs_revision") {
+    return locale === "zh-CN"
+      ? "当前结果没有通过完成条件，仍需返修后才能继续。"
+      : "The current result did not pass the completion criteria and needs revision before continuing.";
+  }
+  if (task.status === "stopped") {
+    return locale === "zh-CN"
+      ? "任务在完成前被停止了。"
+      : "The task was stopped before completion.";
+  }
+  if (task.status === "failed") {
+    return locale === "zh-CN"
+      ? `任务执行失败：${reason || "未返回更多错误信息。"}`
+      : `Task execution failed: ${reason || "No additional error details were provided."}`;
+  }
+  return "";
 }
 
 function getRequirementAnomalies(requirement: Requirement, locale: Locale): WorkspaceAnomaly[] {

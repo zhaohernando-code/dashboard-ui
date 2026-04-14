@@ -143,6 +143,141 @@ function getDisplayedStatusColor(task: Task, statusTagColor: StatusTagColorMap) 
   return statusTagColor[task.status];
 }
 
+function formatTaskTimestamp(value: string | undefined, locale: Locale) {
+  if (!value) {
+    return locale === "zh-CN" ? "未知" : "Unknown";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return locale === "zh-CN" ? "未知" : "Unknown";
+  }
+  return date.toLocaleString(locale, {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
+
+function findStatusTimestamp(task: Task, status: Task["status"]) {
+  const pattern = new RegExp(`status changed to\\s+\`${status}\``, "i");
+  const matched = [...task.logs].reverse().find((entry) => pattern.test(entry.message));
+  if (matched?.timestamp) {
+    return matched.timestamp;
+  }
+  if (task.status === status) {
+    return task.updatedAt || "";
+  }
+  return "";
+}
+
+function getTaskFailureDiagnosis(task: Task, locale: Locale) {
+  const reason = String(task.openFailureReason || task.summary || "").trim();
+  if (!reason && !["failed", "stopped", "needs_revision", "publish_failed"].includes(task.status)) {
+    return null;
+  }
+
+  if (task.status === "failed" && /prolonged inactivity without a final summary/i.test(reason)) {
+    const runningAt = findStatusTimestamp(task, "running");
+    const failedAt = findStatusTimestamp(task, "failed") || task.updatedAt || "";
+    return {
+      type: "error" as const,
+      title: locale === "zh-CN"
+        ? "执行阶段长时间无进展，系统已自动判失败"
+        : "Execution stalled and was auto-failed",
+      summary: locale === "zh-CN"
+        ? "任务进入运行后，长时间没有新的进度更新，也没有写出最终总结。控制服务的恢复监控随后把它标记为失败。"
+        : "After the task entered running, it stopped producing progress updates and never wrote a final summary. The control server's recovery monitor then marked it as failed.",
+      timeline: locale === "zh-CN"
+        ? `进入运行：${formatTaskTimestamp(runningAt, locale)}；标记失败：${formatTaskTimestamp(failedAt, locale)}`
+        : `Entered running: ${formatTaskTimestamp(runningAt, locale)}; marked failed: ${formatTaskTimestamp(failedAt, locale)}`,
+      guidance: locale === "zh-CN"
+        ? "建议先点“重试”。如果再次出现，说明 worker 在启动后卡住了，需要排查模型调用、网络访问或外部命令阻塞。"
+        : "Retry once first. If it happens again, the worker is likely stalling after startup and the backend execution environment, network access, or external commands need investigation.",
+      rawReasonLabel: locale === "zh-CN" ? "原始原因" : "Raw reason",
+    };
+  }
+
+  if (task.status === "publish_failed") {
+    return {
+      type: "error" as const,
+      title: locale === "zh-CN"
+        ? "实现已完成，但发布或同步失败"
+        : "Implementation finished, but publish or sync failed",
+      summary: locale === "zh-CN"
+        ? "代码产物已经跑出来了，但发布到目标仓库或同步基线没有成功。"
+        : "The implementation completed, but publishing to the target repo or syncing the baseline did not succeed.",
+      timeline: locale === "zh-CN"
+        ? `最近失败记录：${formatTaskTimestamp(task.updatedAt, locale)}`
+        : `Latest failure record: ${formatTaskTimestamp(task.updatedAt, locale)}`,
+      guidance: locale === "zh-CN"
+        ? "先看原始错误，再决定是直接重试，还是先修复仓库权限、分支冲突或发布配置。"
+        : "Read the raw error first, then decide whether to retry immediately or fix repo permissions, branch conflicts, or publish configuration.",
+      rawReasonLabel: locale === "zh-CN" ? "原始原因" : "Raw reason",
+    };
+  }
+
+  if (task.status === "needs_revision") {
+    return {
+      type: "warning" as const,
+      title: locale === "zh-CN"
+        ? "当前结果仍需返修"
+        : "This result still needs revision",
+      summary: locale === "zh-CN"
+        ? "任务执行到了结果阶段，但当前产物没有通过完成条件。"
+        : "The task reached a result state, but the current output did not pass the completion criteria.",
+      timeline: locale === "zh-CN"
+        ? `最近返修记录：${formatTaskTimestamp(task.updatedAt, locale)}`
+        : `Latest revision record: ${formatTaskTimestamp(task.updatedAt, locale)}`,
+      guidance: locale === "zh-CN"
+        ? "根据下面的原因修改后，再点“重试”继续。"
+        : "Fix the issues described below, then retry the task.",
+      rawReasonLabel: locale === "zh-CN" ? "当前原因" : "Current reason",
+    };
+  }
+
+  if (task.status === "stopped") {
+    return {
+      type: "warning" as const,
+      title: locale === "zh-CN"
+        ? "任务已被停止"
+        : "The task was stopped",
+      summary: locale === "zh-CN"
+        ? "任务在完成前被手动或信号停止了。"
+        : "The task was stopped before it could finish.",
+      timeline: locale === "zh-CN"
+        ? `停止时间：${formatTaskTimestamp(task.updatedAt, locale)}`
+        : `Stopped at: ${formatTaskTimestamp(task.updatedAt, locale)}`,
+      guidance: locale === "zh-CN"
+        ? "如果仍需要继续，可以点“重试”重新排队。"
+        : "If work should continue, retry the task to queue it again.",
+      rawReasonLabel: locale === "zh-CN" ? "停止说明" : "Stop detail",
+    };
+  }
+
+  if (task.status === "failed") {
+    return {
+      type: "error" as const,
+      title: locale === "zh-CN"
+        ? "任务执行失败"
+        : "Task execution failed",
+      summary: locale === "zh-CN"
+        ? "任务在执行过程中失败了，下面是系统记录到的直接原因。"
+        : "The task failed during execution. The direct reason recorded by the system is shown below.",
+      timeline: locale === "zh-CN"
+        ? `失败时间：${formatTaskTimestamp(task.updatedAt, locale)}`
+        : `Failed at: ${formatTaskTimestamp(task.updatedAt, locale)}`,
+      guidance: locale === "zh-CN"
+        ? "先看原始原因，再决定是否直接重试；如果重复失败，需要排查后端执行环境。"
+        : "Read the raw reason first, then decide whether to retry immediately. If it fails again, investigate the backend execution environment.",
+      rawReasonLabel: locale === "zh-CN" ? "原始原因" : "Raw reason",
+    };
+  }
+
+  return null;
+}
+
 export function CreateDialog({
   locale,
   mode,
@@ -358,6 +493,7 @@ export function TaskDetail({
   const isApprovalActionPending = task.pendingAction?.type === "approve" || task.pendingAction?.type === "reject";
   const isRetryPending = task.pendingAction?.type === "retry";
   const isStopPending = task.pendingAction?.type === "stop";
+  const failureDiagnosis = getTaskFailureDiagnosis(task, locale);
   const hasDraftPlanResponse = Boolean(
     planResponseValues
     && Object.entries(planResponseValues).some(([field, value]) => {
@@ -498,6 +634,26 @@ export function TaskDetail({
             type={task.pendingAction.phase === "timed_out" ? "warning" : "info"}
             showIcon
             message={task.pendingAction.message}
+          />
+        ) : null}
+
+        {failureDiagnosis ? (
+          <Alert
+            type={failureDiagnosis.type}
+            showIcon
+            message={failureDiagnosis.title}
+            description={(
+              <Space direction="vertical" size={6}>
+                <Typography.Text>{failureDiagnosis.summary}</Typography.Text>
+                <Typography.Text type="secondary">{failureDiagnosis.timeline}</Typography.Text>
+                <Typography.Text>{failureDiagnosis.guidance}</Typography.Text>
+                {task.openFailureReason ? (
+                  <Typography.Text type="secondary">
+                    {failureDiagnosis.rawReasonLabel}：{normalizeDisplayText(task.openFailureReason)}
+                  </Typography.Text>
+                ) : null}
+              </Space>
+            )}
           />
         ) : null}
 
@@ -669,7 +825,9 @@ export function TaskDetail({
 
         {task.openFailureReason ? (
           <Card size="small" className="full-width">
-            <Typography.Text type="secondary">{locale === "zh-CN" ? "未完成原因" : "Why not completed"}</Typography.Text>
+            <Typography.Text type="secondary">
+              {failureDiagnosis?.rawReasonLabel || (locale === "zh-CN" ? "未完成原因" : "Why not completed")}
+            </Typography.Text>
             <Typography.Paragraph className="preserve-breaks wrap-anywhere detail-text">
               {normalizeDisplayText(task.openFailureReason)}
             </Typography.Paragraph>
@@ -739,7 +897,7 @@ export function TaskDetail({
                   <Space direction="vertical" size={4}>
                     <Space>
                       <Typography.Text strong>#{attempt.attemptNumber || "?"}</Typography.Text>
-                      <Tag color={statusTagColor[attempt.status]}>{statusLabel[attempt.status][locale]}</Tag>
+                      <Tag color={getDisplayedStatusColor(attempt, statusTagColor)}>{getDisplayedStatusText(attempt, locale, statusLabel)}</Tag>
                     </Space>
                     <Typography.Text>
                       {normalizeDisplayText(attempt.userSummary || attempt.summary || attempt.openFailureReason || attempt.description)}
