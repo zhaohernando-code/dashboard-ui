@@ -122,6 +122,13 @@ type ListPaginationProps = {
   onChange: (page: number) => void;
 };
 
+function getDisplayedStatusText(task: Task, locale: Locale, statusLabel: StatusLabelMap) {
+  if (task.planDraftPending && task.status === "waiting_user") {
+    return locale === "zh-CN" ? "继续规划中" : "Planning";
+  }
+  return statusLabel[task.status][locale];
+}
+
 export function CreateDialog({
   locale,
   mode,
@@ -430,7 +437,9 @@ export function TaskDetail({
             <Typography.Title level={4} className="card-title wrap-anywhere">
               {task.title}
             </Typography.Title>
-            <Tag color={statusTagColor[task.status]}>{statusLabel[task.status][locale]}</Tag>
+            <Tag color={task.planDraftPending && task.status === "waiting_user" ? "processing" : statusTagColor[task.status]}>
+              {getDisplayedStatusText(task, locale, statusLabel)}
+            </Tag>
           </Space>
           <Flex gap={8} wrap justify="flex-end">
             {task.status === "awaiting_acceptance" ? (
@@ -781,7 +790,9 @@ export function ApprovalCard({
               )}
         </Typography.Text>
         <Space wrap>
-          <Tag color={statusTagColor[approval.task.status]}>{statusLabel[approval.task.status][locale]}</Tag>
+          <Tag color={approval.task.planDraftPending && approval.task.status === "waiting_user" ? "processing" : statusTagColor[approval.task.status]}>
+            {getDisplayedStatusText(approval.task, locale, statusLabel)}
+          </Tag>
           <Typography.Text type="secondary">
             {getProjectDisplayName(approval.task.projectId, locale, approval.task.projectName)} · {approval.task.type}
           </Typography.Text>

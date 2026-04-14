@@ -451,6 +451,14 @@ type IssueComment = {
   created_at?: string;
 };
 
+type OptimisticPlanningFeedback = {
+  appliedAt: string;
+  pendingSummary: string;
+  baseSummary: string;
+  baseUserSummary: string;
+  basePlanPreview: string;
+};
+
 function parseCommentCommand(body: string) {
   const firstLine = String(body || "")
     .split("\n")[0]
@@ -1271,6 +1279,7 @@ export default function App() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [optimisticTasks, setOptimisticTasks] = useState<Task[]>([]);
+  const [optimisticPlanningFeedback, setOptimisticPlanningFeedback] = useState<Record<string, OptimisticPlanningFeedback>>({});
   const [approvals, setApprovals] = useState<Approval[]>([]);
   const [tools, setTools] = useState<ToolLink[]>([]);
   const [usage, setUsage] = useState<UsageOverview | null>(null);
@@ -1890,6 +1899,40 @@ export default function App() {
     }
   }
 
+  function mergeOptimisticPlanningFeedback(taskList: Task[]) {
+    if (!Object.keys(optimisticPlanningFeedback).length) {
+      return taskList;
+    }
+    const now = Date.now();
+    const nextPatches: Record<string, OptimisticPlanningFeedback> = {};
+    const merged = taskList.map((task) => {
+      const patch = optimisticPlanningFeedback[task.id];
+      if (!patch) {
+        return task;
+      }
+      const ageMs = now - Date.parse(patch.appliedAt || "");
+      const remoteCaughtUp = Boolean(task.planDraftPending)
+        || String(task.summary || "").trim() !== patch.baseSummary
+        || String(task.userSummary || "").trim() !== patch.baseUserSummary
+        || String(task.planPreview || "").trim() !== patch.basePlanPreview;
+      if (remoteCaughtUp || ageMs > 3 * 60 * 1000) {
+        return task;
+      }
+      nextPatches[task.id] = patch;
+      return {
+        ...task,
+        updatedAt: patch.appliedAt,
+        summary: patch.pendingSummary,
+        userSummary: patch.pendingSummary,
+        planDraftPending: true,
+      };
+    });
+    if (Object.keys(nextPatches).length !== Object.keys(optimisticPlanningFeedback).length) {
+      setOptimisticPlanningFeedback(nextPatches);
+    }
+    return merged;
+  }
+
   async function refreshTasks() {
     if (runtimeMode === "github-direct") {
       if (!githubToken) {
@@ -1974,13 +2017,14 @@ export default function App() {
           )
         ).sort((left, right) => (right.issueNumber || 0) - (left.issueNumber || 0));
 
-        setTasks(taskList);
+        const mergedTaskList = mergeOptimisticPlanningFeedback(taskList);
+        setTasks(mergedTaskList);
         setOptimisticTasks((current) =>
           current.filter((task) => !(typeof task.issueNumber === "number" && taskList.some((item) => item.issueNumber === task.issueNumber))),
         );
-        setProjects(buildRemoteProjects(taskList));
+        setProjects(buildRemoteProjects(mergedTaskList));
         setApprovals(
-          taskList
+          mergedTaskList
             .filter((task) => task.status === "waiting_user")
             .map((task) => ({
               id: `approval-${task.issueNumber || task.id}`,
@@ -1996,15 +2040,15 @@ export default function App() {
             current?.rateLimits?.secondary ||
             current?.statusCollectedAt,
           );
-          return hasRuntimeSnapshot ? current : buildGithubDirectUsageFallback(taskList, locale);
+          return hasRuntimeSnapshot ? current : buildGithubDirectUsageFallback(mergedTaskList, locale);
         });
 
-        if (!taskList.length) {
+        if (!mergedTaskList.length) {
           setSelectedTaskId("");
           return;
         }
         const currentTaskId = selectedTaskIdRef.current;
-        const nextTaskId = taskList.some((task) => task.id === currentTaskId) ? currentTaskId : taskList[0].id;
+        const nextTaskId = mergedTaskList.some((task) => task.id === currentTaskId) ? currentTaskId : mergedTaskList[0].id;
         if (currentTaskId && nextTaskId !== currentTaskId) {
           setSelectedTaskId(nextTaskId);
         }
@@ -2016,23 +2060,23 @@ export default function App() {
     }
     try {
       const payload = await api<{ tasks: Task[] }>("/api/tasks");
-      setTasks(
-        payload.tasks.map((task) => ({
-          ...task,
-          planForm: normalizePlanForm(task.planForm) || buildPlanFormFromPreview(task.planPreview, locale),
-          planDraftPending: Boolean(task.planDraftPending),
-        })),
-      );
+      const normalizedTasks = payload.tasks.map((task) => ({
+        ...task,
+        planForm: normalizePlanForm(task.planForm) || buildPlanFormFromPreview(task.planPreview, locale),
+        planDraftPending: Boolean(task.planDraftPending),
+      }));
+      const mergedTasks = mergeOptimisticPlanningFeedback(normalizedTasks);
+      setTasks(mergedTasks);
 
-      if (!payload.tasks.length) {
+      if (!mergedTasks.length) {
         setSelectedTaskId("");
         return;
       }
 
       const currentTaskId = selectedTaskIdRef.current;
-      const nextTaskId = payload.tasks.some((task) => task.id === currentTaskId)
+      const nextTaskId = mergedTasks.some((task) => task.id === currentTaskId)
         ? currentTaskId
-        : payload.tasks[0].id;
+        : mergedTasks[0].id;
 
       if (!currentTaskId) return;
       if (nextTaskId !== currentTaskId) {
@@ -2591,6 +2635,17 @@ export default function App() {
     const summary = locale === "zh-CN"
       ? "反馈已提交，正在继续生成下一版计划。"
       : "Feedback submitted. Generating the next plan draft.";
+    const currentTask = tasks.find((task) => task.id === taskId) || optimisticTasks.find((task) => task.id === taskId) || null;
+    setOptimisticPlanningFeedback((current) => ({
+      ...current,
+      [taskId]: {
+        appliedAt: updatedAt,
+        pendingSummary: summary,
+        baseSummary: String(currentTask?.summary || "").trim(),
+        baseUserSummary: String(currentTask?.userSummary || "").trim(),
+        basePlanPreview: String(currentTask?.planPreview || "").trim(),
+      },
+    }));
     const nextTasks = (current: Task[]) => current.map((task) => {
       if (task.id !== taskId) {
         return task;
@@ -2659,7 +2714,7 @@ export default function App() {
           applyOptimisticPlanningFeedback(taskId, feedback);
           window.setTimeout(() => {
             void refreshAll();
-          }, 1500);
+          }, 3000);
           return true;
         }
       } else {
