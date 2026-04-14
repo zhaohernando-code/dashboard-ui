@@ -12,6 +12,7 @@ import {
   List,
   Modal,
   Pagination,
+  Radio,
   Segmented,
   Select,
   Space,
@@ -23,6 +24,8 @@ import { GlobalOutlined, MoonOutlined, SunOutlined } from "@ant-design/icons";
 
 import type {
   Approval,
+  PlanForm,
+  PlanQuestion,
   CreateDialogMode,
   CreateProjectValues,
   CreateTaskValues,
@@ -76,7 +79,6 @@ type TaskDetailProps = {
 type ApprovalCardProps = {
   approval: Approval;
   locale: Locale;
-  onRespond: (taskId: string, decision: "approve" | "reject" | "feedback", feedback: string) => Promise<void>;
   onOpenTask: (taskId: string) => void;
   statusLabel: StatusLabelMap;
   statusTagColor: StatusTagColorMap;
@@ -322,15 +324,97 @@ export function TaskDetail({
   buildLogViews,
 }: TaskDetailProps) {
   const [showRawLogs, setShowRawLogs] = useState(false);
-  const [approvalFeedback, setApprovalFeedback] = useState("");
+  const [planResponseForm] = Form.useForm<Record<string, string | string[]>>();
   const logViews = buildLogViews(task.logs);
   const visibleLogs = showRawLogs ? logViews.raw : logViews.important;
   const supportsPlanFeedback = task.status === "waiting_user" && Boolean(task.planPreview);
+  const planQuestions = task.planForm?.questions || [];
+  const planResponseValues = Form.useWatch([], planResponseForm) as Record<string, string | string[] | undefined> | undefined;
+  const hasOpenPlanQuestions = Boolean(planQuestions.length);
+  const hasDraftPlanResponse = Boolean(
+    planResponseValues
+    && Object.entries(planResponseValues).some(([field, value]) => {
+      if (field === "__notes") {
+        return String(value || "").trim();
+      }
+      return Array.isArray(value) ? value.length : String(value || "").trim();
+    }),
+  );
 
   useEffect(() => {
-    setApprovalFeedback("");
+    planResponseForm.resetFields();
     setShowRawLogs(false);
-  }, [task.id]);
+  }, [planResponseForm, task.id]);
+
+  function renderPlanQuestionInput(question: PlanQuestion) {
+    if (question.kind === "multi_choice" && question.options?.length) {
+      return <Checkbox.Group options={question.options.map((option) => ({ label: option, value: option }))} />;
+    }
+    if (question.kind === "single_choice" && question.options?.length) {
+      return (
+        <Radio.Group className="full-width">
+          <Space direction="vertical" size={8}>
+            {question.options.map((option) => (
+              <Radio key={option} value={option}>
+                {option}
+              </Radio>
+            ))}
+          </Space>
+        </Radio.Group>
+      );
+    }
+    return (
+      <Input.TextArea
+        rows={4}
+        placeholder={
+          question.placeholder
+          || (locale === "zh-CN" ? "请补充你的选择或约束" : "Add your choice or constraints")
+        }
+      />
+    );
+  }
+
+  function formatPlanResponseValue(question: PlanQuestion, value: string | string[] | undefined) {
+    if (Array.isArray(value)) {
+      return value.filter(Boolean).join(locale === "zh-CN" ? "、" : ", ");
+    }
+    return String(value || "").trim();
+  }
+
+  function serializePlanFeedback(planForm: PlanForm | null | undefined, values: Record<string, string | string[] | undefined>) {
+    const responseLines = (planForm?.questions || [])
+      .map((question) => {
+        const response = formatPlanResponseValue(question, values[question.id]);
+        if (!response) {
+          return null;
+        }
+        return `${locale === "zh-CN" ? "- 问题" : "- Question"}：${question.prompt}\n${locale === "zh-CN" ? "  回复" : "  Answer"}：${response}`;
+      })
+      .filter((item): item is string => Boolean(item));
+    const notes = String(values.__notes || "").trim();
+    return [
+      locale === "zh-CN" ? "本轮计划反馈" : "Plan feedback",
+      ...responseLines,
+      ...(notes
+        ? [
+            "",
+            locale === "zh-CN" ? "补充说明" : "Additional notes",
+            notes,
+          ]
+        : []),
+    ].join("\n");
+  }
+
+  async function submitPlanFeedback() {
+    const questionNames = planQuestions.map((question) => question.id);
+    const values = (await planResponseForm.validateFields([...questionNames, "__notes"])) as Record<string, string | string[] | undefined>;
+    const serialized = serializePlanFeedback(task.planForm, values).trim();
+    if (!serialized || serialized === (locale === "zh-CN" ? "本轮计划反馈" : "Plan feedback")) {
+      return;
+    }
+    await onRespond(task.id, "feedback", serialized);
+    planResponseForm.resetFields();
+  }
 
   return (
     <Space direction="vertical" size={16} className="full-width">
@@ -390,34 +474,85 @@ export function TaskDetail({
         {supportsPlanFeedback ? (
           <Card size="small" className="full-width">
             <Typography.Text type="secondary">
-              {locale === "zh-CN" ? "计划反馈" : "Plan feedback"}
+              {task.planForm?.title || (locale === "zh-CN" ? "计划反馈表单" : "Plan response form")}
             </Typography.Text>
             <Typography.Paragraph className="detail-text">
-              {locale === "zh-CN"
-                ? "有疑问、取舍或范围调整时先提交反馈继续规划；确认当前计划无误后，再开始执行。"
-                : "Submit feedback to keep refining the plan. Only start execution when the current plan is final."}
-            </Typography.Paragraph>
-            <Input.TextArea
-              value={approvalFeedback}
-              onChange={(event) => setApprovalFeedback(event.target.value)}
-              rows={4}
-              placeholder={
+              {task.planForm?.description || (
                 locale === "zh-CN"
-                  ? "回复待确认项、补充限制条件，或说明你希望调整的一期范围"
-                  : "Reply to open questions, add constraints, or adjust the phase-1 scope"
-              }
-            />
+                  ? "待确认项请在详情页内回答后继续规划；待确认项清零且你没有新反馈时，再开始执行。"
+                  : "Answer open questions here. Start execution only after the plan has no unresolved questions and you have no further edits."
+              )}
+            </Typography.Paragraph>
+            {hasOpenPlanQuestions ? (
+              <Alert
+                type="info"
+                showIcon
+                message={locale === "zh-CN" ? "当前计划仍有待确认项，需先提交反馈继续规划。" : "This plan still has open questions. Submit responses before execution can start."}
+                style={{ marginBottom: 12 }}
+              />
+            ) : (
+              <Alert
+                type="success"
+                showIcon
+                message={locale === "zh-CN" ? "当前计划已没有待确认项，可以开始执行。" : "No open questions remain in the current plan. Execution can start."}
+                style={{ marginBottom: 12 }}
+              />
+            )}
+            <Form form={planResponseForm} layout="vertical">
+              {planQuestions.map((question) => (
+                <Form.Item
+                  key={question.id}
+                  name={question.id}
+                  label={question.prompt}
+                  extra={question.description || undefined}
+                  rules={
+                    question.required
+                      ? [{
+                          required: true,
+                          message: locale === "zh-CN" ? "请先完成这个待确认项" : "Please answer this question first",
+                        }]
+                      : undefined
+                  }
+                >
+                  {renderPlanQuestionInput(question)}
+                </Form.Item>
+              ))}
+              <Form.Item
+                name="__notes"
+                label={locale === "zh-CN" ? "补充说明" : "Additional notes"}
+              >
+                <Input.TextArea
+                  rows={4}
+                  placeholder={
+                    locale === "zh-CN"
+                      ? "可选：补充限制条件、优先级或你希望调整的一期范围"
+                      : "Optional: add constraints, priorities, or phase-1 adjustments"
+                  }
+                />
+              </Form.Item>
+            </Form>
+            {hasDraftPlanResponse && !hasOpenPlanQuestions ? (
+              <Typography.Text type="warning">
+                {locale === "zh-CN"
+                  ? "当前表单里有未提交的补充说明；如需继续规划，请先提交反馈。"
+                  : "There is unsent form content. Submit feedback first if you want another planning round."}
+              </Typography.Text>
+            ) : null}
             <Flex gap={8} wrap style={{ marginTop: 12 }}>
               <Button
-                onClick={() => void onRespond(task.id, "feedback", approvalFeedback)}
-                disabled={!approvalFeedback.trim()}
+                onClick={() => void submitPlanFeedback()}
+                disabled={!hasOpenPlanQuestions && !hasDraftPlanResponse}
               >
                 {locale === "zh-CN" ? "提交反馈继续规划" : "Submit feedback"}
               </Button>
-              <Button type="primary" onClick={() => void onRespond(task.id, "approve", "")}>
+              <Button
+                type="primary"
+                onClick={() => void onRespond(task.id, "approve", "")}
+                disabled={hasOpenPlanQuestions || hasDraftPlanResponse}
+              >
                 {locale === "zh-CN" ? "确认计划并开始执行" : "Start execution"}
               </Button>
-              <Button onClick={() => void onRespond(task.id, "reject", approvalFeedback)}>
+              <Button onClick={() => void onRespond(task.id, "reject", "")}>
                 {locale === "zh-CN" ? "拒绝" : "Reject"}
               </Button>
             </Flex>
@@ -433,7 +568,7 @@ export function TaskDetail({
               <Button type="primary" onClick={() => void onRespond(task.id, "approve", "")}>
                 {locale === "zh-CN" ? "通过" : "Approve"}
               </Button>
-              <Button onClick={() => void onRespond(task.id, "reject", approvalFeedback)}>
+              <Button onClick={() => void onRespond(task.id, "reject", "")}>
                 {locale === "zh-CN" ? "拒绝" : "Reject"}
               </Button>
             </Flex>
@@ -598,15 +733,11 @@ export function TaskDetail({
 export function ApprovalCard({
   approval,
   locale,
-  onRespond,
   onOpenTask,
   statusLabel,
   statusTagColor,
   getProjectDisplayName,
 }: ApprovalCardProps) {
-  const [feedback, setFeedback] = useState("");
-  const supportsPlanFeedback = approval.task.status === "waiting_user" && Boolean(approval.task.planPreview);
-
   return (
     <Card size="small" className="list-card">
       <Space direction="vertical" size={10} className="full-width">
@@ -616,47 +747,37 @@ export function ApprovalCard({
         <Typography.Text type="secondary" className="wrap-anywhere">
           {approval.task.userAction?.title || approval.reason}
         </Typography.Text>
-        {approval.task.userAction?.detail ? (
-          <Typography.Text type="secondary" className="wrap-anywhere">
-            {approval.task.userAction.detail}
-          </Typography.Text>
-        ) : null}
+        <Typography.Text type="secondary" className="wrap-anywhere">
+          {approval.task.planForm?.questions?.length
+            ? (
+                locale === "zh-CN"
+                  ? `有 ${approval.task.planForm.questions.length} 个待确认项，请在详情页完成回复。`
+                  : `${approval.task.planForm.questions.length} open questions need responses in the detail view.`
+              )
+            : (
+                locale === "zh-CN"
+                  ? "请在详情页确认当前计划并决定是否开始执行。"
+                  : "Review the current plan in the detail view before execution starts."
+              )}
+        </Typography.Text>
         <Space wrap>
           <Tag color={statusTagColor[approval.task.status]}>{statusLabel[approval.task.status][locale]}</Tag>
           <Typography.Text type="secondary">
             {getProjectDisplayName(approval.task.projectId, locale, approval.task.projectName)} · {approval.task.type}
           </Typography.Text>
         </Space>
-        <Input.TextArea
-          value={feedback}
-          onChange={(event) => setFeedback(event.target.value)}
-          rows={3}
-          placeholder={
-            supportsPlanFeedback
-              ? locale === "zh-CN"
-                ? "回复待确认项、补充限制条件，或说明你希望调整的一期范围"
-                : "Reply to open questions, add constraints, or adjust the phase-1 scope"
-              : locale === "zh-CN"
-                ? "可选：补充审批说明"
-                : "Optional approval note"
+        <Alert
+          type="warning"
+          showIcon
+          message={
+            locale === "zh-CN"
+              ? "请在详情页处理中回复待确认项或启动执行。"
+              : "Handle this approval in the detail view."
           }
         />
         <Flex gap={8} wrap>
-          {supportsPlanFeedback ? (
-            <Button onClick={() => void onRespond(approval.task.id, "feedback", feedback)} disabled={!feedback.trim()}>
-              {locale === "zh-CN" ? "提交反馈继续规划" : "Submit feedback"}
-            </Button>
-          ) : null}
-          <Button type="primary" onClick={() => void onRespond(approval.task.id, "approve", "")}>
-            {supportsPlanFeedback
-              ? (locale === "zh-CN" ? "确认计划并开始执行" : "Start execution")
-              : (locale === "zh-CN" ? "通过" : "Approve")}
-          </Button>
-          <Button onClick={() => void onRespond(approval.task.id, "reject", feedback)}>
-            {locale === "zh-CN" ? "拒绝" : "Reject"}
-          </Button>
           <Button onClick={() => onOpenTask(approval.task.id)}>
-            {locale === "zh-CN" ? "打开任务" : "Open task"}
+            {locale === "zh-CN" ? "去详情处理" : "Open detail"}
           </Button>
         </Flex>
       </Space>

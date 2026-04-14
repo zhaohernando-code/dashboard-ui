@@ -38,6 +38,22 @@ export type TaskLog = {
   message: string;
 };
 
+export type PlanQuestion = {
+  id: string;
+  prompt: string;
+  description?: string;
+  kind: "single_choice" | "multi_choice" | "text";
+  options?: string[];
+  required?: boolean;
+  placeholder?: string;
+};
+
+export type PlanForm = {
+  title?: string;
+  description?: string;
+  questions: PlanQuestion[];
+};
+
 export type Task = {
   id: string;
   updatedAt?: string;
@@ -66,6 +82,7 @@ export type Task = {
     risk: "low" | "medium" | "high";
   } | null;
   planPreview: string;
+  planForm?: PlanForm | null;
   workspacePath: string;
   branchName: string;
   model?: string;

@@ -46,6 +46,8 @@ import type {
   Locale,
   NoticeItem,
   NoticeTone,
+  PlanForm,
+  PlanQuestion,
   PlatformHealth,
   Project,
   Requirement,
@@ -433,6 +435,7 @@ function parseEmbeddedTaskStatusPayload(body: string) {
       summary?: string;
       userSummary?: string;
       planPreview?: string;
+      planForm?: PlanForm | null;
       userAction?: Task["userAction"];
       openFailureReason?: string;
       publishStatus?: string;
@@ -478,12 +481,111 @@ function normalizeRequestedReasoningEffort(value: string): NonNullable<Task["rea
   return DEFAULT_REASONING_EFFORT;
 }
 
+function normalizePlanQuestionKind(value: unknown): PlanQuestion["kind"] {
+  const raw = String(value || "").trim();
+  if (raw === "single_choice" || raw === "multi_choice" || raw === "text") {
+    return raw;
+  }
+  return "text";
+}
+
+function normalizePlanForm(input: unknown): PlanForm | null {
+  if (!input || typeof input !== "object") {
+    return null;
+  }
+  const rawQuestions = Array.isArray((input as { questions?: unknown[] }).questions)
+    ? (input as { questions?: unknown[] }).questions || []
+    : [];
+  const questions: PlanQuestion[] = [];
+  rawQuestions.forEach((question, index) => {
+    if (!question || typeof question !== "object") {
+      return;
+    }
+    const prompt = String((question as { prompt?: string }).prompt || "").trim();
+    if (!prompt) {
+      return;
+    }
+    const kind = normalizePlanQuestionKind((question as { kind?: unknown }).kind);
+    const options = Array.isArray((question as { options?: unknown[] }).options)
+      ? ((question as { options?: unknown[] }).options || [])
+        .map((option) => String(option || "").trim())
+        .filter(Boolean)
+      : [];
+    questions.push({
+      id: String((question as { id?: string }).id || "").trim() || `q-${index + 1}`,
+      prompt,
+      description: String((question as { description?: string }).description || "").trim() || undefined,
+      kind: options.length >= 2 ? kind : "text",
+      options: options.length >= 2 ? options : undefined,
+      required: (question as { required?: boolean }).required !== false,
+      placeholder: String((question as { placeholder?: string }).placeholder || "").trim() || undefined,
+    });
+  });
+  if (!questions.length) {
+    return null;
+  }
+  return {
+    title: String((input as { title?: string }).title || "").trim() || undefined,
+    description: String((input as { description?: string }).description || "").trim() || undefined,
+    questions,
+  };
+}
+
+function buildPlanFormFromPreview(planPreview: string, locale: Locale): PlanForm | null {
+  const text = String(planPreview || "").trim();
+  if (!text) {
+    return null;
+  }
+  const lines = text.split("\n");
+  const isChinesePreview = /(^|\n)待确认\s*$/m.test(text);
+  const heading = isChinesePreview ? "待确认" : "Open Questions";
+  const sectionTitles = isChinesePreview
+    ? ["目标", "一期范围", "待确认", "分阶段计划", "验证与验收", "主要风险"]
+    : ["Goal", "Phase 1 Scope", "Open Questions", "Milestones", "Validation", "Key Risks"];
+  const startIndex = lines.findIndex((line) => line.trim() === heading);
+  if (startIndex < 0) {
+    return null;
+  }
+  const questions = [];
+  for (const line of lines.slice(startIndex + 1)) {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      continue;
+    }
+    if (sectionTitles.includes(trimmed)) {
+      break;
+    }
+    const bulletMatch = trimmed.match(/^-\s+(.+)$/);
+    if (!bulletMatch) {
+      break;
+    }
+    questions.push({
+      id: `q-${questions.length + 1}`,
+      prompt: bulletMatch[1].trim(),
+      kind: "text",
+      required: true,
+      placeholder: isChinesePreview ? "请补充你的回复" : "Add your response",
+    } satisfies PlanQuestion);
+  }
+  if (!questions.length) {
+    return null;
+  }
+  return {
+    title: isChinesePreview ? "待确认项" : "Open questions",
+    description: locale === "zh-CN"
+      ? "请先补充这些待确认项，再继续生成下一版计划。"
+      : "Answer these open questions before generating the next plan draft.",
+    questions,
+  };
+}
+
 function parseStatusFromComments(comments: IssueComment[], fallbackClosed: boolean): {
   status: TaskStatus;
   taskId: string;
   summary: string;
   userSummary: string;
   planPreview: string;
+  planForm: PlanForm | null;
   userAction: Task["userAction"];
   openFailureReason: string;
   publishStatus: string;
@@ -493,6 +595,7 @@ function parseStatusFromComments(comments: IssueComment[], fallbackClosed: boole
   let summary = "";
   let userSummary = "";
   let planPreview = "";
+  let planForm: PlanForm | null = null;
   let userAction: Task["userAction"] = null;
   let openFailureReason = "";
   let publishStatus = "";
@@ -515,6 +618,9 @@ function parseStatusFromComments(comments: IssueComment[], fallbackClosed: boole
     }
     if (typeof embedded?.planPreview === "string" && embedded.planPreview.trim()) {
       planPreview = embedded.planPreview.trim();
+    }
+    if (embedded && Object.prototype.hasOwnProperty.call(embedded, "planForm")) {
+      planForm = normalizePlanForm(embedded.planForm);
     }
     if (embedded?.userAction && typeof embedded.userAction === "object") {
       userAction = embedded.userAction;
@@ -560,6 +666,7 @@ function parseStatusFromComments(comments: IssueComment[], fallbackClosed: boole
     summary,
     userSummary: userSummary || summary,
     planPreview,
+    planForm,
     userAction,
     openFailureReason,
     publishStatus,
@@ -1820,6 +1927,7 @@ export default function App() {
                     description,
                     requestedProject: parsed.requestedProject,
                   });
+                const planForm = statusMeta.planForm || buildPlanFormFromPreview(planPreview, locale);
                 const userAction = buildGithubDirectUserAction({
                   status: statusMeta.status,
                   type: parsed.type,
@@ -1846,6 +1954,7 @@ export default function App() {
                   userSummary: statusMeta.userSummary,
                   userAction,
                   planPreview,
+                  planForm,
                   publishStatus: statusMeta.publishStatus || undefined,
                   openFailureReason: statusMeta.openFailureReason || undefined,
                   workspacePath: "",
@@ -1899,7 +2008,12 @@ export default function App() {
     }
     try {
       const payload = await api<{ tasks: Task[] }>("/api/tasks");
-      setTasks(payload.tasks);
+      setTasks(
+        payload.tasks.map((task) => ({
+          ...task,
+          planForm: normalizePlanForm(task.planForm) || buildPlanFormFromPreview(task.planPreview, locale),
+        })),
+      );
 
       if (!payload.tasks.length) {
         setSelectedTaskId("");
@@ -1926,7 +2040,17 @@ export default function App() {
     }
     try {
       const payload = await api<{ approvals: Approval[] }>("/api/approvals");
-      setApprovals(payload.approvals.filter((approval) => approval.task.status === "waiting_user"));
+      setApprovals(
+        payload.approvals
+          .map((approval) => ({
+            ...approval,
+            task: {
+              ...approval.task,
+              planForm: normalizePlanForm(approval.task.planForm) || buildPlanFormFromPreview(approval.task.planPreview, locale),
+            },
+          }))
+          .filter((approval) => approval.task.status === "waiting_user"),
+      );
     } catch {
       setApprovals([]);
     }
@@ -2957,7 +3081,6 @@ export default function App() {
                             key={approval.id}
                             approval={approval}
                             locale={locale}
-                            onRespond={respondToTask}
                             onOpenTask={(taskId) => {
                               const task = visibleTasks.find((item) => item.id === taskId);
                               if (!task) return;
