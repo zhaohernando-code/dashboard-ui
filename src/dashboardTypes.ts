@@ -83,6 +83,7 @@ export type Task = {
   } | null;
   planPreview: string;
   planForm?: PlanForm | null;
+  planDraftPending?: boolean;
   workspacePath: string;
   branchName: string;
   model?: string;

@@ -331,6 +331,7 @@ export function TaskDetail({
   const planQuestions = task.planForm?.questions || [];
   const planResponseValues = Form.useWatch([], planResponseForm) as Record<string, string | string[] | undefined> | undefined;
   const hasOpenPlanQuestions = Boolean(planQuestions.length);
+  const isPlanDraftPending = Boolean(task.planDraftPending);
   const hasDraftPlanResponse = Boolean(
     planResponseValues
     && Object.entries(planResponseValues).some(([field, value]) => {
@@ -483,7 +484,18 @@ export function TaskDetail({
                   : "Answer open questions here. Start execution only after the plan has no unresolved questions and you have no further edits."
               )}
             </Typography.Paragraph>
-            {hasOpenPlanQuestions ? (
+            {isPlanDraftPending ? (
+              <Alert
+                type="warning"
+                showIcon
+                message={
+                  locale === "zh-CN"
+                    ? "系统正在根据最新内容自动生成下一版计划，当前先不要开始执行。"
+                    : "The next plan draft is being generated automatically. Do not start execution yet."
+                }
+                style={{ marginBottom: 12 }}
+              />
+            ) : hasOpenPlanQuestions ? (
               <Alert
                 type="info"
                 showIcon
@@ -498,7 +510,7 @@ export function TaskDetail({
                 style={{ marginBottom: 12 }}
               />
             )}
-            <Form form={planResponseForm} layout="vertical">
+            <Form form={planResponseForm} layout="vertical" requiredMark={false} disabled={isPlanDraftPending}>
               {planQuestions.map((question) => (
                 <Form.Item
                   key={question.id}
@@ -541,14 +553,14 @@ export function TaskDetail({
             <Flex gap={8} wrap style={{ marginTop: 12 }}>
               <Button
                 onClick={() => void submitPlanFeedback()}
-                disabled={!hasOpenPlanQuestions && !hasDraftPlanResponse}
+                disabled={isPlanDraftPending || (!hasOpenPlanQuestions && !hasDraftPlanResponse)}
               >
                 {locale === "zh-CN" ? "提交反馈继续规划" : "Submit feedback"}
               </Button>
               <Button
                 type="primary"
                 onClick={() => void onRespond(task.id, "approve", "")}
-                disabled={hasOpenPlanQuestions || hasDraftPlanResponse}
+                disabled={isPlanDraftPending || hasOpenPlanQuestions || hasDraftPlanResponse}
               >
                 {locale === "zh-CN" ? "确认计划并开始执行" : "Start execution"}
               </Button>
@@ -748,7 +760,13 @@ export function ApprovalCard({
           {approval.task.userAction?.title || approval.reason}
         </Typography.Text>
         <Typography.Text type="secondary" className="wrap-anywhere">
-          {approval.task.planForm?.questions?.length
+          {approval.task.planDraftPending
+            ? (
+                locale === "zh-CN"
+                  ? "计划正在自动生成或更新，请点击详情查看最新版本。"
+                  : "The plan is being generated or refreshed automatically. Open the detail view for the latest draft."
+              )
+            : approval.task.planForm?.questions?.length
             ? (
                 locale === "zh-CN"
                   ? `有 ${approval.task.planForm.questions.length} 个待确认项，请在详情页完成回复。`

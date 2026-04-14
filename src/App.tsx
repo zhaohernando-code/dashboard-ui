@@ -436,6 +436,7 @@ function parseEmbeddedTaskStatusPayload(body: string) {
       userSummary?: string;
       planPreview?: string;
       planForm?: PlanForm | null;
+      planDraftPending?: boolean;
       userAction?: Task["userAction"];
       openFailureReason?: string;
       publishStatus?: string;
@@ -586,6 +587,7 @@ function parseStatusFromComments(comments: IssueComment[], fallbackClosed: boole
   userSummary: string;
   planPreview: string;
   planForm: PlanForm | null;
+  planDraftPending: boolean;
   userAction: Task["userAction"];
   openFailureReason: string;
   publishStatus: string;
@@ -596,6 +598,7 @@ function parseStatusFromComments(comments: IssueComment[], fallbackClosed: boole
   let userSummary = "";
   let planPreview = "";
   let planForm: PlanForm | null = null;
+  let planDraftPending = false;
   let userAction: Task["userAction"] = null;
   let openFailureReason = "";
   let publishStatus = "";
@@ -621,6 +624,9 @@ function parseStatusFromComments(comments: IssueComment[], fallbackClosed: boole
     }
     if (embedded && Object.prototype.hasOwnProperty.call(embedded, "planForm")) {
       planForm = normalizePlanForm(embedded.planForm);
+    }
+    if (embedded && Object.prototype.hasOwnProperty.call(embedded, "planDraftPending")) {
+      planDraftPending = Boolean(embedded.planDraftPending);
     }
     if (embedded?.userAction && typeof embedded.userAction === "object") {
       userAction = embedded.userAction;
@@ -667,6 +673,7 @@ function parseStatusFromComments(comments: IssueComment[], fallbackClosed: boole
     userSummary: userSummary || summary,
     planPreview,
     planForm,
+    planDraftPending,
     userAction,
     openFailureReason,
     publishStatus,
@@ -1955,6 +1962,7 @@ export default function App() {
                   userAction,
                   planPreview,
                   planForm,
+                  planDraftPending: statusMeta.planDraftPending,
                   publishStatus: statusMeta.publishStatus || undefined,
                   openFailureReason: statusMeta.openFailureReason || undefined,
                   workspacePath: "",
@@ -2012,6 +2020,7 @@ export default function App() {
         payload.tasks.map((task) => ({
           ...task,
           planForm: normalizePlanForm(task.planForm) || buildPlanFormFromPreview(task.planPreview, locale),
+          planDraftPending: Boolean(task.planDraftPending),
         })),
       );
 
@@ -2047,6 +2056,7 @@ export default function App() {
             task: {
               ...approval.task,
               planForm: normalizePlanForm(approval.task.planForm) || buildPlanFormFromPreview(approval.task.planPreview, locale),
+              planDraftPending: Boolean(approval.task.planDraftPending),
             },
           }))
           .filter((approval) => approval.task.status === "waiting_user"),
