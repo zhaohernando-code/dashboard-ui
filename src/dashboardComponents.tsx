@@ -124,6 +124,9 @@ type ListPaginationProps = {
 };
 
 function getDisplayedStatusText(task: Task, locale: Locale, statusLabel: StatusLabelMap) {
+  if (task.executionDecisionGate && task.status === "waiting_user") {
+    return locale === "zh-CN" ? "待你决策" : "Decision needed";
+  }
   if (task.pendingAction?.label) {
     return task.pendingAction.label;
   }
@@ -176,6 +179,45 @@ function getTaskFailureDiagnosis(task: Task, locale: Locale) {
   const reason = String(task.openFailureReason || task.summary || "").trim();
   if (!reason && !["failed", "stopped", "needs_revision", "publish_failed"].includes(task.status)) {
     return null;
+  }
+
+  if (task.executionMode === "orchestrated" && task.failureType === "step_failed") {
+    const currentStep = task.projectExecution?.steps?.find((step) => step.id === task.projectExecution?.currentStepId);
+    return {
+      type: "error" as const,
+      title: locale === "zh-CN"
+        ? "项目流在当前步骤失败，支持从当前步骤恢复"
+        : "The project flow failed on the current step and can resume from there",
+      summary: locale === "zh-CN"
+        ? `当前失败发生在步骤「${currentStep?.title || task.failurePhase || "未知步骤"}」。重试不会重新走审批，会直接从这一步继续。`
+        : `The failure happened on "${currentStep?.title || task.failurePhase || "the current step"}". Retrying resumes from this step instead of restarting planning.`,
+      timeline: locale === "zh-CN"
+        ? `最近失败记录：${formatTaskTimestamp(task.updatedAt, locale)}`
+        : `Latest failure record: ${formatTaskTimestamp(task.updatedAt, locale)}`,
+      guidance: locale === "zh-CN"
+        ? "先看下面的失败原因；如果方向没问题，直接点“恢复执行”即可。"
+        : "Read the failure reason below first. If the direction is still correct, use Resume to continue.",
+      rawReasonLabel: locale === "zh-CN" ? "失败原因" : "Failure reason",
+    };
+  }
+
+  if (task.executionMode === "orchestrated" && task.failureType === "stalled_project_flow") {
+    return {
+      type: "warning" as const,
+      title: locale === "zh-CN"
+        ? "项目流失去了活动步骤，已暂停"
+        : "The project flow lost its active step and paused",
+      summary: locale === "zh-CN"
+        ? "系统没有检测到当前应该继续执行的项目步骤，所以先把项目流暂停了。"
+        : "The system could not find an active step to continue, so it paused the project flow.",
+      timeline: locale === "zh-CN"
+        ? `最近暂停记录：${formatTaskTimestamp(task.updatedAt, locale)}`
+        : `Latest pause record: ${formatTaskTimestamp(task.updatedAt, locale)}`,
+      guidance: locale === "zh-CN"
+        ? "直接点“恢复执行”即可按保留的项目流状态继续。"
+        : "Use Resume to continue from the preserved project-flow state.",
+      rawReasonLabel: locale === "zh-CN" ? "暂停原因" : "Pause reason",
+    };
   }
 
   if (task.status === "failed" && /prolonged inactivity without a final summary/i.test(reason)) {
@@ -483,8 +525,10 @@ export function TaskDetail({
   const [planResponseForm] = Form.useForm<Record<string, string | string[]>>();
   const logViews = buildLogViews(task.logs);
   const visibleLogs = showRawLogs ? logViews.raw : logViews.important;
-  const supportsPlanFeedback = task.status === "waiting_user" && Boolean(task.planPreview);
-  const planQuestions = task.planForm?.questions || [];
+  const executionDecisionGate = task.executionDecisionGate;
+  const supportsExecutionDecision = task.status === "waiting_user" && Boolean(executionDecisionGate);
+  const supportsPlanFeedback = task.status === "waiting_user" && Boolean(task.planPreview) && !supportsExecutionDecision;
+  const planQuestions = supportsExecutionDecision ? (executionDecisionGate?.form?.questions || []) : (task.planForm?.questions || []);
   const planResponseValues = Form.useWatch([], planResponseForm) as Record<string, string | string[] | undefined> | undefined;
   const hasOpenPlanQuestions = Boolean(planQuestions.length);
   const isTaskActionPending = Boolean(task.pendingAction?.blocksActions);
@@ -494,6 +538,7 @@ export function TaskDetail({
   const isRetryPending = task.pendingAction?.type === "retry";
   const isStopPending = task.pendingAction?.type === "stop";
   const failureDiagnosis = getTaskFailureDiagnosis(task, locale);
+  const currentProjectStep = task.projectExecution?.steps?.find((step) => step.id === task.projectExecution?.currentStepId) || null;
   const hasDraftPlanResponse = Boolean(
     planResponseValues
     && Object.entries(planResponseValues).some(([field, value]) => {
@@ -568,6 +613,31 @@ export function TaskDetail({
     ].join("\n");
   }
 
+  function serializeExecutionDecision(values: Record<string, string | string[] | undefined>) {
+    const responseLines = planQuestions
+      .map((question) => {
+        const response = formatPlanResponseValue(question, values[question.id]);
+        if (!response) {
+          return null;
+        }
+        return `${locale === "zh-CN" ? "- 决策项" : "- Decision"}：${question.prompt}\n${locale === "zh-CN" ? "  结论" : "  Answer"}：${response}`;
+      })
+      .filter((item): item is string => Boolean(item));
+    const notes = String(values.__notes || "").trim();
+    return [
+      locale === "zh-CN" ? "项目流决策" : "Project flow decision",
+      executionDecisionGate?.title ? `${locale === "zh-CN" ? "当前步骤" : "Current step"}：${executionDecisionGate.title}` : "",
+      ...responseLines,
+      ...(notes
+        ? [
+            "",
+            locale === "zh-CN" ? "补充说明" : "Additional notes",
+            notes,
+          ]
+        : []),
+    ].filter(Boolean).join("\n");
+  }
+
   async function submitPlanFeedback() {
     const questionNames = planQuestions.map((question) => question.id);
     const values = (await planResponseForm.validateFields([...questionNames, "__notes"])) as Record<string, string | string[] | undefined>;
@@ -576,6 +646,19 @@ export function TaskDetail({
       return;
     }
     const submitted = await onRespond(task.id, "feedback", serialized);
+    if (submitted) {
+      planResponseForm.resetFields();
+    }
+  }
+
+  async function submitExecutionDecision() {
+    const questionNames = planQuestions.map((question) => question.id);
+    const values = (await planResponseForm.validateFields([...questionNames, "__notes"])) as Record<string, string | string[] | undefined>;
+    const serialized = serializeExecutionDecision(values).trim();
+    if (!serialized || serialized === (locale === "zh-CN" ? "项目流决策" : "Project flow decision")) {
+      return;
+    }
+    const submitted = await onRespond(task.id, "approve", serialized);
     if (submitted) {
       planResponseForm.resetFields();
     }
@@ -614,7 +697,9 @@ export function TaskDetail({
             ) : null}
             {task.status === "failed" || task.status === "stopped" || task.status === "needs_revision" || task.status === "publish_failed" ? (
               <Button loading={isRetryPending} disabled={isTaskActionPending} onClick={() => void onMutate(task.id, "retry")}>
-                {locale === "zh-CN" ? "重试" : "Retry"}
+                {task.executionMode === "orchestrated" && task.resumeEligible
+                  ? (locale === "zh-CN" ? "恢复执行" : "Resume")
+                  : locale === "zh-CN" ? "重试" : "Retry"}
               </Button>
             ) : null}
           </Flex>
@@ -635,6 +720,69 @@ export function TaskDetail({
             showIcon
             message={task.pendingAction.message}
           />
+        ) : null}
+
+        {task.executionMode === "orchestrated" && task.projectExecution ? (
+          <Card size="small" className="full-width">
+            <Typography.Text type="secondary">{locale === "zh-CN" ? "项目流" : "Project flow"}</Typography.Text>
+            <Space direction="vertical" size={10} className="full-width detail-list">
+              <Alert
+                type={task.status === "failed" ? "error" : task.status === "waiting_user" ? "warning" : "info"}
+                showIcon
+                message={
+                  currentProjectStep
+                    ? (locale === "zh-CN"
+                        ? `当前步骤：${currentProjectStep.title}`
+                        : `Current step: ${currentProjectStep.title}`)
+                    : (locale === "zh-CN" ? "所有项目步骤已完成" : "All project steps completed")
+                }
+                description={
+                  currentProjectStep
+                    ? normalizeDisplayText(currentProjectStep.outcome || "")
+                    : normalizeDisplayText(task.userSummary || task.summary || "")
+                }
+              />
+              <List
+                size="small"
+                dataSource={task.projectExecution.steps}
+                renderItem={(step) => {
+                  const isCurrent = step.id === task.projectExecution?.currentStepId;
+                  const stepTone = step.status === "completed"
+                    ? "success"
+                    : step.status === "failed"
+                      ? "error"
+                      : isCurrent
+                        ? "processing"
+                        : "default";
+                  return (
+                    <List.Item>
+                      <Space direction="vertical" size={4} className="full-width">
+                        <Flex justify="space-between" align="flex-start" gap={12}>
+                          <Typography.Text strong>{step.title}</Typography.Text>
+                          <Tag color={stepTone}>
+                            {step.status}
+                          </Tag>
+                        </Flex>
+                        <Typography.Text>{normalizeDisplayText(step.outcome || "")}</Typography.Text>
+                        {step.decisionResolved && step.decision ? (
+                          <Typography.Text type="secondary">
+                            {locale === "zh-CN" ? "已记录决策：" : "Recorded decision: "}
+                            {normalizeDisplayText(step.decision)}
+                          </Typography.Text>
+                        ) : null}
+                        {step.lastFailure ? (
+                          <Typography.Text type="danger">
+                            {locale === "zh-CN" ? "最近失败：" : "Latest failure: "}
+                            {normalizeDisplayText(step.lastFailure)}
+                          </Typography.Text>
+                        ) : null}
+                      </Space>
+                    </List.Item>
+                  );
+                }}
+              />
+            </Space>
+          </Card>
         ) : null}
 
         {failureDiagnosis ? (
@@ -670,6 +818,85 @@ export function TaskDetail({
               <Typography.Paragraph className="preserve-breaks wrap-anywhere detail-text">
                 {normalizeDisplayText(task.planPreview)}
               </Typography.Paragraph>
+            </Spin>
+          </Card>
+        ) : null}
+
+        {supportsExecutionDecision ? (
+          <Card size="small" className="full-width">
+            <Spin
+              spinning={isPlanSectionBusy}
+              tip={
+                task.pendingAction?.message
+                || (locale === "zh-CN" ? "系统正在继续项目流" : "The project flow is continuing")
+              }
+            >
+              <Typography.Text type="secondary">
+                {locale === "zh-CN" ? "项目流决策" : "Project flow decision"}
+              </Typography.Text>
+              <Typography.Paragraph className="detail-text">
+                {normalizeDisplayText(executionDecisionGate?.prompt || "")}
+              </Typography.Paragraph>
+              <Alert
+                type="warning"
+                showIcon
+                message={
+                  locale === "zh-CN"
+                    ? "当前步骤已经产出结论，但后续方向仍需要你拍板。提交决策后项目流会继续执行。"
+                    : "The current step produced a result, but the next direction still needs your decision before the project flow can continue."
+                }
+                style={{ marginBottom: 12 }}
+              />
+              <Form form={planResponseForm} layout="vertical" requiredMark={false} disabled={isPlanSectionBusy}>
+                {planQuestions.map((question) => (
+                  <Form.Item
+                    key={question.id}
+                    name={question.id}
+                    label={question.prompt}
+                    extra={question.description || undefined}
+                    rules={
+                      question.required
+                        ? [{
+                            required: true,
+                            message: locale === "zh-CN" ? "请先补充当前决策" : "Please provide the decision first",
+                          }]
+                        : undefined
+                    }
+                  >
+                    {renderPlanQuestionInput(question)}
+                  </Form.Item>
+                ))}
+                <Form.Item
+                  name="__notes"
+                  label={locale === "zh-CN" ? "补充说明" : "Additional notes"}
+                >
+                  <Input.TextArea
+                    rows={4}
+                    placeholder={
+                      locale === "zh-CN"
+                        ? "可选：补充约束、优先级或不希望继续做的方向"
+                        : "Optional: add constraints, priorities, or directions that should be excluded"
+                    }
+                  />
+                </Form.Item>
+              </Form>
+              <Flex gap={8} wrap style={{ marginTop: 12 }}>
+                <Button
+                  type="primary"
+                  loading={task.pendingAction?.type === "approve"}
+                  onClick={() => void submitExecutionDecision()}
+                  disabled={isPlanSectionBusy}
+                >
+                  {locale === "zh-CN" ? "提交决策并继续" : "Submit decision"}
+                </Button>
+                <Button
+                  loading={task.pendingAction?.type === "reject"}
+                  disabled={isPlanSectionBusy}
+                  onClick={() => void onRespond(task.id, "reject", "")}
+                >
+                  {locale === "zh-CN" ? "停止项目流" : "Stop flow"}
+                </Button>
+              </Flex>
             </Spin>
           </Card>
         ) : null}
@@ -790,7 +1017,7 @@ export function TaskDetail({
           </Card>
         ) : null}
 
-        {task.status === "waiting_user" && !supportsPlanFeedback ? (
+        {task.status === "waiting_user" && !supportsPlanFeedback && !supportsExecutionDecision ? (
           <Card size="small" className="full-width">
             <Typography.Text type="secondary">
               {locale === "zh-CN" ? "审批操作" : "Approval actions"}
@@ -991,6 +1218,12 @@ export function ApprovalCard({
         <Typography.Text type="secondary" className="wrap-anywhere">
           {approval.task.pendingAction?.message
             ? approval.task.pendingAction.message
+            : approval.task.executionDecisionGate
+            ? (
+                locale === "zh-CN"
+                  ? "当前项目步骤已经产出结论，等待你在详情页拍板后继续。"
+                  : "The current project step produced a result and now needs your decision in the detail view."
+              )
             : approval.task.planDraftPending
             ? (
                 locale === "zh-CN"

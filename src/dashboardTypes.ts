@@ -75,6 +75,46 @@ export type TaskPendingAction = {
   hideFromApprovals?: boolean;
 };
 
+export type ProjectExecutionStep = {
+  id: string;
+  type: "setup" | "research" | "implement" | "verify" | string;
+  title: string;
+  outcome: string;
+  status: string;
+  requiresDecision?: boolean;
+  autoCompleted?: boolean;
+  completedAt?: string;
+  currentAttemptId?: string;
+  lastAttemptNumber?: number;
+  lastFailure?: string;
+  decision?: string;
+  decisionResolved?: boolean;
+};
+
+export type ProjectExecution = {
+  version?: number;
+  initializedAt?: string;
+  currentStepId?: string;
+  currentStepIndex?: number;
+  researchNotes?: string;
+  resumeEligible?: boolean;
+  docs?: {
+    planPath?: string;
+    decisionsPath?: string;
+    researchPath?: string;
+  } | null;
+  steps: ProjectExecutionStep[];
+};
+
+export type ExecutionDecisionGate = {
+  stepId: string;
+  title: string;
+  prompt: string;
+  stepType?: string;
+  childTaskId?: string;
+  form?: PlanForm | null;
+};
+
 export type Task = {
   id: string;
   updatedAt?: string;
@@ -107,6 +147,20 @@ export type Task = {
   planPreview: string;
   planForm?: PlanForm | null;
   planDraftPending?: boolean;
+  executionMode?: string;
+  projectExecution?: ProjectExecution | null;
+  executionDecisionGate?: ExecutionDecisionGate | null;
+  resumeEligible?: boolean;
+  failureType?: string;
+  failurePhase?: string;
+  isInternal?: boolean;
+  projectStepMeta?: {
+    stepId?: string;
+    stepType?: string;
+    projectCreateTaskId?: string;
+    requiresDecision?: boolean;
+    internal?: boolean;
+  } | null;
   workspacePath: string;
   branchName: string;
   model?: string;

@@ -48,6 +48,8 @@ import type {
   NoticeTone,
   PlanForm,
   PlanQuestion,
+  ProjectExecution,
+  ProjectExecutionStep,
   PlatformHealth,
   Project,
   Requirement,
@@ -150,6 +152,10 @@ type PendingTaskMutation = {
   baseUpdatedAt?: string;
   baseLastStatusCommentAt?: string;
   basePlanPreview?: string;
+  taskType?: string;
+  executionMode?: string;
+  executionGate?: boolean;
+  resumeEligible?: boolean;
   placeholderTask?: Task;
 };
 
@@ -172,7 +178,7 @@ function taskNeedsUserAttention(task: Pick<Task, "status" | "pendingAction">) {
 }
 
 function getPendingTaskMutationCopy(
-  mutation: Pick<PendingTaskMutation, "actionType" | "phase" | "baseStatus">,
+  mutation: Pick<PendingTaskMutation, "actionType" | "phase" | "baseStatus" | "executionMode" | "executionGate" | "resumeEligible">,
   locale: Locale,
 ) {
   const delayed = mutation.phase === "timed_out";
@@ -221,6 +227,20 @@ function getPendingTaskMutationCopy(
               : "Feedback was submitted. The system is generating the next plan draft from your latest input."),
       };
     case "approve":
+      if (mutation.executionGate) {
+        return {
+          label: locale === "zh-CN"
+            ? (submitting ? "提交决策中" : delayed ? "继续执行较慢" : "继续执行中")
+            : (submitting ? "Submitting decision" : delayed ? "Resume delayed" : "Continuing"),
+          message: locale === "zh-CN"
+            ? (delayed
+                ? "当前决策已提交，但项目流恢复较慢。请先不要重复提交。"
+                : "当前决策已提交，项目流会继续执行下一步。")
+            : (delayed
+                ? "The decision was submitted, but resuming the project flow is syncing slowly. Do not submit again yet."
+                : "The decision was submitted. The project flow will continue with the next step."),
+        };
+      }
       if (mutation.baseStatus === "awaiting_acceptance") {
         return {
           label: locale === "zh-CN"
@@ -275,6 +295,20 @@ function getPendingTaskMutationCopy(
               : "The rejection was submitted. Waiting for the system to sync the task status."),
       };
     case "retry":
+      if (mutation.executionMode === "orchestrated" && mutation.resumeEligible) {
+        return {
+          label: locale === "zh-CN"
+            ? (submitting ? "提交恢复中" : delayed ? "恢复同步较慢" : "恢复执行中")
+            : (submitting ? "Submitting resume" : delayed ? "Resume delayed" : "Resuming"),
+          message: locale === "zh-CN"
+            ? (delayed
+                ? "恢复指令已提交，但项目流恢复较慢。请先不要重复点击。"
+                : "恢复指令已提交，系统会从当前步骤继续执行。")
+            : (delayed
+                ? "The resume request was submitted, but the project flow is syncing slowly. Do not click again yet."
+                : "The resume request was submitted. The system will continue from the current project step."),
+        };
+      }
       return {
         label: locale === "zh-CN"
           ? (submitting ? "提交重试中" : delayed ? "重试同步较慢" : "重试中")
@@ -412,6 +446,9 @@ function reconcilePendingTaskMutations(taskList: Task[], pendingMutations: Recor
 }
 
 function getTaskDisplayedStatusText(task: Pick<Task, "status" | "planDraftPending" | "pendingAction">, locale: Locale) {
+  if ((task as Task).executionDecisionGate && task.status === "waiting_user") {
+    return locale === "zh-CN" ? "待你决策" : "Decision needed";
+  }
   if (task.pendingAction?.label) {
     return task.pendingAction.label;
   }
@@ -738,6 +775,13 @@ function parseEmbeddedTaskStatusPayload(body: string) {
       userAction?: Task["userAction"];
       openFailureReason?: string;
       publishStatus?: string;
+      executionMode?: string;
+      projectExecution?: ProjectExecution | null;
+      executionDecisionGate?: Task["executionDecisionGate"];
+      resumeEligible?: boolean;
+      failureType?: string;
+      failurePhase?: string;
+      internalOnly?: boolean;
     };
   } catch {
     return null;
@@ -830,6 +874,83 @@ function normalizePlanForm(input: unknown): PlanForm | null {
   };
 }
 
+function normalizeProjectExecutionStep(input: unknown): ProjectExecutionStep | null {
+  if (!input || typeof input !== "object") {
+    return null;
+  }
+  const record = input as Record<string, unknown>;
+  const title = String(record.title || "").trim();
+  if (!title) {
+    return null;
+  }
+  return {
+    id: String(record.id || "").trim() || `step-${Math.random().toString(36).slice(2, 8)}`,
+    type: String(record.type || "implement").trim() || "implement",
+    title,
+    outcome: String(record.outcome || "").trim(),
+    status: String(record.status || "pending").trim() || "pending",
+    requiresDecision: Boolean(record.requiresDecision),
+    autoCompleted: Boolean(record.autoCompleted),
+    completedAt: String(record.completedAt || "").trim() || undefined,
+    currentAttemptId: String(record.currentAttemptId || "").trim() || undefined,
+    lastAttemptNumber: typeof record.lastAttemptNumber === "number" ? record.lastAttemptNumber : undefined,
+    lastFailure: String(record.lastFailure || "").trim() || undefined,
+    decision: String(record.decision || "").trim() || undefined,
+    decisionResolved: typeof record.decisionResolved === "boolean" ? record.decisionResolved : undefined,
+  };
+}
+
+function normalizeProjectExecution(input: unknown): ProjectExecution | null {
+  if (!input || typeof input !== "object") {
+    return null;
+  }
+  const record = input as Record<string, unknown>;
+  const steps = Array.isArray(record.steps)
+    ? record.steps.map((step) => normalizeProjectExecutionStep(step)).filter((step): step is ProjectExecutionStep => Boolean(step))
+    : [];
+  if (!steps.length) {
+    return null;
+  }
+  const docs = asRecord(record.docs);
+  return {
+    version: typeof record.version === "number" ? record.version : undefined,
+    initializedAt: String(record.initializedAt || "").trim() || undefined,
+    currentStepId: String(record.currentStepId || "").trim() || undefined,
+    currentStepIndex: typeof record.currentStepIndex === "number" ? record.currentStepIndex : undefined,
+    researchNotes: String(record.researchNotes || "").trim() || undefined,
+    resumeEligible: typeof record.resumeEligible === "boolean" ? record.resumeEligible : undefined,
+    docs: docs
+      ? {
+          planPath: String(docs.planPath || "").trim() || undefined,
+          decisionsPath: String(docs.decisionsPath || "").trim() || undefined,
+          researchPath: String(docs.researchPath || "").trim() || undefined,
+        }
+      : null,
+    steps,
+  };
+}
+
+function normalizeExecutionDecisionGate(input: unknown) {
+  if (!input || typeof input !== "object") {
+    return null;
+  }
+  const record = input as Record<string, unknown>;
+  const stepId = String(record.stepId || "").trim();
+  const title = String(record.title || "").trim();
+  const prompt = String(record.prompt || "").trim();
+  if (!stepId || !title || !prompt) {
+    return null;
+  }
+  return {
+    stepId,
+    title,
+    prompt,
+    stepType: String(record.stepType || "").trim() || undefined,
+    childTaskId: String(record.childTaskId || "").trim() || undefined,
+    form: normalizePlanForm(record.form),
+  };
+}
+
 function buildPlanFormFromPreview(planPreview: string, locale: Locale): PlanForm | null {
   const text = String(planPreview || "").trim();
   if (!text) {
@@ -890,6 +1011,13 @@ function parseStatusFromComments(comments: IssueComment[], fallbackClosed: boole
   userAction: Task["userAction"];
   openFailureReason: string;
   publishStatus: string;
+  executionMode: string;
+  projectExecution: ProjectExecution | null;
+  executionDecisionGate: Task["executionDecisionGate"];
+  resumeEligible: boolean;
+  failureType: string;
+  failurePhase: string;
+  internalOnly: boolean;
 } {
   let status: TaskStatus = fallbackClosed ? "completed" : "pending";
   let taskId = "";
@@ -902,6 +1030,13 @@ function parseStatusFromComments(comments: IssueComment[], fallbackClosed: boole
   let userAction: Task["userAction"] = null;
   let openFailureReason = "";
   let publishStatus = "";
+  let executionMode = "";
+  let projectExecution: ProjectExecution | null = null;
+  let executionDecisionGate: Task["executionDecisionGate"] = null;
+  let resumeEligible = false;
+  let failureType = "";
+  let failurePhase = "";
+  let internalOnly = false;
 
   for (const comment of comments) {
     const rawBody = String(comment.body || "");
@@ -939,6 +1074,27 @@ function parseStatusFromComments(comments: IssueComment[], fallbackClosed: boole
     }
     if (typeof embedded?.publishStatus === "string" && embedded.publishStatus.trim()) {
       publishStatus = embedded.publishStatus.trim();
+    }
+    if (typeof embedded?.executionMode === "string" && embedded.executionMode.trim()) {
+      executionMode = embedded.executionMode.trim();
+    }
+    if (embedded && Object.prototype.hasOwnProperty.call(embedded, "projectExecution")) {
+      projectExecution = normalizeProjectExecution(embedded.projectExecution);
+    }
+    if (embedded && Object.prototype.hasOwnProperty.call(embedded, "executionDecisionGate")) {
+      executionDecisionGate = normalizeExecutionDecisionGate(embedded.executionDecisionGate);
+    }
+    if (embedded && Object.prototype.hasOwnProperty.call(embedded, "resumeEligible")) {
+      resumeEligible = Boolean(embedded.resumeEligible);
+    }
+    if (typeof embedded?.failureType === "string" && embedded.failureType.trim()) {
+      failureType = embedded.failureType.trim();
+    }
+    if (typeof embedded?.failurePhase === "string" && embedded.failurePhase.trim()) {
+      failurePhase = embedded.failurePhase.trim();
+    }
+    if (embedded && Object.prototype.hasOwnProperty.call(embedded, "internalOnly")) {
+      internalOnly = Boolean(embedded.internalOnly);
     }
 
     const imported = body.match(/Task imported as\s+`([^`]+)`/i);
@@ -982,6 +1138,13 @@ function parseStatusFromComments(comments: IssueComment[], fallbackClosed: boole
     userAction,
     openFailureReason,
     publishStatus,
+    executionMode,
+    projectExecution,
+    executionDecisionGate,
+    resumeEligible,
+    failureType,
+    failurePhase,
+    internalOnly,
   };
 }
 
@@ -992,7 +1155,7 @@ function buildLogsFromComments(comments: IssueComment[]) {
       if (!message) return null;
 
       const command = parseCommentCommand(message);
-      if (["/approve", "/reject", "/feedback", "/retry", "/stop"].includes(command)) {
+      if (["/approve", "/reject", "/feedback", "/retry", "/restart", "/stop"].includes(command)) {
         return null;
       }
 
@@ -1544,6 +1707,17 @@ function getTaskFailurePreview(task: Task | null | undefined, locale: Locale) {
   const reason = String(task.openFailureReason || task.summary || "").trim();
   if (!reason && !["failed", "stopped", "needs_revision", "publish_failed"].includes(task.status)) {
     return "";
+  }
+  if (task.executionMode === "orchestrated" && task.failureType === "step_failed") {
+    const currentStep = task.projectExecution?.steps?.find((step) => step.id === task.projectExecution?.currentStepId);
+    return locale === "zh-CN"
+      ? `项目流在步骤「${currentStep?.title || task.failurePhase || "当前步骤"}」失败，可直接恢复执行，不需要重新审批计划。`
+      : `The project flow failed on "${currentStep?.title || task.failurePhase || "the current step"}". You can resume without re-approving the plan.`;
+  }
+  if (task.executionMode === "orchestrated" && task.failureType === "stalled_project_flow") {
+    return locale === "zh-CN"
+      ? "项目流失去了活动步骤，已暂停；直接恢复执行即可继续保留的项目流。"
+      : "The project flow lost its active step and paused. Resume to continue from the preserved project-flow state.";
   }
   if (task.status === "failed" && /prolonged inactivity without a final summary/i.test(reason)) {
     return locale === "zh-CN"
@@ -2367,6 +2541,13 @@ export default function App() {
                   planPreview,
                   planForm,
                   planDraftPending: statusMeta.planDraftPending,
+                  executionMode: statusMeta.executionMode || undefined,
+                  projectExecution: statusMeta.projectExecution,
+                  executionDecisionGate: statusMeta.executionDecisionGate,
+                  resumeEligible: statusMeta.resumeEligible,
+                  failureType: statusMeta.failureType || undefined,
+                  failurePhase: statusMeta.failurePhase || undefined,
+                  isInternal: statusMeta.internalOnly,
                   publishStatus: statusMeta.publishStatus || undefined,
                   openFailureReason: statusMeta.openFailureReason || undefined,
                   workspacePath: "",
@@ -2376,7 +2557,9 @@ export default function App() {
                 } satisfies Task;
               }),
           )
-        ).sort((left, right) => (right.issueNumber || 0) - (left.issueNumber || 0));
+        )
+          .filter((task) => !task.isInternal)
+          .sort((left, right) => (right.issueNumber || 0) - (left.issueNumber || 0));
 
         if (requestId !== taskRefreshRequestRef.current) {
           return;
@@ -2428,7 +2611,11 @@ export default function App() {
         ...task,
         planForm: normalizePlanForm(task.planForm) || buildPlanFormFromPreview(task.planPreview, locale),
         planDraftPending: Boolean(task.planDraftPending),
-      }));
+        projectExecution: normalizeProjectExecution(task.projectExecution),
+        executionDecisionGate: normalizeExecutionDecisionGate(task.executionDecisionGate),
+        resumeEligible: Boolean(task.resumeEligible),
+        isInternal: Boolean(task.isInternal),
+      })).filter((task) => !task.isInternal);
       if (requestId !== taskRefreshRequestRef.current) {
         return;
       }
@@ -3148,6 +3335,10 @@ export default function App() {
         baseStatus: task.status,
         baseUpdatedAt: task.updatedAt,
         baseLastStatusCommentAt: task.lastStatusCommentAt,
+        taskType: task.type,
+        executionMode: task.executionMode,
+        executionGate: Boolean(task.executionDecisionGate),
+        resumeEligible: Boolean(task.resumeEligible),
       },
     }));
     try {
@@ -3181,6 +3372,10 @@ export default function App() {
           baseStatus: task.status,
           baseUpdatedAt: task.updatedAt,
           baseLastStatusCommentAt: task.lastStatusCommentAt,
+          taskType: task.type,
+          executionMode: task.executionMode,
+          executionGate: Boolean(task.executionDecisionGate),
+          resumeEligible: Boolean(task.resumeEligible),
         },
       }));
       startExpeditedTaskPolling();
@@ -3223,6 +3418,10 @@ export default function App() {
         baseUpdatedAt: task.updatedAt,
         baseLastStatusCommentAt: task.lastStatusCommentAt,
         basePlanPreview: task.planPreview,
+        taskType: task.type,
+        executionMode: task.executionMode,
+        executionGate: Boolean(task.executionDecisionGate),
+        resumeEligible: Boolean(task.resumeEligible),
       },
     }));
     try {
@@ -3265,6 +3464,10 @@ export default function App() {
           baseUpdatedAt: task.updatedAt,
           baseLastStatusCommentAt: task.lastStatusCommentAt,
           basePlanPreview: task.planPreview,
+          taskType: task.type,
+          executionMode: task.executionMode,
+          executionGate: Boolean(task.executionDecisionGate),
+          resumeEligible: Boolean(task.resumeEligible),
         },
       }));
       startExpeditedTaskPolling();
