@@ -81,6 +81,7 @@ export type Task = {
     detail: string;
     risk: "low" | "medium" | "high";
   } | null;
+  lastStatusCommentAt?: string;
   planPreview: string;
   planForm?: PlanForm | null;
   planDraftPending?: boolean;

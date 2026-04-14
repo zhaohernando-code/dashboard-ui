@@ -16,6 +16,7 @@ import {
   Segmented,
   Select,
   Space,
+  Spin,
   Switch,
   Tag,
   Typography,
@@ -476,109 +477,119 @@ export function TaskDetail({
 
         {task.planPreview ? (
           <Card size="small" className="full-width">
-            <Typography.Text type="secondary">{locale === "zh-CN" ? "计划预览" : "Plan preview"}</Typography.Text>
-            <Typography.Paragraph className="preserve-breaks wrap-anywhere detail-text">
-              {normalizeDisplayText(task.planPreview)}
-            </Typography.Paragraph>
+            <Spin
+              spinning={isPlanDraftPending}
+              tip={locale === "zh-CN" ? "继续生成下一版计划中" : "Generating the next plan draft"}
+            >
+              <Typography.Text type="secondary">{locale === "zh-CN" ? "计划预览" : "Plan preview"}</Typography.Text>
+              <Typography.Paragraph className="preserve-breaks wrap-anywhere detail-text">
+                {normalizeDisplayText(task.planPreview)}
+              </Typography.Paragraph>
+            </Spin>
           </Card>
         ) : null}
 
         {supportsPlanFeedback ? (
           <Card size="small" className="full-width">
-            <Typography.Text type="secondary">
-              {task.planForm?.title || (locale === "zh-CN" ? "计划反馈表单" : "Plan response form")}
-            </Typography.Text>
-            <Typography.Paragraph className="detail-text">
-              {task.planForm?.description || (
-                locale === "zh-CN"
-                  ? "待确认项请在详情页内回答后继续规划；待确认项清零且你没有新反馈时，再开始执行。"
-                  : "Answer open questions here. Start execution only after the plan has no unresolved questions and you have no further edits."
-              )}
-            </Typography.Paragraph>
-            {isPlanDraftPending ? (
-              <Alert
-                type="warning"
-                showIcon
-                message={
-                  locale === "zh-CN"
-                    ? "系统正在根据最新内容自动生成下一版计划，当前先不要开始执行。"
-                    : "The next plan draft is being generated automatically. Do not start execution yet."
-                }
-                style={{ marginBottom: 12 }}
-              />
-            ) : hasOpenPlanQuestions ? (
-              <Alert
-                type="info"
-                showIcon
-                message={locale === "zh-CN" ? "当前计划仍有待确认项，需先提交反馈继续规划。" : "This plan still has open questions. Submit responses before execution can start."}
-                style={{ marginBottom: 12 }}
-              />
-            ) : (
-              <Alert
-                type="success"
-                showIcon
-                message={locale === "zh-CN" ? "当前计划已没有待确认项，可以开始执行。" : "No open questions remain in the current plan. Execution can start."}
-                style={{ marginBottom: 12 }}
-              />
-            )}
-            <Form form={planResponseForm} layout="vertical" requiredMark={false} disabled={isPlanDraftPending}>
-              {planQuestions.map((question) => (
-                <Form.Item
-                  key={question.id}
-                  name={question.id}
-                  label={question.prompt}
-                  extra={question.description || undefined}
-                  rules={
-                    question.required
-                      ? [{
-                          required: true,
-                          message: locale === "zh-CN" ? "请先完成这个待确认项" : "Please answer this question first",
-                        }]
-                      : undefined
-                  }
-                >
-                  {renderPlanQuestionInput(question)}
-                </Form.Item>
-              ))}
-              <Form.Item
-                name="__notes"
-                label={locale === "zh-CN" ? "补充说明" : "Additional notes"}
-              >
-                <Input.TextArea
-                  rows={4}
-                  placeholder={
-                    locale === "zh-CN"
-                      ? "可选：补充限制条件、优先级或你希望调整的一期范围"
-                      : "Optional: add constraints, priorities, or phase-1 adjustments"
-                  }
-                />
-              </Form.Item>
-            </Form>
-            {hasDraftPlanResponse && !hasOpenPlanQuestions ? (
-              <Typography.Text type="warning">
-                {locale === "zh-CN"
-                  ? "当前表单里有未提交的补充说明；如需继续规划，请先提交反馈。"
-                  : "There is unsent form content. Submit feedback first if you want another planning round."}
+            <Spin
+              spinning={isPlanDraftPending}
+              tip={locale === "zh-CN" ? "系统正在根据最新内容自动生成下一版计划" : "The next plan draft is being generated automatically"}
+            >
+              <Typography.Text type="secondary">
+                {task.planForm?.title || (locale === "zh-CN" ? "计划反馈表单" : "Plan response form")}
               </Typography.Text>
-            ) : null}
-            <Flex gap={8} wrap style={{ marginTop: 12 }}>
-              <Button
-                onClick={() => void submitPlanFeedback()}
-                disabled={isPlanDraftPending || (!hasOpenPlanQuestions && !hasDraftPlanResponse)}
-              >
-                {locale === "zh-CN" ? "提交反馈继续规划" : "Submit feedback"}
-              </Button>
-              <Button
-                type="primary"
-                onClick={() => void onRespond(task.id, "approve", "")}
-                disabled={isPlanDraftPending || hasOpenPlanQuestions || hasDraftPlanResponse}
-              >
-                {locale === "zh-CN" ? "确认计划并开始执行" : "Start execution"}
-              </Button>
-              <Button onClick={() => void onRespond(task.id, "reject", "")}>
-                {locale === "zh-CN" ? "拒绝" : "Reject"}
-              </Button>
-            </Flex>
+              <Typography.Paragraph className="detail-text">
+                {task.planForm?.description || (
+                  locale === "zh-CN"
+                    ? "待确认项请在详情页内回答后继续规划；待确认项清零且你没有新反馈时，再开始执行。"
+                    : "Answer open questions here. Start execution only after the plan has no unresolved questions and you have no further edits."
+                )}
+              </Typography.Paragraph>
+              {isPlanDraftPending ? (
+                <Alert
+                  type="warning"
+                  showIcon
+                  message={
+                    locale === "zh-CN"
+                      ? "系统正在根据最新内容自动生成下一版计划，当前先不要开始执行。"
+                      : "The next plan draft is being generated automatically. Do not start execution yet."
+                  }
+                  style={{ marginBottom: 12 }}
+                />
+              ) : hasOpenPlanQuestions ? (
+                <Alert
+                  type="info"
+                  showIcon
+                  message={locale === "zh-CN" ? "当前计划仍有待确认项，需先提交反馈继续规划。" : "This plan still has open questions. Submit responses before execution can start."}
+                  style={{ marginBottom: 12 }}
+                />
+              ) : (
+                <Alert
+                  type="success"
+                  showIcon
+                  message={locale === "zh-CN" ? "当前计划已没有待确认项，可以开始执行。" : "No open questions remain in the current plan. Execution can start."}
+                  style={{ marginBottom: 12 }}
+                />
+              )}
+              <Form form={planResponseForm} layout="vertical" requiredMark={false} disabled={isPlanDraftPending}>
+                {planQuestions.map((question) => (
+                  <Form.Item
+                    key={question.id}
+                    name={question.id}
+                    label={question.prompt}
+                    extra={question.description || undefined}
+                    rules={
+                      question.required
+                        ? [{
+                            required: true,
+                            message: locale === "zh-CN" ? "请先完成这个待确认项" : "Please answer this question first",
+                          }]
+                        : undefined
+                    }
+                  >
+                    {renderPlanQuestionInput(question)}
+                  </Form.Item>
+                ))}
+                <Form.Item
+                  name="__notes"
+                  label={locale === "zh-CN" ? "补充说明" : "Additional notes"}
+                >
+                  <Input.TextArea
+                    rows={4}
+                    placeholder={
+                      locale === "zh-CN"
+                        ? "可选：补充限制条件、优先级或你希望调整的一期范围"
+                        : "Optional: add constraints, priorities, or phase-1 adjustments"
+                    }
+                  />
+                </Form.Item>
+              </Form>
+              {hasDraftPlanResponse && !hasOpenPlanQuestions ? (
+                <Typography.Text type="warning">
+                  {locale === "zh-CN"
+                    ? "当前表单里有未提交的补充说明；如需继续规划，请先提交反馈。"
+                    : "There is unsent form content. Submit feedback first if you want another planning round."}
+                </Typography.Text>
+              ) : null}
+              <Flex gap={8} wrap style={{ marginTop: 12 }}>
+                <Button
+                  onClick={() => void submitPlanFeedback()}
+                  disabled={isPlanDraftPending || (!hasOpenPlanQuestions && !hasDraftPlanResponse)}
+                >
+                  {locale === "zh-CN" ? "提交反馈继续规划" : "Submit feedback"}
+                </Button>
+                <Button
+                  type="primary"
+                  onClick={() => void onRespond(task.id, "approve", "")}
+                  disabled={isPlanDraftPending || hasOpenPlanQuestions || hasDraftPlanResponse}
+                >
+                  {locale === "zh-CN" ? "确认计划并开始执行" : "Start execution"}
+                </Button>
+                <Button onClick={() => void onRespond(task.id, "reject", "")}>
+                  {locale === "zh-CN" ? "拒绝" : "Reject"}
+                </Button>
+              </Flex>
+            </Spin>
           </Card>
         ) : null}
 

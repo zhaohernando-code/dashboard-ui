@@ -437,6 +437,7 @@ function parseEmbeddedTaskStatusPayload(body: string) {
       planPreview?: string;
       planForm?: PlanForm | null;
       planDraftPending?: boolean;
+      lastStatusCommentAt?: string;
       userAction?: Task["userAction"];
       openFailureReason?: string;
       publishStatus?: string;
@@ -454,9 +455,6 @@ type IssueComment = {
 type OptimisticPlanningFeedback = {
   appliedAt: string;
   pendingSummary: string;
-  baseSummary: string;
-  baseUserSummary: string;
-  basePlanPreview: string;
 };
 
 function parseCommentCommand(body: string) {
@@ -596,6 +594,7 @@ function parseStatusFromComments(comments: IssueComment[], fallbackClosed: boole
   planPreview: string;
   planForm: PlanForm | null;
   planDraftPending: boolean;
+  lastStatusCommentAt: string;
   userAction: Task["userAction"];
   openFailureReason: string;
   publishStatus: string;
@@ -607,6 +606,7 @@ function parseStatusFromComments(comments: IssueComment[], fallbackClosed: boole
   let planPreview = "";
   let planForm: PlanForm | null = null;
   let planDraftPending = false;
+  let lastStatusCommentAt = "";
   let userAction: Task["userAction"] = null;
   let openFailureReason = "";
   let publishStatus = "";
@@ -636,6 +636,9 @@ function parseStatusFromComments(comments: IssueComment[], fallbackClosed: boole
     if (embedded && Object.prototype.hasOwnProperty.call(embedded, "planDraftPending")) {
       planDraftPending = Boolean(embedded.planDraftPending);
     }
+    if (typeof embedded?.lastStatusCommentAt === "string" && embedded.lastStatusCommentAt.trim()) {
+      lastStatusCommentAt = embedded.lastStatusCommentAt.trim();
+    }
     if (embedded?.userAction && typeof embedded.userAction === "object") {
       userAction = embedded.userAction;
     }
@@ -653,6 +656,7 @@ function parseStatusFromComments(comments: IssueComment[], fallbackClosed: boole
     const statusMatch = body.match(/Task\s+`([^`]+)`\s+status changed to\s+`([^`]+)`/i);
     if (statusMatch) {
       taskId = statusMatch[1];
+      lastStatusCommentAt = comment.created_at || lastStatusCommentAt;
       const next = statusMatch[2].toLowerCase() as TaskStatus;
       if (["pending_capture", "pending", "running", "waiting_user", "awaiting_acceptance", "needs_revision", "publish_failed", "superseded", "implemented", "failed", "completed", "stopped"].includes(next)) {
         status = next;
@@ -682,6 +686,7 @@ function parseStatusFromComments(comments: IssueComment[], fallbackClosed: boole
     planPreview,
     planForm,
     planDraftPending,
+    lastStatusCommentAt,
     userAction,
     openFailureReason,
     publishStatus,
@@ -1911,10 +1916,11 @@ export default function App() {
         return task;
       }
       const ageMs = now - Date.parse(patch.appliedAt || "");
-      const remoteCaughtUp = Boolean(task.planDraftPending)
-        || String(task.summary || "").trim() !== patch.baseSummary
-        || String(task.userSummary || "").trim() !== patch.baseUserSummary
-        || String(task.planPreview || "").trim() !== patch.basePlanPreview;
+      const lastStatusCommentAt = Date.parse(task.lastStatusCommentAt || "");
+      const appliedAt = Date.parse(patch.appliedAt || "");
+      const remoteCaughtUp = Number.isFinite(lastStatusCommentAt) && Number.isFinite(appliedAt)
+        ? lastStatusCommentAt >= appliedAt
+        : false;
       if (remoteCaughtUp || ageMs > 3 * 60 * 1000) {
         return task;
       }
@@ -2003,6 +2009,7 @@ export default function App() {
                   summary: statusMeta.summary,
                   userSummary: statusMeta.userSummary,
                   userAction,
+                  lastStatusCommentAt: statusMeta.lastStatusCommentAt || undefined,
                   planPreview,
                   planForm,
                   planDraftPending: statusMeta.planDraftPending,
@@ -2635,15 +2642,11 @@ export default function App() {
     const summary = locale === "zh-CN"
       ? "反馈已提交，正在继续生成下一版计划。"
       : "Feedback submitted. Generating the next plan draft.";
-    const currentTask = tasks.find((task) => task.id === taskId) || optimisticTasks.find((task) => task.id === taskId) || null;
     setOptimisticPlanningFeedback((current) => ({
       ...current,
       [taskId]: {
         appliedAt: updatedAt,
         pendingSummary: summary,
-        baseSummary: String(currentTask?.summary || "").trim(),
-        baseUserSummary: String(currentTask?.userSummary || "").trim(),
-        basePlanPreview: String(currentTask?.planPreview || "").trim(),
       },
     }));
     const nextTasks = (current: Task[]) => current.map((task) => {
