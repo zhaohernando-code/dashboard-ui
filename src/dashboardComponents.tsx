@@ -124,10 +124,23 @@ type ListPaginationProps = {
 };
 
 function getDisplayedStatusText(task: Task, locale: Locale, statusLabel: StatusLabelMap) {
+  if (task.pendingAction?.label) {
+    return task.pendingAction.label;
+  }
   if (task.planDraftPending && task.status === "waiting_user") {
     return locale === "zh-CN" ? "继续规划中" : "Planning";
   }
   return statusLabel[task.status][locale];
+}
+
+function getDisplayedStatusColor(task: Task, statusTagColor: StatusTagColorMap) {
+  if (task.pendingAction) {
+    return task.pendingAction.phase === "timed_out" ? "warning" : "processing";
+  }
+  if (task.planDraftPending && task.status === "waiting_user") {
+    return "processing";
+  }
+  return statusTagColor[task.status];
 }
 
 export function CreateDialog({
@@ -339,7 +352,12 @@ export function TaskDetail({
   const planQuestions = task.planForm?.questions || [];
   const planResponseValues = Form.useWatch([], planResponseForm) as Record<string, string | string[] | undefined> | undefined;
   const hasOpenPlanQuestions = Boolean(planQuestions.length);
-  const isPlanDraftPending = Boolean(task.planDraftPending);
+  const isTaskActionPending = Boolean(task.pendingAction?.blocksActions);
+  const isPlanDraftPending = Boolean(task.planDraftPending || task.pendingAction?.type === "feedback");
+  const isPlanSectionBusy = Boolean(task.status === "waiting_user" && task.pendingAction?.blocksActions);
+  const isApprovalActionPending = task.pendingAction?.type === "approve" || task.pendingAction?.type === "reject";
+  const isRetryPending = task.pendingAction?.type === "retry";
+  const isStopPending = task.pendingAction?.type === "stop";
   const hasDraftPlanResponse = Boolean(
     planResponseValues
     && Object.entries(planResponseValues).some(([field, value]) => {
@@ -438,28 +456,28 @@ export function TaskDetail({
             <Typography.Title level={4} className="card-title wrap-anywhere">
               {task.title}
             </Typography.Title>
-            <Tag color={task.planDraftPending && task.status === "waiting_user" ? "processing" : statusTagColor[task.status]}>
+            <Tag color={getDisplayedStatusColor(task, statusTagColor)}>
               {getDisplayedStatusText(task, locale, statusLabel)}
             </Tag>
           </Space>
           <Flex gap={8} wrap justify="flex-end">
             {task.status === "awaiting_acceptance" ? (
               <>
-                <Button type="primary" onClick={() => void onRespond(task.id, "approve", "")}>
+                <Button type="primary" loading={task.pendingAction?.type === "approve"} disabled={isTaskActionPending} onClick={() => void onRespond(task.id, "approve", "")}>
                   {locale === "zh-CN" ? "验收通过" : "Accept"}
                 </Button>
-                <Button onClick={() => void onRespond(task.id, "reject", "")}>
+                <Button loading={task.pendingAction?.type === "reject"} disabled={isTaskActionPending} onClick={() => void onRespond(task.id, "reject", "")}>
                   {locale === "zh-CN" ? "打回返修" : "Needs revision"}
                 </Button>
               </>
             ) : null}
             {task.status === "running" ? (
-              <Button danger onClick={() => void onMutate(task.id, "stop")}>
+              <Button danger loading={isStopPending} disabled={isTaskActionPending} onClick={() => void onMutate(task.id, "stop")}>
                 {locale === "zh-CN" ? "停止" : "Stop"}
               </Button>
             ) : null}
             {task.status === "failed" || task.status === "stopped" || task.status === "needs_revision" || task.status === "publish_failed" ? (
-              <Button onClick={() => void onMutate(task.id, "retry")}>
+              <Button loading={isRetryPending} disabled={isTaskActionPending} onClick={() => void onMutate(task.id, "retry")}>
                 {locale === "zh-CN" ? "重试" : "Retry"}
               </Button>
             ) : null}
@@ -475,11 +493,22 @@ export function TaskDetail({
           </Typography.Paragraph>
         </Card>
 
+        {task.pendingAction ? (
+          <Alert
+            type={task.pendingAction.phase === "timed_out" ? "warning" : "info"}
+            showIcon
+            message={task.pendingAction.message}
+          />
+        ) : null}
+
         {task.planPreview ? (
           <Card size="small" className="full-width">
             <Spin
-              spinning={isPlanDraftPending}
-              tip={locale === "zh-CN" ? "继续生成下一版计划中" : "Generating the next plan draft"}
+              spinning={isPlanDraftPending || isApprovalActionPending}
+              tip={
+                task.pendingAction?.message
+                || (locale === "zh-CN" ? "继续生成下一版计划中" : "Generating the next plan draft")
+              }
             >
               <Typography.Text type="secondary">{locale === "zh-CN" ? "计划预览" : "Plan preview"}</Typography.Text>
               <Typography.Paragraph className="preserve-breaks wrap-anywhere detail-text">
@@ -492,8 +521,11 @@ export function TaskDetail({
         {supportsPlanFeedback ? (
           <Card size="small" className="full-width">
             <Spin
-              spinning={isPlanDraftPending}
-              tip={locale === "zh-CN" ? "系统正在根据最新内容自动生成下一版计划" : "The next plan draft is being generated automatically"}
+              spinning={isPlanSectionBusy}
+              tip={
+                task.pendingAction?.message
+                || (locale === "zh-CN" ? "系统正在根据最新内容自动生成下一版计划" : "The next plan draft is being generated automatically")
+              }
             >
               <Typography.Text type="secondary">
                 {task.planForm?.title || (locale === "zh-CN" ? "计划反馈表单" : "Plan response form")}
@@ -505,7 +537,14 @@ export function TaskDetail({
                     : "Answer open questions here. Start execution only after the plan has no unresolved questions and you have no further edits."
                 )}
               </Typography.Paragraph>
-              {isPlanDraftPending ? (
+              {task.pendingAction ? (
+                <Alert
+                  type={task.pendingAction.phase === "timed_out" ? "warning" : "info"}
+                  showIcon
+                  message={task.pendingAction.message}
+                  style={{ marginBottom: 12 }}
+                />
+              ) : isPlanDraftPending ? (
                 <Alert
                   type="warning"
                   showIcon
@@ -531,7 +570,7 @@ export function TaskDetail({
                   style={{ marginBottom: 12 }}
                 />
               )}
-              <Form form={planResponseForm} layout="vertical" requiredMark={false} disabled={isPlanDraftPending}>
+              <Form form={planResponseForm} layout="vertical" requiredMark={false} disabled={isPlanSectionBusy}>
                 {planQuestions.map((question) => (
                   <Form.Item
                     key={question.id}
@@ -573,19 +612,21 @@ export function TaskDetail({
               ) : null}
               <Flex gap={8} wrap style={{ marginTop: 12 }}>
                 <Button
+                  loading={task.pendingAction?.type === "feedback"}
                   onClick={() => void submitPlanFeedback()}
-                  disabled={isPlanDraftPending || (!hasOpenPlanQuestions && !hasDraftPlanResponse)}
+                  disabled={isPlanSectionBusy || (!hasOpenPlanQuestions && !hasDraftPlanResponse)}
                 >
                   {locale === "zh-CN" ? "提交反馈继续规划" : "Submit feedback"}
                 </Button>
                 <Button
                   type="primary"
+                  loading={task.pendingAction?.type === "approve"}
                   onClick={() => void onRespond(task.id, "approve", "")}
-                  disabled={isPlanDraftPending || hasOpenPlanQuestions || hasDraftPlanResponse}
+                  disabled={isPlanSectionBusy || hasOpenPlanQuestions || hasDraftPlanResponse}
                 >
                   {locale === "zh-CN" ? "确认计划并开始执行" : "Start execution"}
                 </Button>
-                <Button onClick={() => void onRespond(task.id, "reject", "")}>
+                <Button loading={task.pendingAction?.type === "reject"} disabled={isPlanSectionBusy} onClick={() => void onRespond(task.id, "reject", "")}>
                   {locale === "zh-CN" ? "拒绝" : "Reject"}
                 </Button>
               </Flex>
@@ -598,11 +639,19 @@ export function TaskDetail({
             <Typography.Text type="secondary">
               {locale === "zh-CN" ? "审批操作" : "Approval actions"}
             </Typography.Text>
+            {task.pendingAction ? (
+              <Alert
+                type={task.pendingAction.phase === "timed_out" ? "warning" : "info"}
+                showIcon
+                message={task.pendingAction.message}
+                style={{ marginTop: 12 }}
+              />
+            ) : null}
             <Flex gap={8} wrap style={{ marginTop: 12 }}>
-              <Button type="primary" onClick={() => void onRespond(task.id, "approve", "")}>
+              <Button type="primary" loading={task.pendingAction?.type === "approve"} disabled={isTaskActionPending} onClick={() => void onRespond(task.id, "approve", "")}>
                 {locale === "zh-CN" ? "通过" : "Approve"}
               </Button>
-              <Button onClick={() => void onRespond(task.id, "reject", "")}>
+              <Button loading={task.pendingAction?.type === "reject"} disabled={isTaskActionPending} onClick={() => void onRespond(task.id, "reject", "")}>
                 {locale === "zh-CN" ? "拒绝" : "Reject"}
               </Button>
             </Flex>
@@ -782,7 +831,9 @@ export function ApprovalCard({
           {approval.task.userAction?.title || approval.reason}
         </Typography.Text>
         <Typography.Text type="secondary" className="wrap-anywhere">
-          {approval.task.planDraftPending
+          {approval.task.pendingAction?.message
+            ? approval.task.pendingAction.message
+            : approval.task.planDraftPending
             ? (
                 locale === "zh-CN"
                   ? "计划正在自动生成或更新，请点击详情查看最新版本。"
@@ -801,7 +852,7 @@ export function ApprovalCard({
               )}
         </Typography.Text>
         <Space wrap>
-          <Tag color={approval.task.planDraftPending && approval.task.status === "waiting_user" ? "processing" : statusTagColor[approval.task.status]}>
+          <Tag color={getDisplayedStatusColor(approval.task, statusTagColor)}>
             {getDisplayedStatusText(approval.task, locale, statusLabel)}
           </Tag>
           <Typography.Text type="secondary">
@@ -809,12 +860,13 @@ export function ApprovalCard({
           </Typography.Text>
         </Space>
         <Alert
-          type="warning"
+          type={approval.task.pendingAction ? (approval.task.pendingAction.phase === "timed_out" ? "warning" : "info") : "warning"}
           showIcon
           message={
-            locale === "zh-CN"
+            approval.task.pendingAction?.message
+            || (locale === "zh-CN"
               ? "请在详情页处理中回复待确认项或启动执行。"
-              : "Handle this approval in the detail view."
+              : "Handle this approval in the detail view.")
           }
         />
         <Flex gap={8} wrap>

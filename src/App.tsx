@@ -55,6 +55,9 @@ import type {
   StatusFilterValue,
   Task,
   TaskLog,
+  TaskPendingAction,
+  TaskPendingActionPhase,
+  TaskPendingActionType,
   TaskStatus,
   ThemeMode,
   ToolLink,
@@ -133,6 +136,300 @@ const statusTagColor: Record<TaskStatus, string> = {
   completed: "success",
   stopped: "default",
 };
+
+type PendingTaskMutation = {
+  taskId: string;
+  issueNumber?: number;
+  lookupKey: string;
+  actionType: TaskPendingActionType;
+  phase: TaskPendingActionPhase;
+  startedAt: string;
+  acceptedAt?: string;
+  timeoutAt?: string;
+  baseStatus?: TaskStatus;
+  baseUpdatedAt?: string;
+  baseLastStatusCommentAt?: string;
+  basePlanPreview?: string;
+  placeholderTask?: Task;
+};
+
+type TaskSyncState = {
+  inFlight: boolean;
+  lastSyncedAt: string;
+};
+
+function buildTaskLookupKey(task: Pick<Task, "projectId" | "type" | "title" | "description">) {
+  return [
+    String(task.projectId || "").trim(),
+    String(task.type || "").trim(),
+    String(task.title || "").trim(),
+    String(task.description || "").trim(),
+  ].join("::");
+}
+
+function taskNeedsUserAttention(task: Pick<Task, "status" | "pendingAction">) {
+  return task.status === "waiting_user" && !task.pendingAction?.hideFromApprovals;
+}
+
+function getPendingTaskMutationCopy(
+  mutation: Pick<PendingTaskMutation, "actionType" | "phase" | "baseStatus">,
+  locale: Locale,
+) {
+  const delayed = mutation.phase === "timed_out";
+  const submitting = mutation.phase === "submitting";
+  const createCopy = mutation.actionType === "create_project"
+    ? {
+        label: locale === "zh-CN"
+          ? (submitting ? "提交项目请求中" : delayed ? "项目同步较慢" : "项目已入队")
+          : (submitting ? "Submitting project" : delayed ? "Project sync delayed" : "Project queued"),
+        message: locale === "zh-CN"
+          ? (delayed
+              ? "项目请求已提交，但系统回执较慢。你可以先刷新页面确认最新状态。"
+              : "项目请求已提交，等待系统捕获并生成规划。")
+          : (delayed
+              ? "The project request was submitted, but remote sync is taking longer than expected. Refresh to confirm the latest state."
+              : "The project request was submitted. Waiting for the system to capture it and generate a plan."),
+      }
+    : {
+        label: locale === "zh-CN"
+          ? (submitting ? "提交任务中" : delayed ? "任务同步较慢" : "任务已入队")
+          : (submitting ? "Submitting task" : delayed ? "Task sync delayed" : "Task queued"),
+        message: locale === "zh-CN"
+          ? (delayed
+              ? "任务请求已提交，但系统回执较慢。你可以先刷新页面确认最新状态。"
+              : "任务请求已提交，等待系统捕获。")
+          : (delayed
+              ? "The task request was submitted, but remote sync is taking longer than expected. Refresh to confirm the latest state."
+              : "The task request was submitted. Waiting for the system to capture it."),
+      };
+
+  switch (mutation.actionType) {
+    case "create_project":
+    case "create_task":
+      return createCopy;
+    case "feedback":
+      return {
+        label: locale === "zh-CN"
+          ? (submitting ? "提交反馈中" : delayed ? "继续规划较慢" : "继续规划中")
+          : (submitting ? "Submitting feedback" : delayed ? "Planning delayed" : "Planning"),
+        message: locale === "zh-CN"
+          ? (delayed
+              ? "反馈已提交，但下一版计划同步较慢。请先不要重复提交或开始执行。"
+              : "反馈已提交，系统正在根据最新内容自动生成下一版计划。")
+          : (delayed
+              ? "Feedback was submitted, but the next plan draft is syncing slowly. Do not resubmit or start execution yet."
+              : "Feedback was submitted. The system is generating the next plan draft from your latest input."),
+      };
+    case "approve":
+      if (mutation.baseStatus === "awaiting_acceptance") {
+        return {
+          label: locale === "zh-CN"
+            ? (submitting ? "提交验收中" : delayed ? "验收同步较慢" : "验收处理中")
+            : (submitting ? "Submitting acceptance" : delayed ? "Acceptance delayed" : "Accepting"),
+          message: locale === "zh-CN"
+            ? (delayed
+                ? "验收结果已提交，但系统同步较慢。请先不要重复提交。"
+                : "验收结果已提交，等待系统同步任务状态。")
+            : (delayed
+                ? "Acceptance was submitted, but remote sync is taking longer than expected. Do not resubmit yet."
+                : "Acceptance was submitted. Waiting for the system to sync the task status."),
+        };
+      }
+      return {
+        label: locale === "zh-CN"
+          ? (submitting ? "确认计划中" : delayed ? "启动执行较慢" : "启动执行中")
+          : (submitting ? "Confirming plan" : delayed ? "Execution start delayed" : "Starting"),
+        message: locale === "zh-CN"
+          ? (delayed
+              ? "计划已确认，但系统开始执行的回执较慢。请先不要重复点击。"
+              : "计划已确认，等待系统开始执行。")
+          : (delayed
+              ? "The plan was confirmed, but execution start is syncing slowly. Do not click again yet."
+              : "The plan was confirmed. Waiting for the system to start execution."),
+      };
+    case "reject":
+      if (mutation.baseStatus === "awaiting_acceptance") {
+        return {
+          label: locale === "zh-CN"
+            ? (submitting ? "提交返修中" : delayed ? "返修同步较慢" : "返修处理中")
+            : (submitting ? "Submitting revision" : delayed ? "Revision delayed" : "Returning for revision"),
+          message: locale === "zh-CN"
+            ? (delayed
+                ? "返修要求已提交，但系统同步较慢。请先不要重复提交。"
+                : "返修要求已提交，等待系统同步任务状态。")
+            : (delayed
+                ? "The revision request was submitted, but remote sync is taking longer than expected. Do not resubmit yet."
+                : "The revision request was submitted. Waiting for the system to sync the task status."),
+        };
+      }
+      return {
+        label: locale === "zh-CN"
+          ? (submitting ? "提交拒绝中" : delayed ? "拒绝同步较慢" : "拒绝处理中")
+          : (submitting ? "Submitting rejection" : delayed ? "Rejection delayed" : "Rejecting"),
+        message: locale === "zh-CN"
+          ? (delayed
+              ? "拒绝意见已提交，但系统同步较慢。请先不要重复提交。"
+              : "拒绝意见已提交，等待系统同步任务状态。")
+          : (delayed
+              ? "The rejection was submitted, but remote sync is taking longer than expected. Do not resubmit yet."
+              : "The rejection was submitted. Waiting for the system to sync the task status."),
+      };
+    case "retry":
+      return {
+        label: locale === "zh-CN"
+          ? (submitting ? "提交重试中" : delayed ? "重试同步较慢" : "重试中")
+          : (submitting ? "Submitting retry" : delayed ? "Retry delayed" : "Retrying"),
+        message: locale === "zh-CN"
+          ? (delayed
+              ? "重试指令已提交，但系统重新排队较慢。请先不要重复点击。"
+              : "重试指令已提交，等待系统重新排队。")
+          : (delayed
+              ? "The retry request was submitted, but requeueing is taking longer than expected. Do not click again yet."
+              : "The retry request was submitted. Waiting for the system to requeue the task."),
+      };
+    case "stop":
+      return {
+        label: locale === "zh-CN"
+          ? (submitting ? "提交停止中" : delayed ? "停止同步较慢" : "停止中")
+          : (submitting ? "Submitting stop" : delayed ? "Stop delayed" : "Stopping"),
+        message: locale === "zh-CN"
+          ? (delayed
+              ? "停止指令已提交，但系统停止较慢。请先不要重复点击。"
+              : "停止指令已提交，等待系统停止任务。")
+          : (delayed
+              ? "The stop request was submitted, but stopping is taking longer than expected. Do not click again yet."
+              : "The stop request was submitted. Waiting for the system to stop the task."),
+      };
+    default:
+      return {
+        label: locale === "zh-CN" ? "处理中" : "Processing",
+        message: locale === "zh-CN" ? "操作已提交，等待系统同步。" : "The action was submitted. Waiting for the system to sync it.",
+      };
+  }
+}
+
+function buildTaskPendingAction(
+  mutation: PendingTaskMutation,
+  locale: Locale,
+): TaskPendingAction {
+  const copy = getPendingTaskMutationCopy(mutation, locale);
+  return {
+    type: mutation.actionType,
+    phase: mutation.phase,
+    startedAt: mutation.acceptedAt || mutation.startedAt,
+    label: copy.label,
+    message: copy.message,
+    blocksActions: true,
+    hideFromApprovals: ["feedback", "approve", "reject"].includes(mutation.actionType),
+  };
+}
+
+function applyPendingMutationToTask(task: Task, mutation: PendingTaskMutation, locale: Locale) {
+  const pendingAction = buildTaskPendingAction(mutation, locale);
+  const nextUpdatedAt = mutation.acceptedAt || mutation.startedAt || task.updatedAt;
+  const nextSummary = pendingAction.message;
+  return {
+    ...task,
+    updatedAt: nextUpdatedAt,
+    summary: nextSummary,
+    userSummary: nextSummary,
+    planDraftPending: mutation.actionType === "feedback" ? true : Boolean(task.planDraftPending),
+    pendingAction,
+  } satisfies Task;
+}
+
+function applyPendingMutationsToTasks(taskList: Task[], pendingMutations: Record<string, PendingTaskMutation>, locale: Locale) {
+  if (!Object.keys(pendingMutations).length) {
+    return taskList;
+  }
+  const byTaskId = new Map(Object.values(pendingMutations).map((mutation) => [mutation.taskId, mutation]));
+  const byIssueNumber = new Map(
+    Object.values(pendingMutations)
+      .filter((mutation) => typeof mutation.issueNumber === "number")
+      .map((mutation) => [mutation.issueNumber as number, mutation]),
+  );
+  return taskList.map((task) => {
+    const mutation = byTaskId.get(task.id) || (typeof task.issueNumber === "number" ? byIssueNumber.get(task.issueNumber) : undefined);
+    return mutation ? applyPendingMutationToTask(task, mutation, locale) : task;
+  });
+}
+
+function buildPendingPlaceholderTasks(pendingMutations: Record<string, PendingTaskMutation>, locale: Locale) {
+  return Object.values(pendingMutations)
+    .filter((mutation) => mutation.placeholderTask)
+    .map((mutation) => applyPendingMutationToTask(mutation.placeholderTask as Task, mutation, locale));
+}
+
+function hasStatusCommentAfter(task: Pick<Task, "lastStatusCommentAt">, timestamp: string | undefined) {
+  const lastStatusCommentAt = Date.parse(task.lastStatusCommentAt || "");
+  const compareTo = Date.parse(timestamp || "");
+  return Number.isFinite(lastStatusCommentAt) && Number.isFinite(compareTo) && lastStatusCommentAt > compareTo;
+}
+
+function hasPendingMutationBeenAcknowledged(task: Task, mutation: PendingTaskMutation) {
+  if (mutation.actionType === "create_project" || mutation.actionType === "create_task") {
+    return true;
+  }
+  if (hasStatusCommentAfter(task, mutation.acceptedAt || mutation.startedAt)) {
+    return true;
+  }
+  if (mutation.baseStatus && task.status !== mutation.baseStatus) {
+    return true;
+  }
+  if (mutation.actionType === "feedback") {
+    const nextPlanPreview = String(task.planPreview || "").trim();
+    return Boolean(nextPlanPreview && nextPlanPreview !== String(mutation.basePlanPreview || "").trim() && !task.planDraftPending);
+  }
+  return false;
+}
+
+function reconcilePendingTaskMutations(taskList: Task[], pendingMutations: Record<string, PendingTaskMutation>) {
+  if (!Object.keys(pendingMutations).length) {
+    return pendingMutations;
+  }
+  const now = Date.now();
+  const taskByIssueNumber = new Map(
+    taskList
+      .filter((task) => typeof task.issueNumber === "number")
+      .map((task) => [task.issueNumber as number, task]),
+  );
+  const taskByLookupKey = new Map(taskList.map((task) => [buildTaskLookupKey(task), task]));
+  const next: Record<string, PendingTaskMutation> = {};
+  for (const [key, mutation] of Object.entries(pendingMutations)) {
+    const remoteTask =
+      taskList.find((task) => task.id === mutation.taskId)
+      || (typeof mutation.issueNumber === "number" ? taskByIssueNumber.get(mutation.issueNumber) : undefined)
+      || taskByLookupKey.get(mutation.lookupKey);
+    if (remoteTask && hasPendingMutationBeenAcknowledged(remoteTask, mutation)) {
+      continue;
+    }
+    const timeoutAt = Date.parse(mutation.timeoutAt || "");
+    next[key] = Number.isFinite(timeoutAt) && timeoutAt <= now && mutation.phase !== "timed_out"
+      ? { ...mutation, phase: "timed_out" }
+      : mutation;
+  }
+  return next;
+}
+
+function getTaskDisplayedStatusText(task: Pick<Task, "status" | "planDraftPending" | "pendingAction">, locale: Locale) {
+  if (task.pendingAction?.label) {
+    return task.pendingAction.label;
+  }
+  if (task.planDraftPending && task.status === "waiting_user") {
+    return locale === "zh-CN" ? "继续规划中" : "Planning";
+  }
+  return statusLabel[task.status][locale];
+}
+
+function getTaskDisplayedStatusColor(task: Pick<Task, "status" | "planDraftPending" | "pendingAction">) {
+  if (task.pendingAction) {
+    return task.pendingAction.phase === "timed_out" ? "warning" : "processing";
+  }
+  if (task.planDraftPending && task.status === "waiting_user") {
+    return "processing";
+  }
+  return statusTagColor[task.status];
+}
 
 function slugify(value: string) {
   return value
@@ -452,11 +749,6 @@ type IssueComment = {
   created_at?: string;
 };
 
-type OptimisticPlanningFeedback = {
-  appliedAt: string;
-  pendingSummary: string;
-};
-
 function parseCommentCommand(body: string) {
   const firstLine = String(body || "")
     .split("\n")[0]
@@ -771,7 +1063,7 @@ function buildRemoteProjects(tasks: Task[]) {
     project.taskStats.total += 1;
     if (task.status === "running") project.taskStats.running += 1;
     if (task.status === "failed") project.taskStats.failed += 1;
-    if (task.status === "waiting_user") project.taskStats.waitingUser += 1;
+    if (taskNeedsUserAttention(task)) project.taskStats.waitingUser += 1;
     if (task.status === "completed") project.taskStats.completed += 1;
   }
 
@@ -816,7 +1108,7 @@ function mergeProjectStats(baseProjects: Project[], tasks: Task[]) {
     project.taskStats.total += 1;
     if (task.status === "running") project.taskStats.running += 1;
     if (task.status === "failed") project.taskStats.failed += 1;
-    if (task.status === "waiting_user") project.taskStats.waitingUser += 1;
+    if (taskNeedsUserAttention(task)) project.taskStats.waitingUser += 1;
     if (task.status === "completed") project.taskStats.completed += 1;
   }
 
@@ -1075,7 +1367,7 @@ function buildGithubDirectUsageFallback(taskList: Task[], locale: Locale): Usage
   return {
     totalTasks: taskList.length,
     activeTasks: taskList.filter((task) => task.status === "running").length,
-    pendingApprovals: taskList.filter((task) => task.status === "waiting_user").length,
+    pendingApprovals: taskList.filter((task) => taskNeedsUserAttention(task)).length,
     completedTasks: taskList.filter((task) => task.status === "completed").length,
     failedTasks: taskList.filter((task) => task.status === "failed" || task.status === "publish_failed").length,
     estimatedTokens: 0,
@@ -1098,6 +1390,13 @@ function deriveRequirementId(task: Task) {
   if (task.requirementId) return task.requirementId;
   if (typeof task.issueNumber === "number") return `issue:${task.issueNumber}`;
   return `${task.projectId}::${task.title}`;
+}
+
+function deriveRequirementStatus(task: Task): TaskStatus {
+  if (task.pendingAction) {
+    return "pending";
+  }
+  return task.status;
 }
 
 function buildRequirementsFromTasks(tasks: Task[]) {
@@ -1126,7 +1425,7 @@ function buildRequirementsFromTasks(tasks: Task[]) {
         projectId: latest.projectId,
         projectName: latest.projectName,
         title: latest.title,
-        status: latest.status,
+        status: deriveRequirementStatus(latest),
         updatedAt: latest.updatedAt || "",
         latestAttemptId: latest.id,
         latestAttemptNumber: latest.attemptNumber || orderedAttempts.length,
@@ -1215,7 +1514,13 @@ function normalizeDisplayText(value: string) {
 
 function getRequirementPreview(requirement: Requirement, locale: Locale) {
   const latestAttempt = requirement.attempts[0];
-  const planPreview = normalizeDisplayText(latestAttempt?.status === "waiting_user" ? latestAttempt?.planPreview || "" : "");
+  const pendingMessage = normalizeDisplayText(latestAttempt?.pendingAction?.message || "");
+  if (pendingMessage) return pendingMessage;
+  const planPreview = normalizeDisplayText(
+    latestAttempt && (latestAttempt.status === "waiting_user" || latestAttempt.planDraftPending || Boolean(latestAttempt.pendingAction))
+      ? latestAttempt.planPreview || ""
+      : "",
+  );
   if (planPreview) return planPreview;
 
   const summary = normalizeDisplayText(requirement.userSummary || latestAttempt?.userSummary || latestAttempt?.summary || "");
@@ -1283,8 +1588,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<(typeof tabs)[number]["id"]>("quest-center");
   const [projects, setProjects] = useState<Project[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [optimisticTasks, setOptimisticTasks] = useState<Task[]>([]);
-  const [optimisticPlanningFeedback, setOptimisticPlanningFeedback] = useState<Record<string, OptimisticPlanningFeedback>>({});
+  const [pendingTaskMutations, setPendingTaskMutations] = useState<Record<string, PendingTaskMutation>>({});
   const [approvals, setApprovals] = useState<Approval[]>([]);
   const [tools, setTools] = useState<ToolLink[]>([]);
   const [usage, setUsage] = useState<UsageOverview | null>(null);
@@ -1326,28 +1630,40 @@ export default function App() {
   const isMobile = !screens.md;
   const requirementPageSize = isMobile ? REQUIREMENT_PAGE_SIZE_MOBILE : REQUIREMENT_PAGE_SIZE_DESKTOP;
   const pollTokenRef = useRef(0);
+  const taskRefreshRequestRef = useRef(0);
+  const pendingTaskMutationsRef = useRef(pendingTaskMutations);
   const selectedProjectIdRef = useRef(selectedProjectId);
   const selectedTaskIdRef = useRef(selectedTaskId);
+  const [taskSyncState, setTaskSyncState] = useState<TaskSyncState>({ inFlight: false, lastSyncedAt: "" });
+  const [expeditedPollUntil, setExpeditedPollUntil] = useState(0);
 
-  const selectedTask = useMemo(
-    () => tasks.find((task) => task.id === selectedTaskId) ?? optimisticTasks.find((task) => task.id === selectedTaskId) ?? null,
-    [optimisticTasks, selectedTaskId, tasks],
+  const remoteTasksWithPending = useMemo(
+    () => applyPendingMutationsToTasks(tasks, pendingTaskMutations, locale),
+    [locale, pendingTaskMutations, tasks],
   );
 
   const visibleTasks = useMemo(() => {
-    if (!optimisticTasks.length) {
-      return tasks;
+    const pendingPlaceholders = buildPendingPlaceholderTasks(pendingTaskMutations, locale);
+    if (!pendingPlaceholders.length) {
+      return remoteTasksWithPending;
     }
-    const resolvedIssueNumbers = new Set(tasks.map((task) => task.issueNumber).filter((value): value is number => typeof value === "number"));
-    const resolvedKeys = new Set(tasks.map((task) => `${task.projectId}::${task.type}::${task.title}::${task.description}`));
-    const pendingOnly = optimisticTasks.filter((task) => {
+    const resolvedIssueNumbers = new Set(
+      remoteTasksWithPending.map((task) => task.issueNumber).filter((value): value is number => typeof value === "number"),
+    );
+    const resolvedKeys = new Set(remoteTasksWithPending.map((task) => buildTaskLookupKey(task)));
+    const pendingOnly = pendingPlaceholders.filter((task) => {
       if (typeof task.issueNumber === "number" && resolvedIssueNumbers.has(task.issueNumber)) {
         return false;
       }
-      return !resolvedKeys.has(`${task.projectId}::${task.type}::${task.title}::${task.description}`);
+      return !resolvedKeys.has(buildTaskLookupKey(task));
     });
-    return [...pendingOnly, ...tasks];
-  }, [optimisticTasks, tasks]);
+    return [...pendingOnly, ...remoteTasksWithPending];
+  }, [locale, pendingTaskMutations, remoteTasksWithPending]);
+
+  const selectedTask = useMemo(
+    () => visibleTasks.find((task) => task.id === selectedTaskId) ?? null,
+    [selectedTaskId, visibleTasks],
+  );
 
   const visibleRequirements = useMemo(
     () => buildRequirementsFromTasks(visibleTasks),
@@ -1383,6 +1699,33 @@ export default function App() {
     () => (runtimeMode === "github-direct" ? buildRemoteProjects(visibleTasks) : mergeProjectStats(projects, visibleTasks)),
     [projects, runtimeMode, visibleTasks],
   );
+
+  const visibleApprovals = useMemo(() => {
+    const visibleTaskById = new Map(visibleTasks.map((task) => [task.id, task]));
+    const remoteApprovals = approvals
+      .map((approval) => {
+        const task = visibleTaskById.get(approval.task.id) || approval.task;
+        return {
+          ...approval,
+          task,
+          reason: task.userAction?.title || approval.reason,
+        };
+      })
+      .filter((approval) => taskNeedsUserAttention(approval.task));
+    const knownTaskIds = new Set(remoteApprovals.map((approval) => approval.task.id));
+    const derivedApprovals = visibleTasks
+      .filter((task) => taskNeedsUserAttention(task) && !knownTaskIds.has(task.id))
+      .map((task) => ({
+        id: `approval-${task.issueNumber || task.id}`,
+        reason:
+          task.userAction?.title ||
+          (locale === "zh-CN" ? "请在详情页确认后继续执行" : "Review this task in detail before continuing"),
+        task,
+      }));
+    return [...remoteApprovals, ...derivedApprovals].sort(
+      (left, right) => Date.parse(right.task.updatedAt || "") - Date.parse(left.task.updatedAt || ""),
+    );
+  }, [approvals, locale, visibleTasks]);
 
   const filteredProjects = useMemo(
     () =>
@@ -1510,20 +1853,42 @@ export default function App() {
   }, [selectedTaskId]);
 
   useEffect(() => {
+    pendingTaskMutationsRef.current = pendingTaskMutations;
+  }, [pendingTaskMutations]);
+
+  useEffect(() => {
     setIsMobileNavOpen(false);
     setIsMobileViewDrawerOpen(false);
   }, [activeTab, locale, theme]);
 
   useEffect(() => {
     void refreshAll();
+    const pollIntervalMs = Date.now() < expeditedPollUntil ? 1000 : 5000;
     const interval = window.setInterval(() => {
       void refreshTasks();
-      void refreshApprovals();
+      if (runtimeMode !== "github-direct") {
+        void refreshApprovals();
+      }
       void refreshUsage();
       void refreshAuth();
-    }, 5000);
+    }, pollIntervalMs);
     return () => window.clearInterval(interval);
-  }, [sessionToken, githubToken]);
+  }, [expeditedPollUntil, githubToken, runtimeMode, sessionToken]);
+
+  useEffect(() => {
+    if (!expeditedPollUntil) {
+      return;
+    }
+    const remainingMs = expeditedPollUntil - Date.now();
+    if (remainingMs <= 0) {
+      setExpeditedPollUntil(0);
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setExpeditedPollUntil(0);
+    }, remainingMs + 50);
+    return () => window.clearTimeout(timer);
+  }, [expeditedPollUntil]);
 
   useEffect(() => {
     return () => {
@@ -1573,20 +1938,6 @@ export default function App() {
       setSelectedTaskId(nextRequirement.latestAttemptId);
     }
   }, [selectedProjectId, selectedRequirementId, selectedTaskId, visibleRequirements, workspaceLevel]);
-
-  useEffect(() => {
-    if (!optimisticTasks.length) return;
-    const resolvedIssueNumbers = new Set(tasks.map((task) => task.issueNumber).filter((value): value is number => typeof value === "number"));
-    const resolvedKeys = new Set(tasks.map((task) => `${task.projectId}::${task.type}::${task.title}::${task.description}`));
-    setOptimisticTasks((current) =>
-      current.filter((task) => {
-        if (typeof task.issueNumber === "number" && resolvedIssueNumbers.has(task.issueNumber)) {
-          return false;
-        }
-        return !resolvedKeys.has(`${task.projectId}::${task.type}::${task.title}::${task.description}`);
-      }),
-    );
-  }, [optimisticTasks.length, tasks]);
 
   useEffect(() => {
     localStorage.setItem(CLOSED_ANOMALIES_STORAGE_KEY, JSON.stringify(dismissedAnomalies));
@@ -1707,7 +2058,15 @@ export default function App() {
     setTransientNotice(locale === "zh-CN" ? "异常已标记为已处理，不再提示" : "Anomaly marked handled and hidden from alerts", "success");
   }
 
+  function startExpeditedTaskPolling() {
+    setExpeditedPollUntil(Date.now() + 15_000);
+  }
+
   async function refreshAll() {
+    if (runtimeMode === "github-direct") {
+      await Promise.all([refreshHealth(), refreshAuth(), refreshTasks(), refreshTools(), refreshUsage()]);
+      return;
+    }
     await Promise.all([refreshHealth(), refreshAuth(), refreshProjects(), refreshTasks(), refreshApprovals(), refreshTools(), refreshUsage()]);
   }
 
@@ -1756,7 +2115,7 @@ export default function App() {
         taskState: {
           total: visibleTasks.length,
           running: visibleTasks.filter((task) => task.status === "running").length,
-          waitingUser: visibleTasks.filter((task) => task.status === "waiting_user").length,
+          waitingUser: visibleTasks.filter((task) => taskNeedsUserAttention(task)).length,
           awaitingAcceptance: visibleTasks.filter((task) => task.status === "awaiting_acceptance").length,
           needsRevision: visibleTasks.filter((task) => task.status === "needs_revision").length,
           publishFailed: visibleTasks.filter((task) => task.status === "publish_failed").length,
@@ -1867,19 +2226,6 @@ export default function App() {
 
   async function refreshProjects() {
     if (runtimeMode === "github-direct") {
-      const nextProjects = buildRemoteProjects(tasks);
-      setProjects(nextProjects);
-      if (!nextProjects.length) {
-        setSelectedProjectId("");
-        return;
-      }
-      const currentProjectId = selectedProjectIdRef.current;
-      const nextProjectId = nextProjects.some((project) => project.id === currentProjectId)
-        ? currentProjectId
-        : nextProjects[0].id;
-      if (nextProjectId !== currentProjectId) {
-        setSelectedProjectId(nextProjectId);
-      }
       return;
     }
     try {
@@ -1904,47 +2250,17 @@ export default function App() {
     }
   }
 
-  function mergeOptimisticPlanningFeedback(taskList: Task[]) {
-    if (!Object.keys(optimisticPlanningFeedback).length) {
-      return taskList;
-    }
-    const now = Date.now();
-    const nextPatches: Record<string, OptimisticPlanningFeedback> = {};
-    const merged = taskList.map((task) => {
-      const patch = optimisticPlanningFeedback[task.id];
-      if (!patch) {
-        return task;
-      }
-      const ageMs = now - Date.parse(patch.appliedAt || "");
-      const lastStatusCommentAt = Date.parse(task.lastStatusCommentAt || "");
-      const appliedAt = Date.parse(patch.appliedAt || "");
-      const remoteCaughtUp = Number.isFinite(lastStatusCommentAt) && Number.isFinite(appliedAt)
-        ? lastStatusCommentAt >= appliedAt
-        : false;
-      if (remoteCaughtUp || ageMs > 3 * 60 * 1000) {
-        return task;
-      }
-      nextPatches[task.id] = patch;
-      return {
-        ...task,
-        updatedAt: patch.appliedAt,
-        summary: patch.pendingSummary,
-        userSummary: patch.pendingSummary,
-        planDraftPending: true,
-      };
-    });
-    if (Object.keys(nextPatches).length !== Object.keys(optimisticPlanningFeedback).length) {
-      setOptimisticPlanningFeedback(nextPatches);
-    }
-    return merged;
-  }
-
   async function refreshTasks() {
+    const requestId = ++taskRefreshRequestRef.current;
+    setTaskSyncState((current) => ({ ...current, inFlight: true }));
     if (runtimeMode === "github-direct") {
       if (!githubToken) {
+        if (requestId !== taskRefreshRequestRef.current) {
+          return;
+        }
         setTasks([]);
-        setApprovals([]);
-        setProjects(buildRemoteProjects([]));
+        setPendingTaskMutations({});
+        setTaskSyncState({ inFlight: false, lastSyncedAt: new Date().toISOString() });
         return;
       }
 
@@ -2024,44 +2340,47 @@ export default function App() {
           )
         ).sort((left, right) => (right.issueNumber || 0) - (left.issueNumber || 0));
 
-        const mergedTaskList = mergeOptimisticPlanningFeedback(taskList);
-        setTasks(mergedTaskList);
-        setOptimisticTasks((current) =>
-          current.filter((task) => !(typeof task.issueNumber === "number" && taskList.some((item) => item.issueNumber === task.issueNumber))),
-        );
-        setProjects(buildRemoteProjects(mergedTaskList));
-        setApprovals(
-          mergedTaskList
-            .filter((task) => task.status === "waiting_user")
-            .map((task) => ({
-              id: `approval-${task.issueNumber || task.id}`,
-              reason:
-                task.userAction?.title ||
-                (locale === "zh-CN" ? "请在 GitHub Pages 审批后继续执行" : "Approve in GitHub Pages to continue execution"),
-              task,
-            })),
-        );
+        if (requestId !== taskRefreshRequestRef.current) {
+          return;
+        }
+        const nextPendingTaskMutations = reconcilePendingTaskMutations(taskList, pendingTaskMutationsRef.current);
+        setTasks(taskList);
+        setPendingTaskMutations(nextPendingTaskMutations);
         setUsage((current) => {
           const hasRuntimeSnapshot = Boolean(
             current?.rateLimits?.primary ||
             current?.rateLimits?.secondary ||
             current?.statusCollectedAt,
           );
-          return hasRuntimeSnapshot ? current : buildGithubDirectUsageFallback(mergedTaskList, locale);
+          return hasRuntimeSnapshot ? current : buildGithubDirectUsageFallback(applyPendingMutationsToTasks(taskList, nextPendingTaskMutations, locale), locale);
         });
+        setTaskSyncState({ inFlight: false, lastSyncedAt: new Date().toISOString() });
 
-        if (!mergedTaskList.length) {
+        const visibleTaskIds = new Set([
+          ...taskList.map((task) => task.id),
+          ...Object.values(nextPendingTaskMutations)
+            .filter((mutation) => mutation.placeholderTask)
+            .map((mutation) => mutation.taskId),
+        ]);
+        if (!visibleTaskIds.size) {
           setSelectedTaskId("");
           return;
         }
         const currentTaskId = selectedTaskIdRef.current;
-        const nextTaskId = mergedTaskList.some((task) => task.id === currentTaskId) ? currentTaskId : mergedTaskList[0].id;
+        const nextTaskId = currentTaskId && visibleTaskIds.has(currentTaskId)
+          ? currentTaskId
+          : taskList[0]?.id
+            || Object.values(nextPendingTaskMutations).find((mutation) => mutation.placeholderTask)?.taskId
+            || "";
         if (currentTaskId && nextTaskId !== currentTaskId) {
           setSelectedTaskId(nextTaskId);
         }
       } catch {
+        if (requestId !== taskRefreshRequestRef.current) {
+          return;
+        }
         setTasks([]);
-        setApprovals([]);
+        setTaskSyncState((current) => ({ ...current, inFlight: false }));
       }
       return;
     }
@@ -2072,25 +2391,42 @@ export default function App() {
         planForm: normalizePlanForm(task.planForm) || buildPlanFormFromPreview(task.planPreview, locale),
         planDraftPending: Boolean(task.planDraftPending),
       }));
-      const mergedTasks = mergeOptimisticPlanningFeedback(normalizedTasks);
-      setTasks(mergedTasks);
+      if (requestId !== taskRefreshRequestRef.current) {
+        return;
+      }
+      const nextPendingTaskMutations = reconcilePendingTaskMutations(normalizedTasks, pendingTaskMutationsRef.current);
+      setTasks(normalizedTasks);
+      setPendingTaskMutations(nextPendingTaskMutations);
+      setTaskSyncState({ inFlight: false, lastSyncedAt: new Date().toISOString() });
 
-      if (!mergedTasks.length) {
+      const visibleTaskIds = new Set([
+        ...normalizedTasks.map((task) => task.id),
+        ...Object.values(nextPendingTaskMutations)
+          .filter((mutation) => mutation.placeholderTask)
+          .map((mutation) => mutation.taskId),
+      ]);
+      if (!visibleTaskIds.size) {
         setSelectedTaskId("");
         return;
       }
 
       const currentTaskId = selectedTaskIdRef.current;
-      const nextTaskId = mergedTasks.some((task) => task.id === currentTaskId)
+      const nextTaskId = currentTaskId && visibleTaskIds.has(currentTaskId)
         ? currentTaskId
-        : mergedTasks[0].id;
+        : normalizedTasks[0]?.id
+          || Object.values(nextPendingTaskMutations).find((mutation) => mutation.placeholderTask)?.taskId
+          || "";
 
       if (!currentTaskId) return;
       if (nextTaskId !== currentTaskId) {
         setSelectedTaskId(nextTaskId);
       }
     } catch {
+      if (requestId !== taskRefreshRequestRef.current) {
+        return;
+      }
       setTasks([]);
+      setTaskSyncState((current) => ({ ...current, inFlight: false }));
     }
   }
 
@@ -2108,6 +2444,7 @@ export default function App() {
               ...approval.task,
               planForm: normalizePlanForm(approval.task.planForm) || buildPlanFormFromPreview(approval.task.planPreview, locale),
               planDraftPending: Boolean(approval.task.planDraftPending),
+              pendingAction: null,
             },
           }))
           .filter((approval) => approval.task.status === "waiting_user"),
@@ -2150,7 +2487,7 @@ export default function App() {
         }
       } catch (error) {
         if (!HAS_MIXED_CONTENT_LOCAL_API) {
-          setUsage(buildGithubDirectUsageFallback(tasks, locale));
+          setUsage(buildGithubDirectUsageFallback(visibleTasks, locale));
           setUsageSummary(
             locale === "zh-CN"
               ? `无法从 GitHub 状态快照读取本机用量，已回退到任务统计：${summarizeError(error)}`
@@ -2161,7 +2498,7 @@ export default function App() {
       }
 
       if (HAS_MIXED_CONTENT_LOCAL_API) {
-        setUsage(buildGithubDirectUsageFallback(tasks, locale));
+        setUsage(buildGithubDirectUsageFallback(visibleTasks, locale));
         setUsageSummary(
           locale === "zh-CN"
             ? `当前页面通过 HTTPS 打开，但后端地址是 ${DEFAULT_API_BASE}。浏览器会拦截 GitHub Pages 到本机 HTTP API 的请求；页面现在会优先读取 GitHub 状态快照，如果该快照还未同步出来，则只能先显示任务统计。`
@@ -2175,7 +2512,7 @@ export default function App() {
       applyUsageOverview(payload.overview);
     } catch (error) {
       if (runtimeMode === "github-direct") {
-        setUsage(buildGithubDirectUsageFallback(tasks, locale));
+        setUsage(buildGithubDirectUsageFallback(visibleTasks, locale));
       } else {
         setUsage(null);
       }
@@ -2209,14 +2546,17 @@ export default function App() {
         visibility,
         autoCreateRepo,
       };
+      let placeholderTask: Task | null = null;
+      const title = `Create project: ${name}`;
+      const taskDescription = description || `Create a new Codex-managed project named ${name}.`;
 
       if (runtimeMode === "github-direct") {
         const [owner, repoName] = GITHUB_TASK_REPO.split("/");
         const payload = {
           projectId: requestedProjectId,
           type: "project_create",
-          title: `Create project: ${name}`,
-          description: description || `Create a new Codex-managed project named ${name}.`,
+          title,
+          description: taskDescription,
           model,
           reasoningEffort,
           requestedProject,
@@ -2245,6 +2585,44 @@ export default function App() {
             labels: ["codex-task"],
           }),
         });
+        const acceptedAt = new Date().toISOString();
+        const createdPlaceholder: Task = {
+          id: `pending-issue-${issue.number}`,
+          updatedAt: acceptedAt,
+          issueNumber: issue.number,
+          issueUrl: issue.html_url,
+          projectId: requestedProjectId,
+          projectName: name || getProjectDisplayName(requestedProjectId, locale),
+          requestedProject,
+          type: "project_create",
+          title,
+          description: taskDescription,
+          model,
+          reasoningEffort,
+          status: "pending_capture",
+          summary: "",
+          userSummary: "",
+          planPreview: "",
+          workspacePath: "",
+          branchName: "",
+          logs: [],
+          children: [],
+        };
+        placeholderTask = createdPlaceholder;
+        setPendingTaskMutations((current) => ({
+          ...current,
+          [createdPlaceholder.id]: {
+            taskId: createdPlaceholder.id,
+            issueNumber: issue.number,
+            lookupKey: buildTaskLookupKey(createdPlaceholder),
+            actionType: "create_project",
+            phase: "waiting_remote",
+            startedAt: acceptedAt,
+            acceptedAt,
+            timeoutAt: new Date(Date.now() + 45_000).toISOString(),
+            placeholderTask: createdPlaceholder,
+          },
+        }));
         setTransientNotice(
           locale === "zh-CN" ? `项目请求已入队：Issue #${issue.number}` : `Project queued via issue #${issue.number}`,
           "success",
@@ -2262,6 +2640,44 @@ export default function App() {
             requestedProject,
           }),
         });
+        const acceptedAt = new Date().toISOString();
+        const createdPlaceholder: Task = {
+          id: `pending-issue-${queued.issue.number}`,
+          updatedAt: acceptedAt,
+          issueNumber: queued.issue.number,
+          issueUrl: queued.issue.url,
+          projectId: requestedProjectId,
+          projectName: name || getProjectDisplayName(requestedProjectId, locale),
+          requestedProject,
+          type: "project_create",
+          title,
+          description: taskDescription,
+          model,
+          reasoningEffort,
+          status: "pending_capture",
+          summary: "",
+          userSummary: "",
+          planPreview: "",
+          workspacePath: "",
+          branchName: "",
+          logs: [],
+          children: [],
+        };
+        placeholderTask = createdPlaceholder;
+        setPendingTaskMutations((current) => ({
+          ...current,
+          [createdPlaceholder.id]: {
+            taskId: createdPlaceholder.id,
+            issueNumber: queued.issue.number,
+            lookupKey: buildTaskLookupKey(createdPlaceholder),
+            actionType: "create_project",
+            phase: "waiting_remote",
+            startedAt: acceptedAt,
+            acceptedAt,
+            timeoutAt: new Date(Date.now() + 45_000).toISOString(),
+            placeholderTask: createdPlaceholder,
+          },
+        }));
         setTransientNotice(
           locale === "zh-CN"
             ? `项目请求已入队：Issue #${queued.issue.number}`
@@ -2285,6 +2701,7 @@ export default function App() {
       }
       setSelectedProjectId(requestedProjectId);
       setCreateDialogMode(null);
+      startExpeditedTaskPolling();
       await refreshAll();
     } catch (error) {
       setTransientNotice(summarizeError(error), "error");
@@ -2331,6 +2748,7 @@ export default function App() {
         });
         createdTask = {
           id: `pending-issue-${issue.number}`,
+          updatedAt: new Date().toISOString(),
           issueNumber: issue.number,
           issueUrl: issue.html_url,
           projectId,
@@ -2348,6 +2766,20 @@ export default function App() {
           logs: [],
           children: [],
         };
+        setPendingTaskMutations((current) => ({
+          ...current,
+          [createdTask!.id]: {
+            taskId: createdTask!.id,
+            issueNumber: issue.number,
+            lookupKey: buildTaskLookupKey(createdTask as Task),
+            actionType: "create_task",
+            phase: "waiting_remote",
+            startedAt: createdTask!.updatedAt || new Date().toISOString(),
+            acceptedAt: createdTask!.updatedAt || new Date().toISOString(),
+            timeoutAt: new Date(Date.now() + 45_000).toISOString(),
+            placeholderTask: createdTask as Task,
+          },
+        }));
         setTransientNotice(locale === "zh-CN" ? `任务已入队：Issue #${issue.number}` : `Task queued via issue #${issue.number}`, "success");
       } else if (authConfig?.taskBackend === "github-issues") {
         const queued = await api<{ issue: IssueTask }>("/api/issue-tasks", {
@@ -2363,6 +2795,7 @@ export default function App() {
         });
         createdTask = {
           id: `pending-issue-${queued.issue.number}`,
+          updatedAt: new Date().toISOString(),
           issueNumber: queued.issue.number,
           issueUrl: queued.issue.url,
           projectId,
@@ -2380,6 +2813,20 @@ export default function App() {
           logs: [],
           children: [],
         };
+        setPendingTaskMutations((current) => ({
+          ...current,
+          [createdTask!.id]: {
+            taskId: createdTask!.id,
+            issueNumber: queued.issue.number,
+            lookupKey: buildTaskLookupKey(createdTask as Task),
+            actionType: "create_task",
+            phase: "waiting_remote",
+            startedAt: createdTask!.updatedAt || new Date().toISOString(),
+            acceptedAt: createdTask!.updatedAt || new Date().toISOString(),
+            timeoutAt: new Date(Date.now() + 45_000).toISOString(),
+            placeholderTask: createdTask as Task,
+          },
+        }));
         setTransientNotice(
           locale === "zh-CN"
             ? `任务已入队：Issue #${queued.issue.number}`
@@ -2398,15 +2845,47 @@ export default function App() {
             reasoningEffort,
           }),
         });
+        createdTask = {
+          id: `pending-local-${Date.now().toString(36)}`,
+          updatedAt: new Date().toISOString(),
+          projectId,
+          projectName: getProjectDisplayName(projectId, locale),
+          type,
+          title,
+          description,
+          model,
+          reasoningEffort,
+          status: "pending_capture",
+          summary: "",
+          userSummary: "",
+          planPreview: "",
+          workspacePath: "",
+          branchName: "",
+          logs: [],
+          children: [],
+        };
+        setPendingTaskMutations((current) => ({
+          ...current,
+          [createdTask!.id]: {
+            taskId: createdTask!.id,
+            lookupKey: buildTaskLookupKey(createdTask as Task),
+            actionType: "create_task",
+            phase: "waiting_remote",
+            startedAt: createdTask!.updatedAt || new Date().toISOString(),
+            acceptedAt: createdTask!.updatedAt || new Date().toISOString(),
+            timeoutAt: new Date(Date.now() + 45_000).toISOString(),
+            placeholderTask: createdTask as Task,
+          },
+        }));
         setTransientNotice(locale === "zh-CN" ? "任务已创建" : "Task created", "success");
       }
       if (createdTask) {
-        setOptimisticTasks((current) => [createdTask as Task, ...current.filter((task) => task.id !== createdTask!.id)]);
         setSelectedProjectId(projectId);
         setSelectedTaskId(createdTask.id);
         setWorkspaceLevel("tasks");
       }
       setCreateDialogMode(null);
+      startExpeditedTaskPolling();
       await refreshTasks();
     } catch (error) {
       setTransientNotice(summarizeError(error), "error");
@@ -2593,6 +3072,7 @@ export default function App() {
       pollTokenRef.current += 1;
       localStorage.removeItem("codex.githubAccessToken");
       setGithubToken("");
+      setPendingTaskMutations({});
       setDeviceLogin(null);
       await refreshAll();
       return;
@@ -2605,14 +3085,34 @@ export default function App() {
       pollTokenRef.current += 1;
       localStorage.removeItem("codex.sessionToken");
       setSessionToken("");
+      setPendingTaskMutations({});
       setDeviceLogin(null);
       await refreshAll();
     }
   }
 
   async function mutateTask(taskId: string, action: "stop" | "retry") {
+    const task = visibleTasks.find((item) => item.id === taskId) || tasks.find((item) => item.id === taskId);
+    if (!task) {
+      setTransientNotice(locale === "zh-CN" ? "未找到对应任务" : "Task not found", "error");
+      return;
+    }
+    const startedAt = new Date().toISOString();
+    setPendingTaskMutations((current) => ({
+      ...current,
+      [taskId]: {
+        taskId,
+        issueNumber: task.issueNumber,
+        lookupKey: buildTaskLookupKey(task),
+        actionType: action,
+        phase: "submitting",
+        startedAt,
+        baseStatus: task.status,
+        baseUpdatedAt: task.updatedAt,
+        baseLastStatusCommentAt: task.lastStatusCommentAt,
+      },
+    }));
     try {
-      const task = tasks.find((item) => item.id === taskId);
       if (runtimeMode === "github-direct") {
         if (!task?.issueNumber) {
           throw new Error(locale === "zh-CN" ? "当前任务没有对应的 Issue 编号" : "This task is missing an issue number");
@@ -2626,78 +3126,68 @@ export default function App() {
       } else {
         await api(`/api/tasks/${taskId}/${action}`, { method: "POST" });
       }
+      const acceptedAt = new Date().toISOString();
+      setPendingTaskMutations((current) => ({
+        ...current,
+        [taskId]: {
+          ...(current[taskId] || {
+            taskId,
+            issueNumber: task.issueNumber,
+            lookupKey: buildTaskLookupKey(task),
+            actionType: action,
+            startedAt,
+          }),
+          phase: "waiting_remote",
+          acceptedAt,
+          timeoutAt: new Date(Date.now() + 45_000).toISOString(),
+          baseStatus: task.status,
+          baseUpdatedAt: task.updatedAt,
+          baseLastStatusCommentAt: task.lastStatusCommentAt,
+        },
+      }));
+      startExpeditedTaskPolling();
       setTransientNotice(
         action === "stop" ? (locale === "zh-CN" ? "已发送停止指令" : "Stop requested") : locale === "zh-CN" ? "已重试任务" : "Task retried",
         "success",
       );
       await refreshTasks();
-      await refreshApprovals();
+      if (runtimeMode !== "github-direct") {
+        await refreshApprovals();
+      }
     } catch (error) {
+      setPendingTaskMutations((current) => {
+        const next = { ...current };
+        delete next[taskId];
+        return next;
+      });
       setTransientNotice(summarizeError(error), "error");
     }
   }
 
-  function applyOptimisticPlanningFeedback(taskId: string, feedback: string) {
-    const updatedAt = new Date().toISOString();
-    const summary = locale === "zh-CN"
-      ? "反馈已提交，正在继续生成下一版计划。"
-      : "Feedback submitted. Generating the next plan draft.";
-    setOptimisticPlanningFeedback((current) => ({
+  async function respondToTask(taskId: string, decision: "approve" | "reject" | "feedback", feedback: string): Promise<boolean> {
+    const task = visibleTasks.find((item) => item.id === taskId) || tasks.find((item) => item.id === taskId);
+    if (!task) {
+      setTransientNotice(locale === "zh-CN" ? "未找到对应任务" : "Task not found", "error");
+      return false;
+    }
+    const startedAt = new Date().toISOString();
+    const actionType: TaskPendingActionType = decision === "feedback" ? "feedback" : decision;
+    setPendingTaskMutations((current) => ({
       ...current,
       [taskId]: {
-        appliedAt: updatedAt,
-        pendingSummary: summary,
+        taskId,
+        issueNumber: task.issueNumber,
+        lookupKey: buildTaskLookupKey(task),
+        actionType,
+        phase: "submitting",
+        startedAt,
+        baseStatus: task.status,
+        baseUpdatedAt: task.updatedAt,
+        baseLastStatusCommentAt: task.lastStatusCommentAt,
+        basePlanPreview: task.planPreview,
       },
     }));
-    const nextTasks = (current: Task[]) => current.map((task) => {
-      if (task.id !== taskId) {
-        return task;
-      }
-      return {
-        ...task,
-        updatedAt,
-        status: "waiting_user" as const,
-        summary,
-        userSummary: summary,
-        planDraftPending: true,
-      };
-    });
-    setTasks(nextTasks);
-    setApprovals((current) => current.map((approval) => (
-      approval.task.id !== taskId
-        ? approval
-        : {
-            ...approval,
-            task: {
-              ...approval.task,
-              updatedAt,
-              status: "waiting_user" as const,
-              summary,
-              userSummary: summary,
-              planDraftPending: true,
-            },
-          }
-    )));
-    setOptimisticTasks((current) => current.map((task) => (
-      task.id !== taskId
-        ? task
-        : {
-            ...task,
-            updatedAt,
-            status: "waiting_user" as const,
-            summary,
-            userSummary: summary,
-            planDraftPending: true,
-          }
-    )));
-    if (feedback.trim()) {
-      setTransientNotice(summary, "success");
-    }
-  }
-
-  async function respondToTask(taskId: string, decision: "approve" | "reject" | "feedback", feedback: string): Promise<boolean> {
     try {
-      const task = tasks.find((item) => item.id === taskId);
       if (runtimeMode === "github-direct") {
         if (!task?.issueNumber) {
           throw new Error(locale === "zh-CN" ? "当前任务没有对应的 Issue 编号" : "This task is missing an issue number");
@@ -2713,19 +3203,33 @@ export default function App() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ body: command }),
         });
-        if (decision === "feedback") {
-          applyOptimisticPlanningFeedback(taskId, feedback);
-          window.setTimeout(() => {
-            void refreshAll();
-          }, 3000);
-          return true;
-        }
       } else {
         await api(`/api/tasks/${taskId}/respond`, {
           method: "POST",
           body: JSON.stringify({ decision, feedback, finalize: decision === "approve" }),
         });
       }
+      const acceptedAt = new Date().toISOString();
+      setPendingTaskMutations((current) => ({
+        ...current,
+        [taskId]: {
+          ...(current[taskId] || {
+            taskId,
+            issueNumber: task.issueNumber,
+            lookupKey: buildTaskLookupKey(task),
+            actionType,
+            startedAt,
+          }),
+          phase: "waiting_remote",
+          acceptedAt,
+          timeoutAt: new Date(Date.now() + 45_000).toISOString(),
+          baseStatus: task.status,
+          baseUpdatedAt: task.updatedAt,
+          baseLastStatusCommentAt: task.lastStatusCommentAt,
+          basePlanPreview: task.planPreview,
+        },
+      }));
+      startExpeditedTaskPolling();
       setTransientNotice(
         decision === "feedback"
           ? (locale === "zh-CN" ? "反馈已提交，正在更新计划" : "Feedback submitted. Updating plan.")
@@ -2734,9 +3238,17 @@ export default function App() {
             : "Decision submitted",
         "success",
       );
-      await refreshAll();
+      await refreshTasks();
+      if (runtimeMode !== "github-direct") {
+        await refreshApprovals();
+      }
       return true;
     } catch (error) {
+      setPendingTaskMutations((current) => {
+        const next = { ...current };
+        delete next[taskId];
+        return next;
+      });
       setTransientNotice(summarizeError(error), "error");
       return false;
     }
@@ -3039,7 +3551,18 @@ export default function App() {
                       ))}
                     </div>
                     <Space wrap>
-                      <Button icon={<ReloadOutlined />} onClick={() => void refreshAll()}>
+                      <Typography.Text type="secondary">
+                        {taskSyncState.inFlight
+                          ? (locale === "zh-CN" ? "正在同步…" : "Syncing...")
+                          : taskSyncState.lastSyncedAt
+                            ? (
+                                locale === "zh-CN"
+                                  ? `最近同步 ${new Date(taskSyncState.lastSyncedAt).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`
+                                  : `Last synced ${new Date(taskSyncState.lastSyncedAt).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`
+                              )
+                            : (locale === "zh-CN" ? "尚未同步" : "Not synced yet")}
+                      </Typography.Text>
+                      <Button icon={<ReloadOutlined />} loading={taskSyncState.inFlight} onClick={() => void refreshAll()}>
                         {t.refresh}
                       </Button>
                       {workspaceLevel === "projects" ? (
@@ -3138,7 +3661,9 @@ export default function App() {
                                   <Typography.Title level={5} className="card-title clamp-2">
                                     {requirement.title}
                                   </Typography.Title>
-                                  <Tag color={statusTagColor[requirement.status]}>{statusLabel[requirement.status][locale]}</Tag>
+                                  <Tag color={getTaskDisplayedStatusColor(requirement.attempts[0] || { status: requirement.status, planDraftPending: false, pendingAction: null })}>
+                                    {getTaskDisplayedStatusText(requirement.attempts[0] || { status: requirement.status, planDraftPending: false, pendingAction: null }, locale)}
+                                  </Tag>
                                 </Flex>
                                 <Typography.Text type="secondary">
                                   {getProjectDisplayName(requirement.projectId, locale, requirement.projectName)} · attempt #{requirement.latestAttemptNumber}
@@ -3197,14 +3722,14 @@ export default function App() {
                     <SectionHeader
                       title={t.pendingApprovals}
                       actions={
-                        <Button icon={<ReloadOutlined />} onClick={() => void refreshApprovals()}>
+                        <Button icon={<ReloadOutlined />} loading={taskSyncState.inFlight} onClick={() => void refreshTasks()}>
                           {t.refresh}
                         </Button>
                       }
                     />
                     <div className="section-stack">
-                      {approvals.length ? (
-                        approvals.map((approval) => (
+                      {visibleApprovals.length ? (
+                        visibleApprovals.map((approval) => (
                           <ApprovalCard
                             key={approval.id}
                             approval={approval}
@@ -3431,7 +3956,7 @@ export default function App() {
               <CreateDialog
                 locale={locale}
                 mode={createDialogMode}
-                projects={projects}
+                projects={visibleProjects}
                 selectedProjectId={selectedProjectId}
                 closeLabel={locale === "zh-CN" ? "关闭" : "Close"}
                 onClose={() => setCreateDialogMode(null)}

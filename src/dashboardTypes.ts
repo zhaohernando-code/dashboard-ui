@@ -54,6 +54,27 @@ export type PlanForm = {
   questions: PlanQuestion[];
 };
 
+export type TaskPendingActionType =
+  | "create_project"
+  | "create_task"
+  | "feedback"
+  | "approve"
+  | "reject"
+  | "retry"
+  | "stop";
+
+export type TaskPendingActionPhase = "submitting" | "waiting_remote" | "timed_out";
+
+export type TaskPendingAction = {
+  type: TaskPendingActionType;
+  phase: TaskPendingActionPhase;
+  startedAt: string;
+  label: string;
+  message: string;
+  blocksActions?: boolean;
+  hideFromApprovals?: boolean;
+};
+
 export type Task = {
   id: string;
   updatedAt?: string;
@@ -81,6 +102,7 @@ export type Task = {
     detail: string;
     risk: "low" | "medium" | "high";
   } | null;
+  pendingAction?: TaskPendingAction | null;
   lastStatusCommentAt?: string;
   planPreview: string;
   planForm?: PlanForm | null;
