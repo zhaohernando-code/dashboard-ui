@@ -1328,8 +1328,8 @@ export function TaskDetail({
                     ? "提交后项目流会直接进入返修步骤，不会停在待返修等你再次确认。"
                     : "Submitting this will queue a revision step immediately so the project flow can continue.")
                 : (locale === "zh-CN"
-                    ? "提交后任务会进入待返修，不会自动重新执行。"
-                    : "Submitting this will move the task to needs revision. It will not re-run automatically.")
+                    ? "提交后系统会直接开始下一次返修；如果仍有需要你确认的信息，会再回到待你确认状态。"
+                    : "Submitting this will start the next revision attempt immediately. If more input is needed, the task will return to waiting for your confirmation.")
             }
           />
           <Input.TextArea
