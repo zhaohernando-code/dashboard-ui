@@ -530,6 +530,8 @@ export function TaskDetail({
 }: TaskDetailProps) {
   const [logModalOpen, setLogModalOpen] = useState(false);
   const [activeLogTrack, setActiveLogTrack] = useState<LogTrack>("operator");
+  const [acceptanceRejectModalOpen, setAcceptanceRejectModalOpen] = useState(false);
+  const [acceptanceRejectFeedback, setAcceptanceRejectFeedback] = useState("");
   const [planResponseForm] = Form.useForm<Record<string, string | string[]>>();
   const logViews = buildLogViews(task.logs);
   const previewLogs = logViews.preview;
@@ -546,6 +548,8 @@ export function TaskDetail({
   const isApprovalActionPending = task.pendingAction?.type === "approve" || task.pendingAction?.type === "reject";
   const isRetryPending = task.pendingAction?.type === "retry";
   const isStopPending = task.pendingAction?.type === "stop";
+  const isAcceptanceRejectPending = task.pendingAction?.type === "reject";
+  const trimmedAcceptanceRejectFeedback = acceptanceRejectFeedback.trim();
   const failureDiagnosis = getTaskFailureDiagnosis(task, locale);
   const currentProjectStep = task.projectExecution?.steps?.find((step) => step.id === task.projectExecution?.currentStepId) || null;
   const hasDraftPlanResponse = Boolean(
@@ -562,6 +566,8 @@ export function TaskDetail({
     planResponseForm.resetFields();
     setLogModalOpen(false);
     setActiveLogTrack(logViews.hasStructuredOperatorLogs ? "operator" : "raw");
+    setAcceptanceRejectModalOpen(false);
+    setAcceptanceRejectFeedback("");
   }, [planResponseForm, task.id]);
 
   function renderPlanQuestionInput(question: PlanQuestion) {
@@ -674,6 +680,17 @@ export function TaskDetail({
     }
   }
 
+  async function submitAcceptanceReject() {
+    if (!trimmedAcceptanceRejectFeedback) {
+      return;
+    }
+    const submitted = await onRespond(task.id, "reject", trimmedAcceptanceRejectFeedback);
+    if (submitted) {
+      setAcceptanceRejectModalOpen(false);
+      setAcceptanceRejectFeedback("");
+    }
+  }
+
   return (
     <Space direction="vertical" size={16} className="full-width">
       <Card size="small" className="detail-summary-card">
@@ -695,7 +712,11 @@ export function TaskDetail({
                 <Button type="primary" loading={task.pendingAction?.type === "approve"} disabled={isTaskActionPending} onClick={() => void onRespond(task.id, "approve", "")}>
                   {locale === "zh-CN" ? "验收通过" : "Accept"}
                 </Button>
-                <Button loading={task.pendingAction?.type === "reject"} disabled={isTaskActionPending} onClick={() => void onRespond(task.id, "reject", "")}>
+                <Button
+                  loading={isAcceptanceRejectPending}
+                  disabled={isTaskActionPending}
+                  onClick={() => setAcceptanceRejectModalOpen(true)}
+                >
                   {locale === "zh-CN" ? "打回返修" : "Needs revision"}
                 </Button>
               </>
@@ -1257,6 +1278,71 @@ export function TaskDetail({
           ) : (
             <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={locale === "zh-CN" ? "暂无日志" : "No logs yet"} />
           )}
+        </Space>
+      </Modal>
+
+      <Modal
+        open={acceptanceRejectModalOpen}
+        title={locale === "zh-CN" ? "填写返修反馈" : "Provide revision feedback"}
+        onCancel={() => {
+          if (!isAcceptanceRejectPending) {
+            setAcceptanceRejectModalOpen(false);
+            setAcceptanceRejectFeedback("");
+          }
+        }}
+        footer={[
+          <Button
+            key="cancel"
+            onClick={() => {
+              setAcceptanceRejectModalOpen(false);
+              setAcceptanceRejectFeedback("");
+            }}
+            disabled={Boolean(isAcceptanceRejectPending)}
+          >
+            {locale === "zh-CN" ? "取消" : "Cancel"}
+          </Button>,
+          <Button
+            key="submit"
+            type="primary"
+            loading={Boolean(isAcceptanceRejectPending)}
+            disabled={!trimmedAcceptanceRejectFeedback}
+            onClick={() => void submitAcceptanceReject()}
+          >
+            {locale === "zh-CN" ? "提交返修" : "Send back for revision"}
+          </Button>,
+        ]}
+        maskClosable={!isAcceptanceRejectPending}
+      >
+        <Space direction="vertical" size={12} className="full-width">
+          <Alert
+            type="warning"
+            showIcon
+            message={
+              locale === "zh-CN"
+                ? "请明确说明为什么当前交付不能验收，以及本轮优先要修什么。"
+                : "Explain why the current delivery cannot be accepted and what should be fixed first."
+            }
+            description={
+              locale === "zh-CN"
+                ? "提交后任务会进入待返修，不会自动重新执行。"
+                : "Submitting this will move the task to needs revision. It will not re-run automatically."
+            }
+          />
+          <Input.TextArea
+            rows={6}
+            value={acceptanceRejectFeedback}
+            onChange={(event) => setAcceptanceRejectFeedback(event.target.value)}
+            placeholder={
+              locale === "zh-CN"
+                ? "例如：页面虽已部署，但核心使用链路不可用；请先补齐可实际操作的最小闭环，并附操作说明。"
+                : "Example: The page is deployed, but the core usage flow is still broken. Please fix the minimum usable flow and include validation steps."
+            }
+          />
+          <Typography.Text type="secondary">
+            {locale === "zh-CN"
+              ? "返修反馈会直接作为任务的未完成原因保留下来。"
+              : "The feedback will be stored as the task's open failure reason."}
+          </Typography.Text>
         </Space>
       </Modal>
     </Space>
