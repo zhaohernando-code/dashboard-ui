@@ -87,19 +87,20 @@ function WorkspaceMainPane({ workspace }: WorkspaceMainPaneProps) {
   return (
     <Card className="pane-card workspace-main-card" bordered={false}>
       <Flex justify="space-between" gap={16} wrap className="workspace-toolbar">
-        <div className="breadcrumb-row" aria-label="Breadcrumb">
+        <div className="breadcrumb-row workspace-toolbar-breadcrumbs" aria-label="Breadcrumb">
           {breadcrumbs.map((crumb) => (
             <Button
               key={crumb.key}
               type={crumb.active ? "primary" : "default"}
               onClick={crumb.onClick}
               className="breadcrumb-button"
+              title={crumb.label}
             >
               {crumb.label}
             </Button>
           ))}
         </div>
-        <Space wrap>
+        <Space wrap className="workspace-toolbar-actions">
           <Typography.Text type="secondary">{formatTaskSyncStatus(taskSyncState, locale)}</Typography.Text>
           <Button icon={<ReloadOutlined />} loading={taskSyncState.inFlight} onClick={() => void onRefreshAll()}>
             {copy.refresh}
