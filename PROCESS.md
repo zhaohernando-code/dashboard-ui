@@ -1,5 +1,12 @@
 # PROCESS
 
+## 2026-04-15
+
+- Problem: after task actions were submitted, the dashboard switched into a 1-second expedited auto-sync loop for 15 seconds, which made the workspace feel over-refreshed and visually noisy during normal follow-up observation.
+- Resolution: moved the dashboard polling cadence into shared constants and reduced the expedited auto-sync interval from `1000ms` to `3000ms` while keeping the existing 15-second expedited window, so post-action updates still arrive promptly without refreshing every second. For validation, temporarily linked this worktree `node_modules` to `/Users/hernando_zhao/codex/dashboard-ui/node_modules`, then ran `npm run check` and `npm run build` successfully.
+- Prevention: any operator-facing polling cadence must be defined through shared constants instead of scattered literals, and "expedited" refresh should still be conservative enough to avoid perceptible UI churn unless the interaction truly depends on near-real-time feedback.
+- Commit ID: N/A（已完成本地类型检查与构建；尝试 `git add` / `git commit` 时因沙箱拒绝创建 `/Users/hernando_zhao/codex/dashboard-ui/.git/worktrees/task-mnzu0bbq-vvbdbm/index.lock` 失败，远端推送与主线合并同样受当前环境限制）
+
 ## 2026-04-14
 
 - Problem: the requirement queue had grown beyond a single screen, but the task workspace still rendered the full filtered list at once, making scanning and returning to a previously opened requirement increasingly noisy. This worktree also started without a local `node_modules`, which would block validation again if left unresolved.

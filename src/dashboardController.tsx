@@ -7,6 +7,9 @@ import { buildLogsFromComments, normalizeExecutionDecisionGate, normalizePlanFor
 import { createDashboardRefreshActions } from "./dashboardRefreshActions";
 import {
   CLOSED_ANOMALIES_STORAGE_KEY,
+  DASHBOARD_EXPEDITED_POLL_DURATION_MS,
+  DASHBOARD_EXPEDITED_POLL_INTERVAL_MS,
+  DASHBOARD_POLL_INTERVAL_MS,
   DEFAULT_API_BASE,
   GITHUB_TASK_REPO,
   IS_GITHUB_PAGES,
@@ -207,7 +210,9 @@ export function useDashboardController(): DashboardController {
 
   useEffect(() => {
     void refreshAll();
-    const pollIntervalMs = Date.now() < expeditedPollUntil ? 1000 : 5000;
+    const pollIntervalMs = Date.now() < expeditedPollUntil
+      ? DASHBOARD_EXPEDITED_POLL_INTERVAL_MS
+      : DASHBOARD_POLL_INTERVAL_MS;
     const interval = window.setInterval(() => {
       void refreshTasks();
       if (runtimeMode !== "github-direct") {
@@ -271,7 +276,7 @@ export function useDashboardController(): DashboardController {
   }
 
   function startExpeditedTaskPolling() {
-    setExpeditedPollUntil(Date.now() + 15_000);
+    setExpeditedPollUntil(Date.now() + DASHBOARD_EXPEDITED_POLL_DURATION_MS);
   }
 
   const { refreshAll, refreshHealth, refreshAuth, refreshProjects, refreshTasks, refreshApprovals, refreshTools, refreshUsage } = createDashboardRefreshActions({
