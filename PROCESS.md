@@ -360,3 +360,11 @@ no changes added to commit (use "git add" and/or "git commit -a")
 - Prevention: project cards must hydrate from the published project registry whenever it exists; task aggregation may fill missing metadata, but it must never overwrite a richer name/repository source with a fallback task id.
 - Commit ID: dashboard-ui `351da60`, local-control-server `504647a`
 - Context: project=dashboard-ui, source=task-mnzvuuob-rlhni1
+
+## 2026-04-15
+
+- Problem: the task-create dialog only supported direct execution for normal tasks, so operators could not request the same multi-round planning workflow that `project_create` already had, and GitHub-direct parsing also lacked any way to reconstruct that intent from issue payloads.
+- Resolution: added a `planMode` checkbox to normal task creation, propagated the flag through direct API and GitHub issue payloads, and taught the GitHub-direct parser/status path to treat plan-mode tasks as plan approvals with plan previews instead of plain approvals.
+- Prevention: any new operator-facing creation mode must be represented in both the local API payload and the GitHub issue transport, and the dashboard's GitHub-direct reconstruction path must parse the same structured flags as the server-side API.
+- Commit ID: local-control-server `bdbc7e2`; dashboard-ui commit blocked in this sandbox because `.git/worktrees/task-mnzwba3f-orc2dp/index.lock` could not be created.
+- Context: project=dashboard-ui, source=task-mnzwba3f-orc2dp

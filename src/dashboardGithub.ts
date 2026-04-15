@@ -38,6 +38,7 @@ function parseEmbeddedTaskStatusPayload(body: string) {
       status?: TaskStatus;
       summary?: string;
       userSummary?: string;
+      planMode?: boolean;
       planPreview?: string;
       planForm?: PlanForm | null;
       planDraftPending?: boolean;
@@ -253,6 +254,7 @@ export function parseStatusFromComments(comments: IssueComment[], fallbackClosed
   taskId: string;
   summary: string;
   userSummary: string;
+  planMode: boolean;
   planPreview: string;
   planForm: PlanForm | null;
   planDraftPending: boolean;
@@ -272,6 +274,7 @@ export function parseStatusFromComments(comments: IssueComment[], fallbackClosed
   let taskId = "";
   let summary = "";
   let userSummary = "";
+  let planMode = false;
   let planPreview = "";
   let planForm: PlanForm | null = null;
   let planDraftPending = false;
@@ -304,6 +307,9 @@ export function parseStatusFromComments(comments: IssueComment[], fallbackClosed
     }
     if (hasEmbeddedField("userSummary")) {
       userSummary = typeof embedded?.userSummary === "string" ? embedded.userSummary.trim() : "";
+    }
+    if (hasEmbeddedField("planMode")) {
+      planMode = Boolean(embeddedRecord?.planMode);
     }
     if (hasEmbeddedField("planPreview")) {
       planPreview = typeof embedded?.planPreview === "string" ? embedded.planPreview.trim() : "";
@@ -385,6 +391,7 @@ export function parseStatusFromComments(comments: IssueComment[], fallbackClosed
     taskId,
     summary,
     userSummary: userSummary || summary,
+    planMode,
     planPreview,
     planForm,
     planDraftPending,

@@ -424,6 +424,7 @@ export function CreateDialog({
             type: mode === "composite_task" ? "composite_task" : "task",
             model: "gpt-5.4",
             reasoningEffort: "high",
+            planMode: false,
           }}
           onFinish={(values) => void onCreateTask(values)}
         >
@@ -464,6 +465,15 @@ export function CreateDialog({
           >
             <Input.TextArea rows={5} placeholder={locale === "zh-CN" ? "希望 Codex 完成什么" : "What should Codex do?"} />
           </Form.Item>
+          {mode === "task" ? (
+            <Form.Item name="planMode" valuePropName="checked">
+              <Checkbox>
+                {locale === "zh-CN"
+                  ? "Plan 模式：先返回计划和待确认项，确认无误后再开始执行"
+                  : "Plan mode: draft the plan and open questions before execution starts"}
+              </Checkbox>
+            </Form.Item>
+          ) : null}
           <Form.Item name="model" label="Model">
             <Select options={[{ label: "gpt-5.4", value: "gpt-5.4" }]} />
           </Form.Item>

@@ -171,6 +171,7 @@ export type Task = {
   branchName: string;
   model?: string;
   reasoningEffort?: "medium" | "high" | "xhigh";
+  planMode?: boolean;
   publishStatus?: string;
   publishMethod?: string;
   publishVerified?: boolean;
@@ -342,6 +343,7 @@ export type CreateTaskValues = {
   description: string;
   model?: string;
   reasoningEffort?: "medium" | "high" | "xhigh";
+  planMode?: boolean;
 };
 
 export type NoticeTone = "info" | "success" | "error";

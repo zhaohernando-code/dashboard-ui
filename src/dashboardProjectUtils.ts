@@ -118,9 +118,51 @@ export function parseTaskType(value: string) {
   return "task";
 }
 
-function requiresPlan(type: string) {
-  const normalized = parseTaskType(type);
-  return normalized === "project_create" || normalized === "composite_task";
+function normalizeOptionalBoolean(value: unknown) {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  const raw = String(value || "").trim().toLowerCase();
+  if (!raw) {
+    return null;
+  }
+  if (["true", "1", "yes", "on"].includes(raw)) {
+    return true;
+  }
+  if (["false", "0", "no", "off"].includes(raw)) {
+    return false;
+  }
+  return null;
+}
+
+function isPlanModeEnabled(
+  input: unknown,
+  options?: { planMode?: unknown; result?: { planMode?: unknown } | null },
+) {
+  const candidates: unknown[] = [];
+  if (input && typeof input === "object") {
+    const record = input as { planMode?: unknown; result?: { planMode?: unknown } | null };
+    candidates.push(record.planMode);
+    candidates.push(record.result?.planMode);
+  }
+  candidates.push(options?.planMode);
+  candidates.push(options?.result?.planMode);
+
+  for (const candidate of candidates) {
+    const normalized = normalizeOptionalBoolean(candidate);
+    if (normalized !== null) {
+      return normalized;
+    }
+  }
+  return false;
+}
+
+function requiresPlan(
+  input: string | { type?: string; planMode?: unknown; result?: { planMode?: unknown } | null },
+  options?: { planMode?: unknown; result?: { planMode?: unknown } | null },
+) {
+  const normalized = parseTaskType(typeof input === "string" ? input : String(input?.type || ""));
+  return normalized === "project_create" || normalized === "composite_task" || (normalized === "task" && isPlanModeEnabled(input, options));
 }
 
 function isHighRiskRequest(type: string, title: string, description: string) {
@@ -132,12 +174,19 @@ function isHighRiskRequest(type: string, title: string, description: string) {
   );
 }
 
-function getApprovalReason(type: string, risky: boolean) {
-  if (parseTaskType(type) === "project_create") {
+function getApprovalReason(
+  input: string | { type?: string; planMode?: unknown; result?: { planMode?: unknown } | null },
+  risky: boolean,
+  options?: { planMode?: unknown; result?: { planMode?: unknown } | null },
+) {
+  if (parseTaskType(typeof input === "string" ? input : String(input?.type || "")) === "project_create") {
     return "Plan confirmation required before creating a new project.";
   }
-  if (parseTaskType(type) === "composite_task") {
+  if (parseTaskType(typeof input === "string" ? input : String(input?.type || "")) === "composite_task") {
     return "Plan confirmation required before decomposing a composite task.";
+  }
+  if (requiresPlan(input, options)) {
+    return "Plan confirmation required before execution starts.";
   }
   if (risky) {
     return "Potentially high-risk request detected; explicit approval required.";
@@ -204,11 +253,20 @@ function summarizeProjectIntent(description: string) {
   );
 }
 
+function summarizeTaskIntent(title: string, description: string) {
+  const firstUsefulLine = String(description || "")
+    .split(/\n+/)
+    .map((line) => line.replace(/^[-*\d.\s]+/, "").trim())
+    .find(Boolean);
+  return firstUsefulLine || String(title || "").trim() || "Clarify the requested change and delivery boundary.";
+}
+
 export function buildGithubDirectPlanPreview(input: {
   type: string;
   title: string;
   description: string;
   requestedProject?: { name?: string; description?: string } | null;
+  planMode?: boolean;
 }) {
   if (parseTaskType(input.type) === "project_create" && input.requestedProject) {
     const projectDescription = input.requestedProject.description || input.description || "";
@@ -241,6 +299,20 @@ export function buildGithubDirectPlanPreview(input: {
     ].join("\n");
   }
 
+  if (requiresPlan(input.type, { planMode: input.planMode })) {
+    const suggestedSteps = deriveCompositeSteps(input.description);
+    const leadStep = suggestedSteps[0] || "inspect the relevant context";
+    return [
+      `Task: ${input.title || "Untitled task"}`,
+      `Intent: ${summarizeTaskIntent(input.title, input.description)}`,
+      "Proposed plan:",
+      "1. Clarify the exact success criteria, constraints, and safe phase-1 boundary.",
+      `2. Turn the request into milestones, starting with ${leadStep}.`,
+      "3. Define verification and publish checks before implementation starts.",
+      "4. Begin execution only after the plan and all open questions are confirmed.",
+    ].join("\n");
+  }
+
   return "";
 }
 
@@ -251,6 +323,7 @@ export function buildGithubDirectUserAction(input: {
   description: string;
   planPreview: string;
   userAction?: Task["userAction"];
+  planMode?: boolean;
 }) {
   if (input.status !== "waiting_user") {
     return null;
@@ -259,9 +332,10 @@ export function buildGithubDirectUserAction(input: {
     return input.userAction;
   }
   const risky = isHighRiskRequest(input.type, input.title, input.description);
+  const planRequired = requiresPlan(input.type, { planMode: input.planMode });
   return {
-    type: risky ? "high_risk_approval" : requiresPlan(input.type) ? "plan_approval" : "approval_required",
-    title: getApprovalReason(input.type, risky),
+    type: planRequired ? "plan_approval" : risky ? "high_risk_approval" : "approval_required",
+    title: getApprovalReason(input.type, risky, { planMode: input.planMode }),
     detail: input.planPreview || input.description || input.title,
     risk: risky ? "high" : "medium",
   } satisfies NonNullable<Task["userAction"]>;
@@ -282,6 +356,7 @@ export function parseIssueBody(body: string) {
         model: normalizeRequestedModel(String(payload.model || "")),
         reasoningEffort: normalizeRequestedReasoningEffort(String(payload.reasoningEffort || payload.reasoningLevel || "")),
         requestedProject,
+        planMode: isPlanModeEnabled(payload),
       };
     } catch {
       // Fall through to plain parsing.
@@ -302,6 +377,7 @@ export function parseIssueBody(body: string) {
     model: normalizeRequestedModel(meta.model || ""),
     reasoningEffort: normalizeRequestedReasoningEffort(meta.reasoning || meta.reasoninglevel || meta.reasoning_effort || ""),
     requestedProject: null,
+    planMode: isPlanModeEnabled({ planMode: meta.planmode || meta.plan_mode || "" }),
   };
 }
 

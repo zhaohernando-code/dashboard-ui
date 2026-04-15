@@ -333,6 +333,7 @@ export function createDashboardRefreshActions(input: DashboardRefreshActionsInpu
                     title,
                     description,
                     requestedProject: parsed.requestedProject,
+                    planMode: statusMeta.planMode || parsed.planMode,
                   });
                 const planForm = statusMeta.planForm || buildPlanFormFromPreview(planPreview, locale);
                 const userAction = buildGithubDirectUserAction({
@@ -341,6 +342,7 @@ export function createDashboardRefreshActions(input: DashboardRefreshActionsInpu
                   title,
                   description,
                   planPreview,
+                  planMode: statusMeta.planMode || parsed.planMode,
                   userAction: statusMeta.userAction,
                 });
                 return {
@@ -356,6 +358,7 @@ export function createDashboardRefreshActions(input: DashboardRefreshActionsInpu
                   description,
                   model: parsed.model,
                   reasoningEffort: parsed.reasoningEffort,
+                  planMode: statusMeta.planMode || parsed.planMode,
                   status: statusMeta.status,
                   summary: statusMeta.summary,
                   userSummary: statusMeta.userSummary,

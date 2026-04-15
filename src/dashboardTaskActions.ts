@@ -254,11 +254,12 @@ export function createDashboardTaskActions(input: DashboardTaskActionsInput) {
       const description = String(values.description || "").trim();
       const model = normalizeRequestedModel(String(values.model || ""));
       const reasoningEffort = normalizeRequestedReasoningEffort(String(values.reasoningEffort || ""));
+      const planMode = type === "task" ? Boolean(values.planMode) : false;
       let createdTaskId = "";
 
       if (runtimeMode === "github-direct") {
         const [owner, repoName] = GITHUB_TASK_REPO.split("/");
-        const payload = { projectId, type, title, description, model, reasoningEffort };
+        const payload = { projectId, type, title, description, model, reasoningEffort, planMode };
         const issue = await githubRequest<{ number: number; html_url: string }>(`/repos/${owner}/${repoName}/issues`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -269,6 +270,7 @@ export function createDashboardTaskActions(input: DashboardTaskActionsInput) {
               `type: ${type}`,
               `model: ${model}`,
               `reasoning: ${reasoningEffort === "medium" ? "normal" : reasoningEffort}`,
+              ...(planMode ? ["plan_mode: true"] : []),
               "",
               description,
               "",
@@ -296,6 +298,7 @@ export function createDashboardTaskActions(input: DashboardTaskActionsInput) {
           description,
           model,
           reasoningEffort,
+          planMode,
           status: "pending_capture",
           summary: "",
           planPreview: "",
@@ -330,6 +333,7 @@ export function createDashboardTaskActions(input: DashboardTaskActionsInput) {
             description,
             model,
             reasoningEffort,
+            planMode,
           }),
         });
         const createdTask: Task = {
@@ -344,6 +348,7 @@ export function createDashboardTaskActions(input: DashboardTaskActionsInput) {
           description,
           model,
           reasoningEffort,
+          planMode,
           status: "pending_capture",
           summary: "",
           planPreview: "",
@@ -383,6 +388,7 @@ export function createDashboardTaskActions(input: DashboardTaskActionsInput) {
             description,
             model,
             reasoningEffort,
+            planMode,
           }),
         });
         const createdTask: Task = {
@@ -395,6 +401,7 @@ export function createDashboardTaskActions(input: DashboardTaskActionsInput) {
           description,
           model,
           reasoningEffort,
+          planMode,
           status: "pending_capture",
           summary: "",
           userSummary: "",
