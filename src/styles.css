@@ -255,13 +255,22 @@ a {
   background: var(--surface-strong);
 }
 
-.mobile-control-tabs {
-  display: grid;
-  gap: 8px;
+.mobile-drawer .ant-drawer-header-title,
+.mobile-drawer .ant-drawer-title,
+.mobile-drawer .ant-drawer-body {
+  min-width: 0;
+}
+
+.mobile-drawer .ant-drawer-body {
+  overflow-x: hidden;
+}
+
+.mobile-drawer-title {
   width: 100%;
 }
 
-.mobile-control-tabs .ant-segmented {
+.mobile-drawer-title .ant-segmented {
+  width: 100%;
   max-width: 100%;
 }
 
@@ -282,20 +291,45 @@ a {
   margin-bottom: var(--space-4);
 }
 
+.workspace-toolbar-breadcrumbs {
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.workspace-toolbar-actions {
+  flex: 0 1 auto;
+  justify-content: flex-end;
+  max-width: 100%;
+}
+
 .breadcrumb-row {
   display: flex;
   gap: 8px;
+  width: 100%;
+  max-width: 100%;
   overflow-x: auto;
+  overflow-y: hidden;
   padding-bottom: 4px;
   scrollbar-width: none;
+  overscroll-behavior-x: contain;
 }
 
 .breadcrumb-row::-webkit-scrollbar {
   display: none;
 }
 
-.breadcrumb-button {
+.breadcrumb-button.ant-btn {
   flex: 0 0 auto;
+  min-width: 0;
+  max-width: min(28rem, 100%);
+  overflow: hidden;
+}
+
+.breadcrumb-button.ant-btn > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .status-filter {
@@ -531,6 +565,12 @@ a {
   min-width: 0;
 }
 
+.workspace-main-card,
+.workspace-side,
+.workspace-toolbar-breadcrumbs {
+  min-width: 0;
+}
+
 .workspace-toolbar > *,
 .section-header > * {
   min-width: 0;
@@ -578,6 +618,14 @@ a {
   .section-header > :last-child,
   .status-filter {
     width: 100%;
+  }
+
+  .workspace-toolbar-actions {
+    justify-content: flex-start;
+  }
+
+  .breadcrumb-button.ant-btn {
+    max-width: min(22rem, calc(100vw - 32px));
   }
 
   .api-base-label {
