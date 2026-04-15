@@ -215,6 +215,52 @@ export function createDashboardRefreshActions(input: DashboardRefreshActionsInpu
 
   async function refreshProjects() {
     if (runtimeMode === "github-direct") {
+      try {
+        const snapshot = await loadGithubStatusSnapshot<{
+          projects?: Array<{
+            id?: string;
+            name?: string;
+            description?: string;
+            repository?: string;
+            toolRoute?: string;
+            toolUrl?: string;
+            type?: string;
+            deploymentProvider?: string;
+            deploymentStatus?: string;
+            deploymentError?: string;
+          }>;
+        }>({
+          githubTaskRepo: GITHUB_TASK_REPO,
+          githubToken,
+          parsePayload: parseEmbeddedStatusPayload,
+        });
+        const snapshotProjects = Array.isArray(snapshot?.projects)
+          ? snapshot.projects
+            .map((project) => ({
+              id: String(project.id || "").trim(),
+              name: String(project.name || "").trim(),
+              description: String(project.description || "").trim(),
+              repository: String(project.repository || "").trim(),
+              toolRoute: String(project.toolRoute || "").trim(),
+              toolUrl: String(project.toolUrl || "").trim() || undefined,
+              type: String(project.type || "").trim() || undefined,
+              deploymentProvider: String(project.deploymentProvider || "").trim() || undefined,
+              deploymentStatus: String(project.deploymentStatus || "").trim() || undefined,
+              deploymentError: String(project.deploymentError || "").trim() || undefined,
+              taskStats: {
+                total: 0,
+                running: 0,
+                failed: 0,
+                waitingUser: 0,
+                completed: 0,
+              },
+            }))
+            .filter((project) => project.id)
+          : [];
+        setProjects(snapshotProjects);
+      } catch {
+        setProjects([]);
+      }
       return;
     }
     try {
@@ -593,7 +639,7 @@ export function createDashboardRefreshActions(input: DashboardRefreshActionsInpu
 
   async function refreshAll() {
     if (runtimeMode === "github-direct") {
-      await Promise.all([refreshHealth(), refreshAuth(), refreshTasks(), refreshTools(), refreshUsage()]);
+      await Promise.all([refreshHealth(), refreshAuth(), refreshProjects(), refreshTasks(), refreshTools(), refreshUsage()]);
       return;
     }
     await Promise.all([refreshHealth(), refreshAuth(), refreshProjects(), refreshTasks(), refreshApprovals(), refreshTools(), refreshUsage()]);

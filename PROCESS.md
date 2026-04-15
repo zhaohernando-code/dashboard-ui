@@ -347,3 +347,11 @@ no changes added to commit (use "git add" and/or "git commit -a")
 - Prevention: when GitHub issues act as the transport, the dashboard must reconstruct or parse the full operator-facing approval payload, not just the coarse task status; any new structured task field added by the control plane needs a GitHub-direct parsing path in the same rollout.
 - Commit ID: pending
 - Context: project=dashboard-ui, source=task-mnxfojvn-m0aej7
+
+## 2026-04-15
+
+- Problem: workspace project cards could show a raw legacy project id, drop the GitHub repository link, and surface disposable smoke-only entries because GitHub-direct mode rebuilt the project list from issue tasks alone and trusted whichever task happened to be newest.
+- Resolution: wired GitHub-direct project refreshes to the GitHub status snapshot `projects` payload, merged richer base metadata back into task-derived stats, normalized the legacy A-share project display name to `股票看板`, and filtered empty smoke-only project cards from the workspace.
+- Prevention: project cards must hydrate from the published project registry whenever it exists; task aggregation may fill missing metadata, but it must never overwrite a richer name/repository source with a fallback task id.
+- Commit ID: dashboard-ui `351da60`, local-control-server `504647a`
+- Context: project=dashboard-ui, source=task-mnzvuuob-rlhni1

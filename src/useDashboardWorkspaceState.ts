@@ -8,7 +8,7 @@ import {
   buildTaskLookupKey,
   taskNeedsUserAttention,
 } from "./dashboardPendingMutations";
-import { buildRemoteProjects, getProjectDisplayName, matchesStatusFilter, mergeProjectStats } from "./dashboardProjectUtils";
+import { getProjectDisplayName, matchesStatusFilter, mergeProjectStats } from "./dashboardProjectUtils";
 import { buildRequirementsFromTasks, getRequirementAnomalies } from "./dashboardTaskViews";
 import type {
   Approval,
@@ -135,8 +135,8 @@ export function useDashboardWorkspaceState(input: UseDashboardWorkspaceStateInpu
   );
 
   const visibleProjects = useMemo(
-    () => (runtimeMode === "github-direct" ? buildRemoteProjects(visibleTasks) : mergeProjectStats(projects, visibleTasks)),
-    [projects, runtimeMode, visibleTasks],
+    () => mergeProjectStats(projects, visibleTasks),
+    [projects, visibleTasks],
   );
 
   const visibleApprovals = useMemo(() => {

@@ -15,6 +15,15 @@ import type {
   TaskStatus,
 } from "./dashboardTypes";
 
+const PROJECT_METADATA_OVERRIDES: Record<string, Partial<Pick<Project, "name" | "description" | "repository">>> = {
+  "一个关于a股的当前数据和投资建议看板": {
+    name: "股票看板",
+    repository: "https://github.com/zhaohernando-code/project-a-a41618be",
+  },
+};
+
+const DISPOSABLE_SMOKE_PROJECT_MARKERS = new Set(["smoke", "publish-smoke"]);
+
 function slugify(value: string) {
   return value
     .toLowerCase()
@@ -390,64 +399,81 @@ function getTaskProjectRepository(task: Pick<Task, "requestedProject">) {
   return String(task.requestedProject?.repository || "").trim();
 }
 
-export function buildRemoteProjects(tasks: Task[]) {
-  const projectMap = new Map(
-    REMOTE_PROJECT_CATALOG.map((project) => [
-      project.id,
-      {
-        ...project,
-        toolRoute: project.toolUrl || project.toolRoute,
-        taskStats: {
-          total: 0,
-          running: 0,
-          failed: 0,
-          waitingUser: 0,
-          completed: 0,
-        },
-      },
-    ]),
-  );
+function createEmptyTaskStats() {
+  return {
+    total: 0,
+    running: 0,
+    failed: 0,
+    waitingUser: 0,
+    completed: 0,
+  };
+}
 
-  for (const task of tasks) {
-    if (!projectMap.has(task.projectId)) {
-      projectMap.set(task.projectId, {
-        id: task.projectId,
-        name: getTaskProjectDisplayName(task),
-        description: getTaskProjectDescription(task),
-        repository: getTaskProjectRepository(task),
-        toolUrl: "",
-        toolRoute: `/tools/${task.projectId}`,
-        type: "project",
-        deploymentStatus: "",
-        taskStats: { total: 0, running: 0, failed: 0, waitingUser: 0, completed: 0 },
-      });
-    }
-    const project = projectMap.get(task.projectId)!;
-    project.taskStats.total += 1;
-    if (task.status === "running") project.taskStats.running += 1;
-    if (task.status === "failed") project.taskStats.failed += 1;
-    if (taskNeedsUserAttention(task)) project.taskStats.waitingUser += 1;
-    if (task.status === "completed") project.taskStats.completed += 1;
+function applyProjectMetadataOverrides(project: Project) {
+  const override = PROJECT_METADATA_OVERRIDES[project.id];
+  if (!override) {
+    return project;
   }
+  return {
+    ...project,
+    name: String(override.name || project.name || "").trim() || project.id,
+    description: String(override.description || project.description || "").trim(),
+    repository: String(override.repository || project.repository || "").trim(),
+  };
+}
 
-  return Array.from(projectMap.values());
+function createProjectRecord(project: Omit<Project, "taskStats"> | Project): Project {
+  return applyProjectMetadataOverrides({
+    ...project,
+    toolRoute: project.toolUrl || project.toolRoute || `/tools/${project.id}`,
+    taskStats: createEmptyTaskStats(),
+  });
+}
+
+function shouldAdoptTaskProjectName(project: Project, nextName: string) {
+  const candidate = String(nextName || "").trim();
+  if (!candidate || candidate === project.id) {
+    return false;
+  }
+  const currentName = String(project.name || "").trim();
+  return !currentName || currentName === project.id;
+}
+
+function mergeTaskProjectMetadata(project: Project, task: Task) {
+  const requestedName = String(task.requestedProject?.name || "").trim();
+  const requestedDescription = getTaskProjectDescription(task);
+  const requestedRepository = getTaskProjectRepository(task);
+
+  if (shouldAdoptTaskProjectName(project, requestedName)) {
+    project.name = requestedName;
+  }
+  if (!project.description && requestedDescription) {
+    project.description = requestedDescription;
+  }
+  if (!project.repository && requestedRepository) {
+    project.repository = requestedRepository;
+  }
+}
+
+function isDisposableSmokeProject(project: Project) {
+  const markers = [project.id, project.name]
+    .map((value) => String(value || "").trim().toLowerCase())
+    .filter(Boolean);
+  if (!markers.some((value) => DISPOSABLE_SMOKE_PROJECT_MARKERS.has(value))) {
+    return false;
+  }
+  return !String(project.repository || "").trim() && !String(project.description || "").trim();
+}
+
+export function buildRemoteProjects(tasks: Task[]) {
+  return mergeProjectStats([], tasks);
 }
 
 export function mergeProjectStats(baseProjects: Project[], tasks: Task[]) {
   const projectMap = new Map(
-    baseProjects.map((project) => [
+    [...REMOTE_PROJECT_CATALOG, ...baseProjects].map((project) => [
       project.id,
-      {
-        ...project,
-        toolRoute: project.toolUrl || project.toolRoute,
-        taskStats: {
-          total: 0,
-          running: 0,
-          failed: 0,
-          waitingUser: 0,
-          completed: 0,
-        },
-      },
+      createProjectRecord(project),
     ]),
   );
 
@@ -462,16 +488,11 @@ export function mergeProjectStats(baseProjects: Project[], tasks: Task[]) {
         toolRoute: `/tools/${task.projectId}`,
         type: "project",
         deploymentStatus: "",
-        taskStats: {
-          total: 0,
-          running: 0,
-          failed: 0,
-          waitingUser: 0,
-          completed: 0,
-        },
+        taskStats: createEmptyTaskStats(),
       });
     }
     const project = projectMap.get(task.projectId)!;
+    mergeTaskProjectMetadata(project, task);
     project.taskStats.total += 1;
     if (task.status === "running") project.taskStats.running += 1;
     if (task.status === "failed") project.taskStats.failed += 1;
@@ -479,7 +500,9 @@ export function mergeProjectStats(baseProjects: Project[], tasks: Task[]) {
     if (task.status === "completed") project.taskStats.completed += 1;
   }
 
-  return Array.from(projectMap.values());
+  return Array.from(projectMap.values())
+    .map((project) => applyProjectMetadataOverrides(project))
+    .filter((project) => !isDisposableSmokeProject(project));
 }
 
 function isCompositeTask(type: string) {
@@ -497,6 +520,10 @@ export function getTaskProjectId(type: string, rawProjectId: string) {
 export function getProjectDisplayName(projectId: string, locale: Locale, displayName?: string) {
   if (projectId === AUTO_ROUTE_PROJECT_ID) {
     return locale === "zh-CN" ? "AI 待判定项目" : "AI-routed";
+  }
+  const overrideName = String(PROJECT_METADATA_OVERRIDES[projectId]?.name || "").trim();
+  if (overrideName) {
+    return overrideName;
   }
   return String(displayName || "").trim() || projectId;
 }
