@@ -466,19 +466,68 @@ export function createDashboardRefreshActions(input: DashboardRefreshActionsInpu
   }
 
   async function refreshTools() {
+    const fallbackTools = REMOTE_PROJECT_CATALOG
+      .filter((project) => project.type === "ui")
+      .map((project) => ({
+        id: project.id,
+        name: getProjectDisplayName(project.id, locale, project.name),
+        route: project.toolUrl || project.repository,
+        description: project.description,
+        repository: project.repository,
+        deploymentStatus: project.deploymentStatus || "",
+      }));
+
     if (runtimeMode === "github-direct") {
-      setTools(
-        REMOTE_PROJECT_CATALOG.map((project) => ({
-          id: project.id,
-          name: getProjectDisplayName(project.id, locale, project.name),
-          route: project.repository,
-          description: project.description,
-        })),
-      );
+      try {
+        const snapshot = await loadGithubStatusSnapshot<{
+          tools?: Array<{
+            id?: string;
+            name?: string;
+            route?: string;
+            description?: string;
+            repository?: string;
+            deploymentStatus?: string;
+            deploymentError?: string;
+            deploymentProvider?: string;
+          }>;
+        }>({
+          githubTaskRepo: GITHUB_TASK_REPO,
+          githubToken,
+          parsePayload: parseEmbeddedStatusPayload,
+        });
+        const tools = Array.isArray(snapshot?.tools)
+          ? snapshot.tools
+            .map((tool) => ({
+              id: String(tool.id || "").trim(),
+              name: getProjectDisplayName(String(tool.id || "").trim(), locale, String(tool.name || "").trim()),
+              route: String(tool.route || "").trim(),
+              description: String(tool.description || "").trim(),
+              repository: String(tool.repository || "").trim() || undefined,
+              deploymentStatus: String(tool.deploymentStatus || "").trim() || undefined,
+              deploymentError: String(tool.deploymentError || "").trim() || undefined,
+              deploymentProvider: String(tool.deploymentProvider || "").trim() || undefined,
+            }))
+            .filter((tool) => tool.id && tool.route)
+          : [];
+        setTools(tools.length ? tools : fallbackTools);
+      } catch {
+        setTools(fallbackTools);
+      }
       return;
     }
     try {
-      const payload = await api<{ tools: Array<{ id: string; name: string; route: string; description: string }> }>("/api/tools");
+      const payload = await api<{
+        tools: Array<{
+          id: string;
+          name: string;
+          route: string;
+          description: string;
+          repository?: string;
+          deploymentStatus?: string;
+          deploymentError?: string;
+          deploymentProvider?: string;
+        }>;
+      }>("/api/tools");
       setTools(payload.tools);
     } catch {
       setTools([]);

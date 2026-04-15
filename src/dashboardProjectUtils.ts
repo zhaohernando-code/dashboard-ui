@@ -396,6 +396,7 @@ export function buildRemoteProjects(tasks: Task[]) {
       project.id,
       {
         ...project,
+        toolRoute: project.toolUrl || project.toolRoute,
         taskStats: {
           total: 0,
           running: 0,
@@ -414,7 +415,10 @@ export function buildRemoteProjects(tasks: Task[]) {
         name: getTaskProjectDisplayName(task),
         description: getTaskProjectDescription(task),
         repository: getTaskProjectRepository(task),
+        toolUrl: "",
         toolRoute: `/tools/${task.projectId}`,
+        type: "project",
+        deploymentStatus: "",
         taskStats: { total: 0, running: 0, failed: 0, waitingUser: 0, completed: 0 },
       });
     }
@@ -435,6 +439,7 @@ export function mergeProjectStats(baseProjects: Project[], tasks: Task[]) {
       project.id,
       {
         ...project,
+        toolRoute: project.toolUrl || project.toolRoute,
         taskStats: {
           total: 0,
           running: 0,
@@ -453,7 +458,10 @@ export function mergeProjectStats(baseProjects: Project[], tasks: Task[]) {
         name: getTaskProjectDisplayName(task),
         description: getTaskProjectDescription(task),
         repository: getTaskProjectRepository(task),
+        toolUrl: "",
         toolRoute: `/tools/${task.projectId}`,
+        type: "project",
+        deploymentStatus: "",
         taskStats: {
           total: 0,
           running: 0,

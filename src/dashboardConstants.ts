@@ -24,7 +24,10 @@ export const REMOTE_PROJECT_CATALOG = [
     name: "dashboard-ui",
     description: "GitHub Pages dashboard for project and issue-driven task dispatch.",
     repository: "https://github.com/zhaohernando-code/dashboard-ui",
+    toolUrl: "https://zhaohernando-code.github.io/dashboard-ui/",
     toolRoute: "/tools/dashboard-ui",
+    type: "ui",
+    deploymentStatus: "ready",
   },
   {
     id: "local-control-server",
@@ -32,8 +35,9 @@ export const REMOTE_PROJECT_CATALOG = [
     description: "Local poller/executor that consumes GitHub issue tasks.",
     repository: "https://github.com/zhaohernando-code/local-control-server",
     toolRoute: "/tools/local-control-server",
+    type: "service",
   },
-] satisfies Array<Pick<Project, "id" | "name" | "description" | "repository" | "toolRoute">>;
+] satisfies Array<Pick<Project, "id" | "name" | "description" | "repository" | "toolRoute" | "toolUrl" | "type" | "deploymentStatus">>;
 
 export const tabs = [
   { id: "quest-center", label: { "zh-CN": "工作台", "en-US": "Workspace" } },

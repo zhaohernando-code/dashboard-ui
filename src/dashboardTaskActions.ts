@@ -74,7 +74,7 @@ export function createDashboardTaskActions(input: DashboardTaskActionsInput) {
       const name = String(values.name || "").trim();
       const description = String(values.description || "").trim();
       const repository = String(values.repository || "").trim();
-      const visibility = String(values.visibility || "private");
+      const visibility = String(values.visibility || "public");
       const autoCreateRepo = Boolean(values.autoCreateRepo);
       const model = normalizeRequestedModel(String(values.model || ""));
       const reasoningEffort = normalizeRequestedReasoningEffort(String(values.reasoningEffort || ""));

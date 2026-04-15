@@ -367,7 +367,7 @@ export function CreateDialog({
         <Form
           form={projectForm}
           layout="vertical"
-          initialValues={{ visibility: "private", autoCreateRepo: false, model: "gpt-5.4", reasoningEffort: "high" }}
+          initialValues={{ visibility: "public", autoCreateRepo: false, model: "gpt-5.4", reasoningEffort: "high" }}
           onFinish={(values) => void onCreateProject(values)}
         >
           <Form.Item
@@ -394,6 +394,11 @@ export function CreateDialog({
           <Form.Item name="autoCreateRepo" valuePropName="checked">
             <Checkbox>{locale === "zh-CN" ? "自动创建 GitHub 仓库" : "Auto-create GitHub repository"}</Checkbox>
           </Form.Item>
+          <Typography.Text type="secondary">
+            {locale === "zh-CN"
+              ? "对需要 GitHub Pages 验收入口的 Web/UI 项目，公开仓库通常才支持直接部署。"
+              : "For web/UI projects that need a GitHub Pages acceptance URL, public repositories usually work best."}
+          </Typography.Text>
           <Form.Item name="model" label="Model">
             <Select options={[{ label: "gpt-5.4", value: "gpt-5.4" }]} />
           </Form.Item>

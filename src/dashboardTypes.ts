@@ -18,6 +18,11 @@ export type Project = {
   description: string;
   repository: string;
   toolRoute: string;
+  toolUrl?: string;
+  type?: string;
+  deploymentProvider?: string;
+  deploymentStatus?: string;
+  deploymentError?: string;
   taskStats: {
     total: number;
     running: number;
@@ -375,4 +380,8 @@ export type ToolLink = {
   name: string;
   route: string;
   description: string;
+  repository?: string;
+  deploymentProvider?: string;
+  deploymentStatus?: string;
+  deploymentError?: string;
 };
