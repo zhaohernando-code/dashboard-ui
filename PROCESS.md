@@ -2,6 +2,11 @@
 
 ## 2026-04-15
 
+- Problem: even after the dashboard stopped using a 1-second expedited poll interval, task actions still caused a direct refresh and then another immediate `refreshAll()` when the polling effect restarted, so post-action auto-sync still felt more aggressive than the configured interval.
+- Resolution: split the immediate dashboard load from the polling-interval effect and increased the expedited auto-sync interval from `3000ms` to `4000ms`, so task actions no longer trigger an extra instant refresh burst while follow-up syncing stays slightly faster than the normal `5000ms` cadence. For validation, temporarily linked this worktree `node_modules` to `/Users/hernando_zhao/codex/dashboard-ui/node_modules`, then ran `npm run check` and `npm run build` successfully.
+- Prevention: when polling cadence is driven by state, keep "refresh now" behavior separate from interval reconfiguration; otherwise a cadence switch can look much faster than the nominal interval.
+- Commit ID: N/A（已完成本地类型检查与构建；尝试 `git add src/dashboardConstants.ts src/dashboardController.tsx PROCESS.md` 时因沙箱拒绝创建 `/Users/hernando_zhao/codex/dashboard-ui/.git/worktrees/task-mnzv9nrp-08qqtf/index.lock` 失败，远端推送/主线合并同样受当前无网络环境限制）
+
 - Problem: after task actions were submitted, the dashboard switched into a 1-second expedited auto-sync loop for 15 seconds, which made the workspace feel over-refreshed and visually noisy during normal follow-up observation.
 - Resolution: moved the dashboard polling cadence into shared constants and reduced the expedited auto-sync interval from `1000ms` to `3000ms` while keeping the existing 15-second expedited window, so post-action updates still arrive promptly without refreshing every second. For validation, temporarily linked this worktree `node_modules` to `/Users/hernando_zhao/codex/dashboard-ui/node_modules`, then ran `npm run check` and `npm run build` successfully.
 - Prevention: any operator-facing polling cadence must be defined through shared constants instead of scattered literals, and "expedited" refresh should still be conservative enough to avoid perceptible UI churn unless the interaction truly depends on near-real-time feedback.

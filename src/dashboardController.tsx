@@ -210,6 +210,9 @@ export function useDashboardController(): DashboardController {
 
   useEffect(() => {
     void refreshAll();
+  }, [githubToken, runtimeMode, sessionToken]);
+
+  useEffect(() => {
     const pollIntervalMs = Date.now() < expeditedPollUntil
       ? DASHBOARD_EXPEDITED_POLL_INTERVAL_MS
       : DASHBOARD_POLL_INTERVAL_MS;
