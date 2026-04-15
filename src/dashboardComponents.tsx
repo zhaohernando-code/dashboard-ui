@@ -1323,9 +1323,13 @@ export function TaskDetail({
                 : "Explain why the current delivery cannot be accepted and what should be fixed first."
             }
             description={
-              locale === "zh-CN"
-                ? "提交后任务会进入待返修，不会自动重新执行。"
-                : "Submitting this will move the task to needs revision. It will not re-run automatically."
+              task.executionMode === "orchestrated"
+                ? (locale === "zh-CN"
+                    ? "提交后项目流会直接进入返修步骤，不会停在待返修等你再次确认。"
+                    : "Submitting this will queue a revision step immediately so the project flow can continue.")
+                : (locale === "zh-CN"
+                    ? "提交后任务会进入待返修，不会自动重新执行。"
+                    : "Submitting this will move the task to needs revision. It will not re-run automatically.")
             }
           />
           <Input.TextArea
