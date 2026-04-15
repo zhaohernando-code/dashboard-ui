@@ -93,9 +93,6 @@ export type DashboardCopy = {
   pendingApprovals: string;
   noTask: string;
   mobileControlTitle: string;
-  mobileControlMeta: string;
-  mobileViewDrawerTitle: string;
-  openViewDrawer: string;
   themeSetting: string;
   languageSetting: string;
 };
@@ -123,9 +120,6 @@ export function getDashboardCopy(locale: Locale): DashboardCopy {
     pendingApprovals: locale === "zh-CN" ? "待处理审批" : "Pending approvals",
     noTask: locale === "zh-CN" ? "请选择任务查看详情" : "Select one task to inspect",
     mobileControlTitle: locale === "zh-CN" ? "控制中心" : "Control center",
-    mobileControlMeta: locale === "zh-CN" ? "设置与账户" : "Settings & account",
-    mobileViewDrawerTitle: locale === "zh-CN" ? "工作区视图" : "Workspace views",
-    openViewDrawer: locale === "zh-CN" ? "切换工作区视图" : "Switch workspace view",
     themeSetting: locale === "zh-CN" ? "主题色" : "Theme",
     languageSetting: locale === "zh-CN" ? "界面语言" : "Language",
   };
@@ -138,7 +132,6 @@ export type DashboardShellViewModel = {
   activeTab: DashboardTabId;
   isMobile: boolean;
   isMobileNavOpen: boolean;
-  isMobileViewDrawerOpen: boolean;
   authConfig: AuthConfig | null;
   deviceLogin: DeviceLoginSession | null;
   copyState: CopyState;
@@ -150,8 +143,6 @@ export type DashboardShellViewModel = {
   onChangeTab: (next: DashboardTabId) => void;
   onOpenMobileNav: () => void;
   onCloseMobileNav: () => void;
-  onOpenMobileViewDrawer: () => void;
-  onCloseMobileViewDrawer: () => void;
   onLogin: () => void | Promise<void>;
   onLogout: () => void | Promise<void>;
   onCopyDeviceCode: () => void | Promise<void>;

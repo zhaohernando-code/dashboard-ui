@@ -115,7 +115,6 @@ export function useDashboardController(): DashboardController {
   });
   const [copyState, setCopyState] = useState<CopyState>("idle");
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
-  const [isMobileViewDrawerOpen, setIsMobileViewDrawerOpen] = useState(false);
   const [projectStatusFilter, setProjectStatusFilter] = useState<StatusFilterValue>(STATUS_FILTER_ALL);
   const [requirementStatusFilter, setRequirementStatusFilter] = useState<StatusFilterValue>(STATUS_FILTER_ALL);
   const [requirementPage, setRequirementPage] = useState(1);
@@ -205,7 +204,6 @@ export function useDashboardController(): DashboardController {
 
   useEffect(() => {
     setIsMobileNavOpen(false);
-    setIsMobileViewDrawerOpen(false);
   }, [activeTab, locale, theme]);
 
   useEffect(() => {
@@ -358,7 +356,6 @@ export function useDashboardController(): DashboardController {
     activeTab,
     isMobile,
     isMobileNavOpen,
-    isMobileViewDrawerOpen,
     authConfig,
     deviceLogin,
     copyState,
@@ -369,12 +366,10 @@ export function useDashboardController(): DashboardController {
     onChangeLocale: setLocale,
     onChangeTab: (next) => {
       setActiveTab(next);
-      setIsMobileViewDrawerOpen(false);
+      setIsMobileNavOpen(false);
     },
     onOpenMobileNav: () => setIsMobileNavOpen(true),
     onCloseMobileNav: () => setIsMobileNavOpen(false),
-    onOpenMobileViewDrawer: () => setIsMobileViewDrawerOpen(true),
-    onCloseMobileViewDrawer: () => setIsMobileViewDrawerOpen(false),
     onLogin: loginWithGithub,
     onLogout: logout,
     onCopyDeviceCode: copyDeviceCode,

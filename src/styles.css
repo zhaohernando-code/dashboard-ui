@@ -50,6 +50,8 @@ body {
   min-height: 100vh;
   font-family: var(--font-body);
   color: var(--text);
+  overflow-x: hidden;
+  overflow-x: clip;
   background:
     radial-gradient(circle at top left, var(--bg-accent), transparent 28rem),
     radial-gradient(circle at top right, rgba(69, 125, 255, 0.08), transparent 22rem),
@@ -58,6 +60,8 @@ body {
 
 #root {
   min-height: 100vh;
+  overflow-x: hidden;
+  overflow-x: clip;
 }
 
 a {
@@ -68,7 +72,9 @@ a {
   position: relative;
   min-height: 100vh;
   background: transparent;
-  overflow: visible;
+  overflow-x: hidden;
+  overflow-x: clip;
+  overflow-y: visible;
   isolation: isolate;
 }
 
@@ -85,9 +91,11 @@ a {
 
 .app-root {
   position: relative;
-  width: min(1440px, calc(100vw - 32px));
+  width: 100%;
+  max-width: 1440px;
   margin: 0 auto;
-  padding: 20px 0 32px;
+  min-width: 0;
+  padding: 20px 16px 32px;
 }
 
 .topbar-card,
@@ -177,6 +185,8 @@ a {
 
 .api-base-label {
   max-width: 30rem;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .notice-stack {
@@ -243,6 +253,16 @@ a {
 .mobile-drawer .ant-drawer-content,
 .mobile-drawer .ant-drawer-header {
   background: var(--surface-strong);
+}
+
+.mobile-control-tabs {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+}
+
+.mobile-control-tabs .ant-segmented {
+  max-width: 100%;
 }
 
 .workspace-layout {
@@ -442,6 +462,13 @@ a {
   color: var(--text);
 }
 
+.ant-flex,
+.ant-space,
+.ant-space-item,
+.ant-card-body {
+  min-width: 0;
+}
+
 .ant-card {
   box-shadow: none;
 }
@@ -498,6 +525,18 @@ a {
   padding-right: 4px;
 }
 
+.workspace-layout,
+.workspace-toolbar,
+.section-header {
+  min-width: 0;
+}
+
+.workspace-toolbar > *,
+.section-header > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
 @media (max-width: 1180px) {
   .workspace-layout {
     grid-template-columns: 1fr;
@@ -510,9 +549,7 @@ a {
 
 @media (max-width: 768px) {
   .app-root {
-    width: calc(100vw - 16px);
-    padding-top: 12px;
-    padding-bottom: 84px;
+    padding: 12px 8px 84px;
   }
 
   .brand-subtitle {
@@ -535,6 +572,12 @@ a {
   .workspace-toolbar,
   .section-header {
     margin-bottom: var(--space-4);
+  }
+
+  .workspace-toolbar > :last-child,
+  .section-header > :last-child,
+  .status-filter {
+    width: 100%;
   }
 
   .api-base-label {

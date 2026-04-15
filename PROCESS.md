@@ -2,6 +2,11 @@
 
 ## 2026-04-15
 
+- Problem: mobile dashboard content width was unstable because the root shell relied on `100vw`-based sizing while several Ant Design flex/space containers and long labels could still push past the available inline size; the mobile control center also nested page switching inside a second drawer, adding an unnecessary extra tap.
+- Resolution: replaced the root shell with a stable `width: 100% + max-width + padding` layout, added mobile-safe wrapping/min-width guards for shared Ant Design layout containers and long API labels, and moved the three top-level page switches directly into the main mobile control-center drawer. For validation, temporarily linked this worktree `node_modules` to `/Users/hernando_zhao/codex/dashboard-ui/node_modules`, then ran `npm run check` and `npm run build` successfully.
+- Prevention: on mobile control-plane UI, avoid `100vw` layout math for the primary shell, add explicit `min-width: 0` on shared flex/space containers that host dynamic text, and keep primary page switching in the first control surface instead of nesting it behind a second drawer.
+- Commit ID: N/A（尝试 `git add src/dashboardConstants.ts src/dashboardController.tsx src/dashboardShell.tsx src/styles.css PROCESS.md` 时因沙箱拒绝创建 `/Users/hernando_zhao/codex/dashboard-ui/.git/worktrees/task-mnzvqcs4-uuq02t/index.lock` 失败；网络同样受限，无法在本环境完成推送或主线合并）
+
 - Problem: even after the dashboard stopped using a 1-second expedited poll interval, task actions still caused a direct refresh and then another immediate `refreshAll()` when the polling effect restarted, so post-action auto-sync still felt more aggressive than the configured interval.
 - Resolution: split the immediate dashboard load from the polling-interval effect and increased the expedited auto-sync interval from `3000ms` to `4000ms`, so task actions no longer trigger an extra instant refresh burst while follow-up syncing stays slightly faster than the normal `5000ms` cadence. For validation, temporarily linked this worktree `node_modules` to `/Users/hernando_zhao/codex/dashboard-ui/node_modules`, then ran `npm run check` and `npm run build` successfully.
 - Prevention: when polling cadence is driven by state, keep "refresh now" behavior separate from interval reconfiguration; otherwise a cadence switch can look much faster than the nominal interval.
