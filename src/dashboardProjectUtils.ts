@@ -15,12 +15,26 @@ import type {
   TaskStatus,
 } from "./dashboardTypes";
 
-const PROJECT_METADATA_OVERRIDES: Record<string, Partial<Pick<Project, "name" | "description" | "repository">>> = {
-  "一个关于a股的当前数据和投资建议看板": {
+type ProjectMetadataOverride = {
+  aliases: string[];
+  name?: string;
+  description?: string;
+  repository?: string;
+};
+
+const PROJECT_METADATA_OVERRIDES: ProjectMetadataOverride[] = [
+  {
+    aliases: [
+      "一个关于a股的当前数据和投资建议看板",
+      "股票看板",
+      "project-a-a41618be",
+      "https://github.com/zhaohernando-code/project-a-a41618be",
+    ],
     name: "股票看板",
+    description: "A 股行情与投资建议看板。",
     repository: "https://github.com/zhaohernando-code/project-a-a41618be",
   },
-};
+];
 
 const DISPOSABLE_SMOKE_PROJECT_MARKERS = new Set(["smoke", "publish-smoke"]);
 
@@ -49,6 +63,29 @@ function extractRepositoryName(repository: string) {
       .pop()
       ?.replace(/\.git$/i, "") || "";
   }
+}
+
+function normalizeProjectReferenceToken(value: string) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function collectProjectReferenceTokens(input: { id?: string; name?: string; repository?: string }) {
+  const repository = String(input.repository || "").trim();
+  const tokens = new Set(
+    [input.id, input.name, repository, extractRepositoryName(repository)]
+      .map((value) => normalizeProjectReferenceToken(String(value || "")))
+      .filter(Boolean),
+  );
+  return tokens;
+}
+
+function findProjectMetadataOverride(input: { id?: string; name?: string; repository?: string }) {
+  const referenceTokens = collectProjectReferenceTokens(input);
+  return (
+    PROJECT_METADATA_OVERRIDES.find((override) =>
+      override.aliases.some((alias) => referenceTokens.has(normalizeProjectReferenceToken(alias))),
+    ) || null
+  );
 }
 
 function normalizeProjectIdentifier(value: string) {
@@ -261,6 +298,59 @@ function summarizeTaskIntent(title: string, description: string) {
   return firstUsefulLine || String(title || "").trim() || "Clarify the requested change and delivery boundary.";
 }
 
+function normalizeProjectSummarySource(value: string) {
+  return String(value || "")
+    .replace(/\r\n/g, "\n")
+    .split(/\n+/)
+    .map((line) => line.replace(/^[-*\d.\s]+/, "").trim())
+    .find(Boolean)
+    || "";
+}
+
+function stripProjectSummaryLeadIn(value: string) {
+  return String(value || "")
+    .replace(/^(?:please\s+)?(?:create|build|make|develop|implement)\s+(?:a|an|the)?\s*/i, "")
+    .replace(/^(?:请)?(?:创建|新建|做一个|做个|搭建|开发|实现|我想要|我想做|需要|希望有|希望做)\s*/u, "")
+    .replace(/^(?:一个关于|一个用于|关于|用于|当前)\s*/u, "")
+    .trim();
+}
+
+function normalizeProjectSummaryPhrasing(value: string) {
+  return String(value || "")
+    .replace(/\ba股\b/gi, "A 股")
+    .replace(/当前数据/g, "行情")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function appendProjectSummaryPunctuation(value: string) {
+  const trimmed = String(value || "").trim();
+  if (!trimmed || /[。.!?！？]$/.test(trimmed)) {
+    return trimmed;
+  }
+  return /[\u4e00-\u9fff]/u.test(trimmed) ? `${trimmed}。` : `${trimmed}.`;
+}
+
+export function deriveProjectMetadataDescription(name: string, description: string) {
+  const normalizedName = normalizeProjectSummaryPhrasing(String(name || "").trim());
+  const initialSource = normalizeProjectSummarySource(description) || normalizedName;
+  const firstSentence = initialSource
+    .split(/[。.!?！？]/)
+    .map((part) => part.trim())
+    .find(Boolean)
+    || initialSource;
+  let candidate = normalizeProjectSummaryPhrasing(stripProjectSummaryLeadIn(firstSentence));
+
+  if (!candidate || candidate.length > 40) {
+    candidate = normalizedName;
+  }
+
+  if (!candidate) {
+    return "";
+  }
+  return appendProjectSummaryPunctuation(candidate);
+}
+
 export function buildGithubDirectPlanPreview(input: {
   type: string;
   title: string;
@@ -269,7 +359,7 @@ export function buildGithubDirectPlanPreview(input: {
   planMode?: boolean;
 }) {
   if (parseTaskType(input.type) === "project_create" && input.requestedProject) {
-    const projectDescription = input.requestedProject.description || input.description || "";
+    const projectDescription = input.description || input.requestedProject.description || "";
     const scopeItems = extractProjectScopeItems(projectDescription);
     const scopeSummary = scopeItems.slice(0, 3).join(" / ");
     return [
@@ -464,11 +554,24 @@ function getTaskProjectDisplayName(task: Pick<Task, "projectId" | "projectName" 
   return requestedName || String(task.projectName || "").trim() || task.projectId;
 }
 
-function getTaskProjectDescription(task: Pick<Task, "projectId" | "description" | "requestedProject">) {
+function getTaskProjectDescription(task: Pick<Task, "projectId" | "projectName" | "description" | "requestedProject">) {
   if (task.projectId === AUTO_ROUTE_PROJECT_ID) {
     return "Composite or cross-project work waiting for AI routing.";
   }
-  return String(task.requestedProject?.description || "").trim() || "";
+  const override = findProjectMetadataOverride({
+    id: task.projectId,
+    name: String(task.requestedProject?.name || "").trim(),
+    repository: String(task.requestedProject?.repository || "").trim(),
+  });
+  if (override?.description) {
+    return override.description;
+  }
+  const projectName = String(task.requestedProject?.name || task.projectName || task.projectId).trim();
+  const requestedDescription = String(task.requestedProject?.description || "").trim();
+  if (requestedDescription) {
+    return deriveProjectMetadataDescription(projectName, requestedDescription);
+  }
+  return deriveProjectMetadataDescription(projectName, task.description);
 }
 
 function getTaskProjectRepository(task: Pick<Task, "requestedProject">) {
@@ -486,7 +589,7 @@ function createEmptyTaskStats() {
 }
 
 function applyProjectMetadataOverrides(project: Project) {
-  const override = PROJECT_METADATA_OVERRIDES[project.id];
+  const override = findProjectMetadataOverride(project);
   if (!override) {
     return project;
   }
@@ -531,14 +634,12 @@ function mergeTaskProjectMetadata(project: Project, task: Task) {
   }
 }
 
+export function isDisposableSmokeProjectReference(input: { id?: string; name?: string; repository?: string }) {
+  return Array.from(collectProjectReferenceTokens(input)).some((value) => DISPOSABLE_SMOKE_PROJECT_MARKERS.has(value));
+}
+
 function isDisposableSmokeProject(project: Project) {
-  const markers = [project.id, project.name]
-    .map((value) => String(value || "").trim().toLowerCase())
-    .filter(Boolean);
-  if (!markers.some((value) => DISPOSABLE_SMOKE_PROJECT_MARKERS.has(value))) {
-    return false;
-  }
-  return !String(project.repository || "").trim() && !String(project.description || "").trim();
+  return isDisposableSmokeProjectReference(project);
 }
 
 export function buildRemoteProjects(tasks: Task[]) {
@@ -597,7 +698,7 @@ export function getProjectDisplayName(projectId: string, locale: Locale, display
   if (projectId === AUTO_ROUTE_PROJECT_ID) {
     return locale === "zh-CN" ? "AI 待判定项目" : "AI-routed";
   }
-  const overrideName = String(PROJECT_METADATA_OVERRIDES[projectId]?.name || "").trim();
+  const overrideName = String(findProjectMetadataOverride({ id: projectId, name: displayName })?.name || "").trim();
   if (overrideName) {
     return overrideName;
   }

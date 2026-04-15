@@ -175,7 +175,13 @@ function WorkspaceMainPane({ workspace }: WorkspaceMainPaneProps) {
                 </Flex>
                 <Divider />
                 <Typography.Text type="secondary" className="wrap-anywhere">
-                  {project.repository || (locale === "zh-CN" ? "未绑定仓库" : "No repository")}
+                  {project.repository ? (
+                    <a href={project.repository} target="_blank" rel="noreferrer">
+                      {project.repository}
+                    </a>
+                  ) : (
+                    locale === "zh-CN" ? "未绑定仓库" : "No repository"
+                  )}
                 </Typography.Text>
               </Card>
             ))}

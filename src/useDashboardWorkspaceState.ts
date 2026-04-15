@@ -8,7 +8,12 @@ import {
   buildTaskLookupKey,
   taskNeedsUserAttention,
 } from "./dashboardPendingMutations";
-import { getProjectDisplayName, matchesStatusFilter, mergeProjectStats } from "./dashboardProjectUtils";
+import {
+  getProjectDisplayName,
+  isDisposableSmokeProjectReference,
+  matchesStatusFilter,
+  mergeProjectStats,
+} from "./dashboardProjectUtils";
 import { buildRequirementsFromTasks, getRequirementAnomalies } from "./dashboardTaskViews";
 import type {
   Approval,
@@ -84,7 +89,11 @@ export function useDashboardWorkspaceState(input: UseDashboardWorkspaceStateInpu
   const visibleTasks = useMemo(() => {
     const pendingPlaceholders = buildPendingPlaceholderTasks(pendingTaskMutations, locale);
     if (!pendingPlaceholders.length) {
-      return remoteTasksWithPending;
+      return remoteTasksWithPending.filter((task) => !isDisposableSmokeProjectReference({
+        id: task.projectId,
+        name: task.requestedProject?.name || task.projectName,
+        repository: task.requestedProject?.repository || "",
+      }));
     }
     const resolvedIssueNumbers = new Set(
       remoteTasksWithPending.map((task) => task.issueNumber).filter((value): value is number => typeof value === "number"),
@@ -96,7 +105,11 @@ export function useDashboardWorkspaceState(input: UseDashboardWorkspaceStateInpu
       }
       return !resolvedKeys.has(buildTaskLookupKey(task));
     });
-    return [...pendingOnly, ...remoteTasksWithPending];
+    return [...pendingOnly, ...remoteTasksWithPending].filter((task) => !isDisposableSmokeProjectReference({
+      id: task.projectId,
+      name: task.requestedProject?.name || task.projectName,
+      repository: task.requestedProject?.repository || "",
+    }));
   }, [locale, pendingTaskMutations, remoteTasksWithPending]);
 
   const selectedTask = useMemo(
@@ -150,7 +163,12 @@ export function useDashboardWorkspaceState(input: UseDashboardWorkspaceStateInpu
           reason: task.userAction?.title || approval.reason,
         };
       })
-      .filter((approval) => taskNeedsUserAttention(approval.task));
+      .filter((approval) =>
+        !isDisposableSmokeProjectReference({
+          id: approval.task.projectId,
+          name: approval.task.requestedProject?.name || approval.task.projectName,
+          repository: approval.task.requestedProject?.repository || "",
+        }) && taskNeedsUserAttention(approval.task));
     const knownTaskIds = new Set(remoteApprovals.map((approval) => approval.task.id));
     const derivedApprovals = visibleTasks
       .filter((task) => taskNeedsUserAttention(task) && !knownTaskIds.has(task.id))

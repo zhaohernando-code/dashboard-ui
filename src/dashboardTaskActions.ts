@@ -4,6 +4,7 @@ import { AUTO_ROUTE_PROJECT_ID, GITHUB_TASK_REPO } from "./dashboardConstants";
 import type { PendingTaskMutation } from "./dashboardControlTypes";
 import { buildTaskLookupKey } from "./dashboardPendingMutations";
 import {
+  deriveProjectMetadataDescription,
   deriveRequestedProjectId,
   getProjectDisplayName,
   getTaskProjectId,
@@ -73,6 +74,7 @@ export function createDashboardTaskActions(input: DashboardTaskActionsInput) {
     try {
       const name = String(values.name || "").trim();
       const description = String(values.description || "").trim();
+      const projectDescription = deriveProjectMetadataDescription(name, description);
       const repository = String(values.repository || "").trim();
       const visibility = String(values.visibility || "public");
       const autoCreateRepo = Boolean(values.autoCreateRepo);
@@ -82,7 +84,7 @@ export function createDashboardTaskActions(input: DashboardTaskActionsInput) {
       const requestedProject = {
         id: requestedProjectId,
         name,
-        description,
+        description: projectDescription,
         repository,
         visibility,
         autoCreateRepo,
@@ -227,7 +229,7 @@ export function createDashboardTaskActions(input: DashboardTaskActionsInput) {
           method: "POST",
           body: JSON.stringify({
             name,
-            description,
+            description: projectDescription,
             repository,
             visibility,
             autoCreateRepo,

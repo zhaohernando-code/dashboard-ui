@@ -377,8 +377,17 @@ export function CreateDialog({
           >
             <Input placeholder={locale === "zh-CN" ? "项目名称" : "Project name"} />
           </Form.Item>
-          <Form.Item name="description" label={locale === "zh-CN" ? "描述" : "Description"}>
-            <Input.TextArea rows={4} placeholder={locale === "zh-CN" ? "目标 / 范围 / 备注" : "Goal / scope / notes"} />
+          <Form.Item
+            name="description"
+            label={locale === "zh-CN" ? "需求说明" : "Request details"}
+            extra={locale === "zh-CN"
+              ? "这里填写创建需求；项目卡片中的简介会自动提炼为简短描述。"
+              : "Use this for the project request details. Project cards will show a shorter summary automatically."}
+          >
+            <Input.TextArea
+              rows={4}
+              placeholder={locale === "zh-CN" ? "目标 / 范围 / 备注" : "Goal / scope / notes"}
+            />
           </Form.Item>
           <Form.Item name="repository" label="GitHub URL">
             <Input placeholder="https://github.com/owner/repo" />

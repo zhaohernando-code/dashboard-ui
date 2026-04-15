@@ -368,3 +368,11 @@ no changes added to commit (use "git add" and/or "git commit -a")
 - Prevention: any new operator-facing creation mode must be represented in both the local API payload and the GitHub issue transport, and the dashboard's GitHub-direct reconstruction path must parse the same structured flags as the server-side API.
 - Commit ID: local-control-server `bdbc7e2`; dashboard-ui commit blocked in this sandbox because `.git/worktrees/task-mnzwba3f-orc2dp/index.lock` could not be created.
 - Context: project=dashboard-ui, source=task-mnzwba3f-orc2dp
+
+## 2026-04-15
+
+- Problem: project cards could still show the stock dashboard under a legacy name with no visible GitHub repository, `project_create` reused the full request text as the project description, and disposable `smoke` placeholders could leak into workspace projects and approvals.
+- Resolution: added alias-based project metadata normalization for `股票看板`, derived a short project description separately from the long task brief during project creation, filtered `smoke` project/task references from visible workspace state, and rendered project repositories as clickable links on workspace cards.
+- Prevention: keep project metadata normalization separate from long-form execution briefs, and filter disposable placeholder projects before building visible task/project state instead of only at the final card-render step.
+- Commit ID: `29ee146`
+- Context: project=dashboard-ui, source=task-mnzwte9t-1q4z48
