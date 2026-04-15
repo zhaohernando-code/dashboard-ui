@@ -36,6 +36,7 @@ export type TaskChild = {
 export type TaskLog = {
   timestamp: string;
   message: string;
+  audience?: "operator" | "raw";
 };
 
 export type PlanQuestion = {

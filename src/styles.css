@@ -47,6 +47,7 @@ body,
 }
 
 body {
+  min-height: 100vh;
   font-family: var(--font-body);
   color: var(--text);
   background:
@@ -55,16 +56,35 @@ body {
     linear-gradient(180deg, var(--bg) 0%, color-mix(in srgb, var(--bg) 92%, #ffffff 8%) 100%);
 }
 
+#root {
+  min-height: 100vh;
+}
+
 a {
   color: var(--brand);
 }
 
 .app-shell {
+  position: relative;
   min-height: 100vh;
   background: transparent;
+  overflow: visible;
+  isolation: isolate;
+}
+
+.app-shell::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--surface) 38%, transparent) 0%, transparent 20rem),
+    linear-gradient(180deg, color-mix(in srgb, var(--surface) 20%, transparent) 0%, transparent 100%);
 }
 
 .app-root {
+  position: relative;
   width: min(1440px, calc(100vw - 32px));
   margin: 0 auto;
   padding: 20px 0 32px;
@@ -417,12 +437,17 @@ a {
 .ant-card,
 .ant-list,
 .ant-descriptions,
-.ant-alert {
+.ant-alert,
+.ant-layout {
   color: var(--text);
 }
 
 .ant-card {
   box-shadow: none;
+}
+
+.ant-layout {
+  background: transparent !important;
 }
 
 .ant-segmented,
@@ -449,6 +474,28 @@ a {
 
 .ant-descriptions .ant-descriptions-item-label {
   color: var(--text-dim);
+}
+
+.task-log-entry {
+  min-width: 0;
+}
+
+.task-log-preview-message {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+}
+
+.task-log-full-message {
+  font-family: "IBM Plex Mono", "SFMono-Regular", ui-monospace, monospace;
+  font-size: 0.94rem;
+}
+
+.task-log-modal-body {
+  max-height: min(62vh, 42rem);
+  overflow: auto;
+  padding-right: 4px;
 }
 
 @media (max-width: 1180px) {

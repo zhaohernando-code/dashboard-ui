@@ -23,6 +23,7 @@ import {
 } from "antd";
 import { GlobalOutlined, MoonOutlined, SunOutlined } from "@ant-design/icons";
 
+import { getLogSummaryText, getLogTrackLabel, type LogTrack, type LogViews } from "./dashboardLogs";
 import type {
   Approval,
   PlanForm,
@@ -74,7 +75,7 @@ type TaskDetailProps = {
   statusTagColor: StatusTagColorMap;
   getProjectDisplayName: (projectId: string, locale: Locale, displayName?: string) => string;
   normalizeDisplayText: (value: string) => string;
-  buildLogViews: (logs: TaskLog[]) => { important: TaskLog[]; raw: TaskLog[] };
+  buildLogViews: (logs: TaskLog[]) => LogViews;
 };
 
 type ApprovalCardProps = {
@@ -522,10 +523,12 @@ export function TaskDetail({
   normalizeDisplayText,
   buildLogViews,
 }: TaskDetailProps) {
-  const [showRawLogs, setShowRawLogs] = useState(false);
+  const [logModalOpen, setLogModalOpen] = useState(false);
+  const [activeLogTrack, setActiveLogTrack] = useState<LogTrack>("operator");
   const [planResponseForm] = Form.useForm<Record<string, string | string[]>>();
   const logViews = buildLogViews(task.logs);
-  const visibleLogs = showRawLogs ? logViews.raw : logViews.important;
+  const previewLogs = logViews.preview;
+  const modalLogs = activeLogTrack === "operator" ? (logViews.operator.length ? logViews.operator : logViews.raw) : logViews.raw;
   const executionDecisionGate = task.executionDecisionGate;
   const supportsExecutionDecision = task.status === "waiting_user" && Boolean(executionDecisionGate);
   const supportsPlanFeedback = task.status === "waiting_user" && Boolean(task.planPreview) && !supportsExecutionDecision;
@@ -552,7 +555,8 @@ export function TaskDetail({
 
   useEffect(() => {
     planResponseForm.resetFields();
-    setShowRawLogs(false);
+    setLogModalOpen(false);
+    setActiveLogTrack(logViews.hasStructuredOperatorLogs ? "operator" : "raw");
   }, [planResponseForm, task.id]);
 
   function renderPlanQuestionInput(question: PlanQuestion) {
@@ -1163,38 +1167,93 @@ export function TaskDetail({
         <SectionHeader
           title={locale === "zh-CN" ? "任务日志" : "Task logs"}
           actions={
-            task.logs.length > logViews.important.length ? (
-              <Button onClick={() => setShowRawLogs((current) => !current)}>
-                {showRawLogs
-                  ? locale === "zh-CN"
-                    ? "只看关键日志"
-                    : "Show important only"
-                  : locale === "zh-CN"
-                    ? "展开原始日志"
-                    : "Show raw logs"}
+            task.logs.length ? (
+              <Button onClick={() => setLogModalOpen(true)}>
+                {locale === "zh-CN" ? "查看全部日志" : "View all logs"}
               </Button>
             ) : undefined
           }
         />
-        {visibleLogs.length ? (
-          <List
-            className="detail-list"
-            dataSource={visibleLogs}
-            renderItem={(entry) => (
-              <List.Item key={`${entry.timestamp}-${entry.message}`}>
-                <Space direction="vertical" size={4}>
-                  <Typography.Text type="secondary">{new Date(entry.timestamp).toLocaleString(locale)}</Typography.Text>
-                  <Typography.Text className="wrap-anywhere preserve-breaks">
-                    {normalizeDisplayText(entry.message)}
-                  </Typography.Text>
-                </Space>
-              </List.Item>
-            )}
-          />
+        {previewLogs.length ? (
+          <Space direction="vertical" size={12} className="full-width">
+            <Typography.Text type="secondary">
+              {getLogSummaryText(logViews, locale)}
+            </Typography.Text>
+            <List
+              className="detail-list"
+              dataSource={previewLogs}
+              renderItem={(entry) => (
+                <List.Item key={`${entry.timestamp}-${entry.message}`}>
+                  <Space direction="vertical" size={4} className="full-width task-log-entry">
+                    <Typography.Text type="secondary">
+                      {new Date(entry.timestamp).toLocaleString(locale)}
+                    </Typography.Text>
+                    <Typography.Text className="wrap-anywhere preserve-breaks task-log-preview-message">
+                      {normalizeDisplayText(entry.message)}
+                    </Typography.Text>
+                  </Space>
+                </List.Item>
+              )}
+            />
+            {logViews.hasOverflow ? (
+              <Typography.Text type="secondary">
+                {locale === "zh-CN"
+                  ? `还有 ${logViews.hiddenCount} 条未展开日志，点击“查看全部日志”浏览完整记录。`
+                  : `${logViews.hiddenCount} more log entries are hidden from the preview. Open the full log view to inspect them.`}
+              </Typography.Text>
+            ) : null}
+          </Space>
         ) : (
-          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={locale === "zh-CN" ? "暂无关键日志" : "No important logs yet"} />
+          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={locale === "zh-CN" ? "暂无日志" : "No logs yet"} />
         )}
       </Card>
+
+      <Modal
+        open={logModalOpen}
+        onCancel={() => setLogModalOpen(false)}
+        footer={null}
+        width={880}
+        title={locale === "zh-CN" ? "任务日志" : "Task logs"}
+      >
+        <Space direction="vertical" size={16} className="full-width">
+          {logViews.hasStructuredOperatorLogs ? (
+            <Segmented<LogTrack>
+              block
+              value={activeLogTrack}
+              onChange={(value) => setActiveLogTrack(value)}
+              options={[
+                { label: `${getLogTrackLabel("operator", locale)} (${logViews.operator.length})`, value: "operator" },
+                { label: `${getLogTrackLabel("raw", locale)} (${logViews.raw.length})`, value: "raw" },
+              ]}
+            />
+          ) : null}
+          <Typography.Text type="secondary">
+            {getLogSummaryText(logViews, locale)}
+          </Typography.Text>
+          {modalLogs.length ? (
+            <div className="task-log-modal-body">
+              <List
+                className="detail-list"
+                dataSource={modalLogs}
+                renderItem={(entry) => (
+                  <List.Item key={`${entry.timestamp}-${entry.message}`}>
+                    <Space direction="vertical" size={4} className="full-width task-log-entry">
+                      <Typography.Text type="secondary">
+                        {new Date(entry.timestamp).toLocaleString(locale)}
+                      </Typography.Text>
+                      <Typography.Text className="wrap-anywhere preserve-breaks task-log-full-message">
+                        {normalizeDisplayText(entry.message)}
+                      </Typography.Text>
+                    </Space>
+                  </List.Item>
+                )}
+              />
+            </div>
+          ) : (
+            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={locale === "zh-CN" ? "暂无日志" : "No logs yet"} />
+          )}
+        </Space>
+      </Modal>
     </Space>
   );
 }
