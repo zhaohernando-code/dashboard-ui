@@ -136,7 +136,16 @@ export function DashboardShell({ shell, children }: DashboardShellProps) {
         )}
 
         <Drawer
-          title={copy.mobileControlTitle}
+          title={
+            <div className="mobile-drawer-title">
+              <Segmented
+                block
+                options={tabs.map((tab) => ({ label: tab.label[shell.locale], value: tab.id }))}
+                value={shell.activeTab}
+                onChange={(value) => shell.onChangeTab(value as typeof shell.activeTab)}
+              />
+            </div>
+          }
           placement="bottom"
           height="auto"
           open={shell.isMobileNavOpen}
@@ -144,17 +153,6 @@ export function DashboardShell({ shell, children }: DashboardShellProps) {
           className="mobile-drawer"
         >
           <Space direction="vertical" size={16} className="full-width">
-            <Space direction="vertical" size={8} className="full-width mobile-control-tabs">
-              <Typography.Text type="secondary">
-                {shell.locale === "zh-CN" ? "页面切换" : "Views"}
-              </Typography.Text>
-              <Segmented
-                block
-                options={tabs.map((tab) => ({ label: tab.label[shell.locale], value: tab.id }))}
-                value={shell.activeTab}
-                onChange={(value) => shell.onChangeTab(value as typeof shell.activeTab)}
-              />
-            </Space>
             <HeaderSwitch
               checked={shell.theme === "dark"}
               label={copy.themeSetting}
