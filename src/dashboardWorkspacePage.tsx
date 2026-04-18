@@ -20,21 +20,6 @@ import { buildLogViews } from "./dashboardLogs";
 import { getRequirementPreview, normalizeDisplayText } from "./dashboardTaskViews";
 import type { Requirement, Task } from "./dashboardTypes";
 
-function formatTaskSyncStatus(
-  taskSyncState: DashboardWorkspaceViewModel["taskSyncState"],
-  locale: DashboardWorkspaceViewModel["locale"],
-) {
-  if (taskSyncState.inFlight) {
-    return locale === "zh-CN" ? "正在同步…" : "Syncing...";
-  }
-  if (!taskSyncState.lastSyncedAt) {
-    return locale === "zh-CN" ? "尚未同步" : "Not synced yet";
-  }
-  return locale === "zh-CN"
-    ? `最近同步 ${new Date(taskSyncState.lastSyncedAt).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`
-    : `Last synced ${new Date(taskSyncState.lastSyncedAt).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`;
-}
-
 function getRequirementStatusSource(requirement: Requirement): Pick<Task, "status" | "planDraftPending" | "pendingAction" | "executionDecisionGate"> {
   return requirement.attempts[0] || {
     status: requirement.status,
@@ -101,7 +86,6 @@ function WorkspaceMainPane({ workspace }: WorkspaceMainPaneProps) {
           ))}
         </div>
         <Space wrap className="workspace-toolbar-actions">
-          <Typography.Text type="secondary">{formatTaskSyncStatus(taskSyncState, locale)}</Typography.Text>
           <Button icon={<ReloadOutlined />} loading={taskSyncState.inFlight} onClick={() => void onRefreshAll()}>
             {copy.refresh}
           </Button>

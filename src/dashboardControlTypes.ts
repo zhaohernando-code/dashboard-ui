@@ -41,7 +41,6 @@ export type PendingTaskMutation = {
 
 export type TaskSyncState = {
   inFlight: boolean;
-  lastSyncedAt: string;
 };
 
 export type DashboardBreadcrumb = {

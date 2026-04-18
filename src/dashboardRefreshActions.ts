@@ -295,7 +295,7 @@ export function createDashboardRefreshActions(input: DashboardRefreshActionsInpu
         }
         setTasks([]);
         setPendingTaskMutations({});
-        setTaskSyncState({ inFlight: false, lastSyncedAt: new Date().toISOString() });
+        setTaskSyncState({ inFlight: false });
         return;
       }
 
@@ -401,7 +401,7 @@ export function createDashboardRefreshActions(input: DashboardRefreshActionsInpu
           );
           return hasRuntimeSnapshot ? current : buildGithubDirectUsageFallback(applyPendingMutationsToTasks(taskList, nextPendingTaskMutations, locale), locale);
         });
-        setTaskSyncState({ inFlight: false, lastSyncedAt: new Date().toISOString() });
+        setTaskSyncState({ inFlight: false });
 
         const visibleTaskIds = new Set([
           ...taskList.map((task) => task.id),
@@ -453,7 +453,7 @@ export function createDashboardRefreshActions(input: DashboardRefreshActionsInpu
       const nextPendingTaskMutations = reconcilePendingTaskMutations(normalizedTasks, pendingTaskMutationsRef.current);
       setTasks(normalizedTasks);
       setPendingTaskMutations(nextPendingTaskMutations);
-      setTaskSyncState({ inFlight: false, lastSyncedAt: new Date().toISOString() });
+      setTaskSyncState({ inFlight: false });
 
       const visibleTaskIds = new Set([
         ...normalizedTasks.map((task) => task.id),

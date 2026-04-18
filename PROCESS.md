@@ -1,5 +1,12 @@
 # PROCESS
 
+## 2026-04-18
+
+- Problem: the workspace toolbar surfaced a per-refresh sync timestamp, while the auto-refresh loop used a fixed `setInterval`, so routine polling could look noisy to operators and could overlap when a refresh cycle took longer than the nominal interval.
+- Resolution: removed the operator-facing sync timestamp, reduced task sync state to loading-only feedback, and switched the dashboard poller to schedule the next cycle only after the current refresh completes.
+- Prevention: operator dashboards should not display per-poll timestamps unless that information remains meaningful to a human, and recurring sync loops must be completion-driven so slow responses cannot silently increase the effective poll rate.
+- Commit ID: N/A（已完成本地 `npm run check` / `npm run build`）
+
 ## 2026-04-15
 
 - Problem: on mobile, the workspace toolbar could still be stretched past the viewport when a breadcrumb label became very long, because the breadcrumb lane and its button content were not constrained tightly enough inside the flex toolbar; the control-center drawer also treated page switching like a nested section instead of exposing the three primary views immediately at the top.

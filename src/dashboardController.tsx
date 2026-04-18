@@ -121,11 +121,14 @@ export function useDashboardController(): DashboardController {
   const screens = Grid.useBreakpoint();
   const isMobile = !screens.md;
   const pollTokenRef = useRef(0);
+  const autoRefreshCycleRef = useRef<() => Promise<void>>(async () => {});
+  const autoRefreshTimerRef = useRef<number | null>(null);
+  const taskSyncInFlightRef = useRef(false);
   const taskRefreshRequestRef = useRef(0);
   const pendingTaskMutationsRef = useRef(pendingTaskMutations);
   const selectedProjectIdRef = useRef(selectedProjectId);
   const selectedTaskIdRef = useRef(selectedTaskId);
-  const [taskSyncState, setTaskSyncState] = useState<TaskSyncState>({ inFlight: false, lastSyncedAt: "" });
+  const [taskSyncState, setTaskSyncState] = useState<TaskSyncState>({ inFlight: false });
   const [expeditedPollUntil, setExpeditedPollUntil] = useState(0);
   const copy = useMemo(() => getDashboardCopy(locale), [locale]);
   const api = useMemo(() => createApiRequest(sessionToken), [sessionToken]);
@@ -203,27 +206,16 @@ export function useDashboardController(): DashboardController {
   }, [pendingTaskMutations]);
 
   useEffect(() => {
+    taskSyncInFlightRef.current = taskSyncState.inFlight;
+  }, [taskSyncState.inFlight]);
+
+  useEffect(() => {
     setIsMobileNavOpen(false);
   }, [activeTab, locale, theme]);
 
   useEffect(() => {
     void refreshAll();
   }, [githubToken, runtimeMode, sessionToken]);
-
-  useEffect(() => {
-    const pollIntervalMs = Date.now() < expeditedPollUntil
-      ? DASHBOARD_EXPEDITED_POLL_INTERVAL_MS
-      : DASHBOARD_POLL_INTERVAL_MS;
-    const interval = window.setInterval(() => {
-      void refreshTasks();
-      if (runtimeMode !== "github-direct") {
-        void refreshApprovals();
-      }
-      void refreshUsage();
-      void refreshAuth();
-    }, pollIntervalMs);
-    return () => window.clearInterval(interval);
-  }, [expeditedPollUntil, githubToken, runtimeMode, sessionToken]);
 
   useEffect(() => {
     if (!expeditedPollUntil) {
@@ -309,6 +301,53 @@ export function useDashboardController(): DashboardController {
     setUsageSummary,
     summarizeError,
   });
+
+  useEffect(() => {
+    autoRefreshCycleRef.current = async () => {
+      if (taskSyncInFlightRef.current) {
+        return;
+      }
+      const refreshes = [refreshTasks(), refreshUsage(), refreshAuth()];
+      if (runtimeMode !== "github-direct") {
+        refreshes.splice(1, 0, refreshApprovals());
+      }
+      await Promise.all(refreshes);
+    };
+  }, [refreshApprovals, refreshAuth, refreshTasks, refreshUsage, runtimeMode]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    function clearScheduledPoll() {
+      if (autoRefreshTimerRef.current !== null) {
+        window.clearTimeout(autoRefreshTimerRef.current);
+        autoRefreshTimerRef.current = null;
+      }
+    }
+
+    function scheduleNextPoll() {
+      if (cancelled) {
+        return;
+      }
+      clearScheduledPoll();
+      const pollIntervalMs = Date.now() < expeditedPollUntil
+        ? DASHBOARD_EXPEDITED_POLL_INTERVAL_MS
+        : DASHBOARD_POLL_INTERVAL_MS;
+      autoRefreshTimerRef.current = window.setTimeout(() => {
+        void autoRefreshCycleRef.current()
+          .catch(() => {})
+          .finally(() => {
+            scheduleNextPoll();
+          });
+      }, pollIntervalMs);
+    }
+
+    scheduleNextPoll();
+    return () => {
+      cancelled = true;
+      clearScheduledPoll();
+    };
+  }, [expeditedPollUntil, githubToken, runtimeMode, sessionToken]);
 
   const { onCreateProject, onCreateTask, mutateTask, respondToTask } = createDashboardTaskActions({
     locale,
