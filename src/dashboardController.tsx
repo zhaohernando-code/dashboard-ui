@@ -307,7 +307,7 @@ export function useDashboardController(): DashboardController {
       if (taskSyncInFlightRef.current) {
         return;
       }
-      const refreshes = [refreshTasks(), refreshUsage(), refreshAuth()];
+      const refreshes = [refreshTasks({ trigger: "auto" }), refreshUsage(), refreshAuth()];
       if (runtimeMode !== "github-direct") {
         refreshes.splice(1, 0, refreshApprovals());
       }

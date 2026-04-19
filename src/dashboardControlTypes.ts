@@ -39,8 +39,11 @@ export type PendingTaskMutation = {
   placeholderTask?: Task;
 };
 
+export type TaskSyncTrigger = "auto" | "manual";
+
 export type TaskSyncState = {
   inFlight: boolean;
+  trigger?: TaskSyncTrigger;
 };
 
 export type DashboardBreadcrumb = {

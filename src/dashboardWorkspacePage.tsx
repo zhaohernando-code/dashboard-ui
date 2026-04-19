@@ -33,6 +33,10 @@ type WorkspaceMainPaneProps = {
   workspace: DashboardWorkspaceViewModel;
 };
 
+function isManualSyncInFlight(taskSyncState: DashboardWorkspaceViewModel["taskSyncState"]) {
+  return taskSyncState.inFlight && taskSyncState.trigger !== "auto";
+}
+
 function WorkspaceMainPane({ workspace }: WorkspaceMainPaneProps) {
   const {
     locale,
@@ -86,7 +90,7 @@ function WorkspaceMainPane({ workspace }: WorkspaceMainPaneProps) {
           ))}
         </div>
         <Space wrap className="workspace-toolbar-actions">
-          <Button icon={<ReloadOutlined />} loading={taskSyncState.inFlight} onClick={() => void onRefreshAll()}>
+          <Button icon={<ReloadOutlined />} loading={isManualSyncInFlight(taskSyncState)} onClick={() => void onRefreshAll()}>
             {copy.refresh}
           </Button>
           {workspaceLevel === "projects" ? (
@@ -276,7 +280,7 @@ function WorkspaceSidePane({ workspace }: WorkspaceSidePaneProps) {
         <SectionHeader
           title={copy.pendingApprovals}
           actions={
-            <Button icon={<ReloadOutlined />} loading={taskSyncState.inFlight} onClick={() => void onRefreshTasks()}>
+            <Button icon={<ReloadOutlined />} loading={isManualSyncInFlight(taskSyncState)} onClick={() => void onRefreshTasks()}>
               {copy.refresh}
             </Button>
           }

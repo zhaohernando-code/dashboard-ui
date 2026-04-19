@@ -38,7 +38,7 @@ import type {
   ToolLink,
   UsageOverview,
 } from "./dashboardTypes";
-import type { PendingTaskMutation, TaskSyncState } from "./dashboardControlTypes";
+import type { PendingTaskMutation, TaskSyncState, TaskSyncTrigger } from "./dashboardControlTypes";
 
 type DashboardRequest = <T>(path: string, init?: RequestInit) => Promise<T>;
 
@@ -107,6 +107,10 @@ export function createDashboardRefreshActions(input: DashboardRefreshActionsInpu
     const normalized = normalizeUsageOverview(raw);
     setUsage(normalized);
     setUsageSummary(buildUsageSummary(normalized, locale));
+  }
+
+  function normalizeTaskSyncTrigger(trigger?: TaskSyncTrigger): TaskSyncTrigger {
+    return trigger === "auto" ? "auto" : "manual";
   }
 
   async function refreshHealth() {
@@ -285,9 +289,10 @@ export function createDashboardRefreshActions(input: DashboardRefreshActionsInpu
     }
   }
 
-  async function refreshTasks() {
+  async function refreshTasks(options?: { trigger?: TaskSyncTrigger }) {
     const requestId = ++taskRefreshRequestRef.current;
-    setTaskSyncState((current) => ({ ...current, inFlight: true }));
+    const trigger = normalizeTaskSyncTrigger(options?.trigger);
+    setTaskSyncState({ inFlight: true, trigger });
     if (runtimeMode === "github-direct") {
       if (!githubToken) {
         if (requestId !== taskRefreshRequestRef.current) {
@@ -640,12 +645,27 @@ export function createDashboardRefreshActions(input: DashboardRefreshActionsInpu
     }
   }
 
-  async function refreshAll() {
+  async function refreshAll(options?: { trigger?: TaskSyncTrigger }) {
     if (runtimeMode === "github-direct") {
-      await Promise.all([refreshHealth(), refreshAuth(), refreshProjects(), refreshTasks(), refreshTools(), refreshUsage()]);
+      await Promise.all([
+        refreshHealth(),
+        refreshAuth(),
+        refreshProjects(),
+        refreshTasks(options),
+        refreshTools(),
+        refreshUsage(),
+      ]);
       return;
     }
-    await Promise.all([refreshHealth(), refreshAuth(), refreshProjects(), refreshTasks(), refreshApprovals(), refreshTools(), refreshUsage()]);
+    await Promise.all([
+      refreshHealth(),
+      refreshAuth(),
+      refreshProjects(),
+      refreshTasks(options),
+      refreshApprovals(),
+      refreshTools(),
+      refreshUsage(),
+    ]);
   }
 
   return {
