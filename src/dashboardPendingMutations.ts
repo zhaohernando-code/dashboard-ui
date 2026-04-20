@@ -249,6 +249,9 @@ function hasPendingMutationBeenAcknowledged(task: Task, mutation: PendingTaskMut
   if (mutation.actionType === "create_project" || mutation.actionType === "create_task") {
     return true;
   }
+  if (mutation.phase === "timed_out" && !task.pendingAction) {
+    return true;
+  }
   if (hasStatusCommentAfter(task, mutation.acceptedAt || mutation.startedAt)) {
     return true;
   }
