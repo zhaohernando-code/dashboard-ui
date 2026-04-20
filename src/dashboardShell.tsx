@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { Alert, Button, Card, Drawer, Flex, Layout, Segmented, Space, Tabs, Typography } from "antd";
-import { MenuOutlined } from "@ant-design/icons";
+import { EyeInvisibleOutlined, EyeOutlined, MenuOutlined } from "@ant-design/icons";
 
 import { HeaderLocaleSwitch, HeaderSwitch, SectionHeader } from "./dashboardComponents";
 import { tabs, type DashboardShellViewModel } from "./dashboardConstants";
@@ -37,6 +37,8 @@ export function DashboardShell({ shell, children }: DashboardShellProps) {
                   <HeaderSwitch
                     checked={shell.watchdogEnabled}
                     label={copy.watchdogSetting}
+                    checkedChildren={<EyeOutlined />}
+                    unCheckedChildren={<EyeInvisibleOutlined />}
                     onToggle={() => void shell.onToggleWatchdog(!shell.watchdogEnabled)}
                   />
                   <HeaderSwitch
@@ -182,6 +184,8 @@ export function DashboardShell({ shell, children }: DashboardShellProps) {
             <HeaderSwitch
               checked={shell.watchdogEnabled}
               label={copy.watchdogSetting}
+              checkedChildren={<EyeOutlined />}
+              unCheckedChildren={<EyeInvisibleOutlined />}
               onToggle={() => void shell.onToggleWatchdog(!shell.watchdogEnabled)}
             />
             <HeaderSwitch

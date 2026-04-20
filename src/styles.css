@@ -72,6 +72,9 @@ a {
   position: relative;
   min-height: 100vh;
   background: transparent;
+  background-image:
+    linear-gradient(180deg, color-mix(in srgb, var(--surface) 38%, transparent) 0%, transparent 20rem),
+    linear-gradient(180deg, color-mix(in srgb, var(--surface) 20%, transparent) 0%, transparent 100%);
   overflow-x: hidden;
   overflow-x: clip;
   overflow-y: visible;
@@ -79,14 +82,7 @@ a {
 }
 
 .app-shell::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--surface) 38%, transparent) 0%, transparent 20rem),
-    linear-gradient(180deg, color-mix(in srgb, var(--surface) 20%, transparent) 0%, transparent 100%);
+  content: none;
 }
 
 .app-root {
@@ -490,6 +486,10 @@ a {
   border: 1px solid var(--line);
   border-radius: 999px;
   background: color-mix(in srgb, var(--surface-strong) 88%, transparent);
+}
+
+.header-switch-icon {
+  color: var(--text);
 }
 
 .wrap-anywhere {

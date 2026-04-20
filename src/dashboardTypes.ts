@@ -77,6 +77,7 @@ export type TaskPendingActionType =
   | "approve"
   | "reject"
   | "retry"
+  | "bypass_global_verification"
   | "cancel";
 
 export type TaskPendingActionPhase = "submitting" | "waiting_remote" | "timed_out";

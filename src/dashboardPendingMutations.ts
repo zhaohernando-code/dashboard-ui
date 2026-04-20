@@ -156,6 +156,19 @@ function getPendingTaskMutationCopy(
               ? "The retry request was submitted, but requeueing is taking longer than expected. Do not click again yet."
               : "The retry request was submitted. Waiting for the system to requeue the task."),
       };
+    case "bypass_global_verification":
+      return {
+        label: locale === "zh-CN"
+          ? (submitting ? "提交门禁豁免中" : delayed ? "门禁豁免同步较慢" : "带门禁豁免继续中")
+          : (submitting ? "Submitting gate bypass" : delayed ? "Gate bypass delayed" : "Continuing with gate bypass"),
+        message: locale === "zh-CN"
+          ? (delayed
+              ? "门禁豁免继续指令已提交，但系统重新排队较慢。请先不要重复点击。"
+              : "门禁豁免继续指令已提交，系统会跳过全局 control-plane 门禁后重新排队。")
+          : (delayed
+              ? "The gate-bypass request was submitted, but requeueing is taking longer than expected. Do not click again yet."
+              : "The gate-bypass request was submitted. The system will requeue the task while skipping the global control-plane gate."),
+      };
     case "cancel":
       return {
         label: locale === "zh-CN"

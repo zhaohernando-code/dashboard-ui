@@ -72,7 +72,7 @@ type TaskDetailProps = {
   detailError: string;
   logsLoading: boolean;
   logsError: string;
-  onMutate: (taskId: string, action: "cancel" | "retry") => Promise<void>;
+  onMutate: (taskId: string, action: "cancel" | "retry" | "bypass_global_verification", reason?: string) => Promise<void>;
   onRespond: (taskId: string, decision: "approve" | "reject" | "feedback", feedback: string) => Promise<boolean>;
   anomalies: WorkspaceAnomaly[];
   dismissedAnomalyIds: Set<string>;
@@ -96,6 +96,8 @@ type ApprovalCardProps = {
 type HeaderSwitchProps = {
   checked: boolean;
   label: string;
+  checkedChildren?: ReactNode;
+  unCheckedChildren?: ReactNode;
   onToggle: () => void;
 };
 
@@ -535,6 +537,8 @@ export function TaskDetail({
   const supportsUserDecision = task.status === "waiting" && pendingReason === "user_decision";
   const supportsPlanFeedback = task.status === "waiting" && pendingReason === "plan_feedback";
   const supportsManualIntervention = task.status === "waiting" && pendingReason === "manual_intervention";
+  const canContinueTask = Boolean(task.allowedActions?.includes("continue"));
+  const canBypassGlobalVerification = Boolean(task.allowedActions?.includes("bypass_global_verification"));
   const planQuestions = supportsUserDecision
     ? (executionDecisionGate?.form?.questions || task.planForm?.questions || [])
     : (task.planForm?.questions || []);
@@ -545,6 +549,7 @@ export function TaskDetail({
   const isPlanSectionBusy = Boolean(task.status === "waiting" && task.pendingAction?.blocksActions);
   const isApprovalActionPending = task.pendingAction?.type === "approve" || task.pendingAction?.type === "reject";
   const isRetryPending = task.pendingAction?.type === "retry";
+  const isGateBypassPending = task.pendingAction?.type === "bypass_global_verification";
   const isCancelPending = task.pendingAction?.type === "cancel";
   const isAcceptanceRejectPending = task.pendingAction?.type === "reject";
   const trimmedAcceptanceRejectFeedback = acceptanceRejectFeedback.trim();
@@ -697,6 +702,24 @@ export function TaskDetail({
     setCancelConfirmOpen(false);
   }
 
+  async function submitGateBypass() {
+    const defaultReason = locale === "zh-CN"
+      ? "当前任务用于修复全局 control-plane 门禁问题，需要在跳过全局门禁的前提下继续执行。"
+      : "This task is repairing a global control-plane verification gate and needs to continue with that global gate bypassed.";
+    const promptText = locale === "zh-CN"
+      ? "请输入门禁豁免原因。该操作只会跳过全局 control-plane 门禁，不会跳过项目校验。"
+      : "Enter the gate-bypass reason. This only skips the global control-plane gate and does not skip project checks.";
+    const reason = window.prompt(promptText, defaultReason);
+    if (reason === null) {
+      return;
+    }
+    const normalizedReason = reason.trim();
+    if (!normalizedReason) {
+      return;
+    }
+    await onMutate(task.id, "bypass_global_verification", normalizedReason);
+  }
+
   return (
     <Space direction="vertical" size={16} className="full-width">
       <Card size="small" className="detail-summary-card">
@@ -708,11 +731,25 @@ export function TaskDetail({
             <Typography.Title level={4} className="card-title wrap-anywhere">
               {task.title}
             </Typography.Title>
+            <Typography.Text type="secondary">
+              {locale === "zh-CN" ? "计划模式：" : "Plan mode: "}
+              {task.planMode ? (locale === "zh-CN" ? "是" : "Yes") : (locale === "zh-CN" ? "否" : "No")}
+            </Typography.Text>
             <Tag color={getDisplayedStatusColor(task, statusTagColor)}>
               {getDisplayedStatusText(task, locale, statusLabel)}
             </Tag>
           </Space>
           <Flex gap={8} wrap justify="flex-end">
+            {supportsManualIntervention && canContinueTask ? (
+              <Button type="primary" loading={isRetryPending} disabled={isTaskActionPending} onClick={() => void onMutate(task.id, "retry")}>
+                {getRetryActionLabel(task, locale)}
+              </Button>
+            ) : null}
+            {supportsManualIntervention && canBypassGlobalVerification ? (
+              <Button loading={isGateBypassPending} disabled={isTaskActionPending} onClick={() => void submitGateBypass()}>
+                {locale === "zh-CN" ? "带门禁豁免继续" : "Continue with gate bypass"}
+              </Button>
+            ) : null}
             {task.status === "awaiting_acceptance" ? (
               <>
                 <Button type="primary" loading={task.pendingAction?.type === "approve"} disabled={isTaskActionPending} onClick={() => void onRespond(task.id, "approve", "")}>
@@ -1066,9 +1103,16 @@ export function TaskDetail({
               />
             ) : null}
             <Flex gap={8} wrap style={{ marginTop: 12 }}>
-              <Button type="primary" loading={isRetryPending} disabled={isTaskActionPending} onClick={() => void onMutate(task.id, "retry")}>
-                {getRetryActionLabel(task, locale)}
-              </Button>
+              {canContinueTask ? (
+                <Button type="primary" loading={isRetryPending} disabled={isTaskActionPending} onClick={() => void onMutate(task.id, "retry")}>
+                  {getRetryActionLabel(task, locale)}
+                </Button>
+              ) : null}
+              {canBypassGlobalVerification ? (
+                <Button loading={isGateBypassPending} disabled={isTaskActionPending} onClick={() => void submitGateBypass()}>
+                  {locale === "zh-CN" ? "带门禁豁免继续" : "Continue with gate bypass"}
+                </Button>
+              ) : null}
               {canTaskBeCancelled ? (
                 <Button danger loading={isCancelPending} disabled={isTaskActionPending} onClick={() => setCancelConfirmOpen(true)}>
                   {locale === "zh-CN" ? "取消" : "Cancel"}
@@ -1520,14 +1564,14 @@ export function ApprovalCard({
   );
 }
 
-export function HeaderSwitch({ checked, label, onToggle }: HeaderSwitchProps) {
+export function HeaderSwitch({ checked, label, checkedChildren, unCheckedChildren, onToggle }: HeaderSwitchProps) {
   return (
     <Flex align="center" gap={8} className="header-switch-card">
       <Typography.Text>{label}</Typography.Text>
       <Switch
         checked={checked}
-        checkedChildren={<MoonOutlined />}
-        unCheckedChildren={<SunOutlined />}
+        checkedChildren={<span className="header-switch-icon">{checkedChildren || <MoonOutlined />}</span>}
+        unCheckedChildren={<span className="header-switch-icon">{unCheckedChildren || <SunOutlined />}</span>}
         aria-label={label}
         onChange={onToggle}
       />

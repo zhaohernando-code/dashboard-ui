@@ -170,7 +170,7 @@ export function createDashboardTaskActions(input: DashboardTaskActionsInput) {
     }
   }
 
-  async function mutateTask(taskId: string, action: "cancel" | "retry") {
+  async function mutateTask(taskId: string, action: "cancel" | "retry" | "bypass_global_verification", reason?: string) {
     const task = visibleTasks.find((item) => item.id === taskId) || tasks.find((item) => item.id === taskId);
     if (!task) {
       setTransientNotice(locale === "zh-CN" ? "未找到对应任务" : "Task not found", "error");
@@ -196,7 +196,13 @@ export function createDashboardTaskActions(input: DashboardTaskActionsInput) {
       },
     }));
     try {
-      await api(`/api/tasks/${taskId}/${action}`, { method: "POST" });
+      const requestPath = action === "bypass_global_verification"
+        ? `/api/tasks/${taskId}/retry-with-gate-bypass`
+        : `/api/tasks/${taskId}/${action}`;
+      await api(requestPath, {
+        method: "POST",
+        body: action === "bypass_global_verification" ? JSON.stringify({ reason: String(reason || "").trim() }) : undefined,
+      });
       const acceptedAt = new Date().toISOString();
       setPendingTaskMutations((current) => ({
         ...current,
@@ -222,7 +228,13 @@ export function createDashboardTaskActions(input: DashboardTaskActionsInput) {
       }));
       startExpeditedTaskPolling();
       setTransientNotice(
-        action === "cancel" ? (locale === "zh-CN" ? "已提交取消请求" : "Cancel requested") : locale === "zh-CN" ? "已提交继续处理" : "Retry requested",
+        action === "cancel"
+          ? (locale === "zh-CN" ? "已提交取消请求" : "Cancel requested")
+          : action === "bypass_global_verification"
+            ? (locale === "zh-CN" ? "已提交门禁豁免继续请求" : "Gate bypass requested")
+            : locale === "zh-CN"
+              ? "已提交继续处理"
+              : "Retry requested",
         "success",
       );
       await refreshTasks();
