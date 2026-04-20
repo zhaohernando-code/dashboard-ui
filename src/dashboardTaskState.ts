@@ -65,6 +65,9 @@ export function getTaskPendingReason(task: Pick<Task, "status" | "pendingReason"
   }
 
   const explicit = String(task.pendingReason || "").trim() as TaskPendingReason;
+  if (explicit === "execution_blocked") {
+    return "manual_intervention";
+  }
   if (TASK_PENDING_REASONS.has(explicit)) {
     return explicit;
   }
