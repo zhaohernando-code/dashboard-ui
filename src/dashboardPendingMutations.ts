@@ -1,5 +1,6 @@
 import { statusLabel, statusTagColor } from "./dashboardConstants";
 import type { PendingTaskMutation, TaskStatusDisplayState } from "./dashboardControlTypes";
+import { getTaskPendingReasonLabel } from "./dashboardTaskState";
 import type { Locale, Task, TaskPendingAction } from "./dashboardTypes";
 
 export function buildTaskLookupKey(task: Pick<Task, "projectId" | "type" | "title" | "description">) {
@@ -9,10 +10,6 @@ export function buildTaskLookupKey(task: Pick<Task, "projectId" | "type" | "titl
     String(task.title || "").trim(),
     String(task.description || "").trim(),
   ].join("::");
-}
-
-export function taskNeedsUserAttention(task: Pick<Task, "status" | "pendingAction">) {
-  return task.status === "waiting_user" && !task.pendingAction?.hideFromApprovals;
 }
 
 function getPendingTaskMutationCopy(
@@ -159,18 +156,18 @@ function getPendingTaskMutationCopy(
               ? "The retry request was submitted, but requeueing is taking longer than expected. Do not click again yet."
               : "The retry request was submitted. Waiting for the system to requeue the task."),
       };
-    case "stop":
+    case "cancel":
       return {
         label: locale === "zh-CN"
-          ? (submitting ? "提交停止中" : delayed ? "停止同步较慢" : "停止中")
-          : (submitting ? "Submitting stop" : delayed ? "Stop delayed" : "Stopping"),
+          ? (submitting ? "提交取消中" : delayed ? "取消同步较慢" : "取消处理中")
+          : (submitting ? "Submitting cancellation" : delayed ? "Cancellation delayed" : "Cancelling"),
         message: locale === "zh-CN"
           ? (delayed
-              ? "停止指令已提交，但系统停止较慢。请先不要重复点击。"
-              : "停止指令已提交，等待系统停止任务。")
+              ? "取消指令已提交，但系统清理与同步较慢。请先不要重复点击。"
+              : "取消指令已提交，等待系统完成回退与清理。")
           : (delayed
-              ? "The stop request was submitted, but stopping is taking longer than expected. Do not click again yet."
-              : "The stop request was submitted. Waiting for the system to stop the task."),
+              ? "The cancel request was submitted, but cleanup is taking longer than expected. Do not click again yet."
+              : "The cancel request was submitted. Waiting for the system to finish rollback and cleanup."),
       };
     default:
       return {
@@ -189,7 +186,7 @@ function buildTaskPendingAction(mutation: PendingTaskMutation, locale: Locale): 
     label: copy.label,
     message: copy.message,
     blocksActions: true,
-    hideFromApprovals: ["feedback", "approve", "reject"].includes(mutation.actionType),
+    hideFromApprovals: ["feedback", "approve", "reject", "cancel"].includes(mutation.actionType),
   };
 }
 
@@ -281,14 +278,14 @@ export function reconcilePendingTaskMutations(taskList: Task[], pendingMutations
 }
 
 export function getTaskDisplayedStatusText(task: TaskStatusDisplayState, locale: Locale) {
-  if (task.executionDecisionGate && task.status === "waiting_user") {
-    return locale === "zh-CN" ? "待你决策" : "Decision needed";
-  }
   if (task.pendingAction?.label) {
     return task.pendingAction.label;
   }
-  if (task.planDraftPending && task.status === "waiting_user") {
-    return locale === "zh-CN" ? "继续规划中" : "Planning";
+  if (task.planDraftPending && task.status === "waiting") {
+    return locale === "zh-CN" ? "继续处理中" : "Processing";
+  }
+  if (task.status === "waiting") {
+    return getTaskPendingReasonLabel(task, locale);
   }
   return statusLabel[task.status][locale];
 }
@@ -297,7 +294,7 @@ export function getTaskDisplayedStatusColor(task: TaskStatusDisplayState) {
   if (task.pendingAction) {
     return task.pendingAction.phase === "timed_out" ? "warning" : "processing";
   }
-  if (task.planDraftPending && task.status === "waiting_user") {
+  if (task.planDraftPending && task.status === "waiting") {
     return "processing";
   }
   return statusTagColor[task.status];

@@ -11,6 +11,18 @@ type ToolsPageProps = {
 export function ToolsPage({ toolsView, isMobile }: ToolsPageProps) {
   const { locale, tools } = toolsView;
 
+  function canOpenTool(tool: DashboardToolsViewModel["tools"][number]) {
+    const status = String(tool.deploymentStatus || "").trim().toLowerCase();
+    const provider = String(tool.deploymentProvider || "").trim().toLowerCase();
+    return Boolean(tool.route)
+      && (
+        status === "ready"
+        || !status
+        || provider === "self_hosted"
+        || String(tool.route || "").startsWith("/tools/")
+      );
+  }
+
   function getDeploymentTag(tool: DashboardToolsViewModel["tools"][number]) {
     const status = String(tool.deploymentStatus || "").trim().toLowerCase();
     if (status === "ready") {
@@ -44,7 +56,7 @@ export function ToolsPage({ toolsView, isMobile }: ToolsPageProps) {
                 extra={
                   <Space direction="vertical" size={8} className="full-width">
                     {getDeploymentTag(tool)}
-                    {tool.deploymentStatus === "ready" || !tool.deploymentStatus ? (
+                    {canOpenTool(tool) ? (
                       <a className="wrap-anywhere" href={tool.route} target="_blank" rel="noreferrer">
                         {locale === "zh-CN" ? `打开 ${tool.route}` : `Open ${tool.route}`}
                       </a>

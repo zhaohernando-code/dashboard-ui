@@ -5,6 +5,7 @@ import { useDashboardController } from "./dashboardController";
 import { DashboardShell } from "./dashboardShell";
 
 const WorkspacePage = lazy(() => import("./dashboardWorkspacePage").then((module) => ({ default: module.WorkspacePage })));
+const WatchdogPage = lazy(() => import("./dashboardWatchdogPage").then((module) => ({ default: module.WatchdogPage })));
 const ToolsPage = lazy(() => import("./dashboardToolsPage").then((module) => ({ default: module.ToolsPage })));
 const UsagePage = lazy(() => import("./dashboardUsagePage").then((module) => ({ default: module.UsagePage })));
 
@@ -18,7 +19,7 @@ function PageFallback() {
 
 export default function App() {
   const controller = useDashboardController();
-  const { shell, tools, usage, workspace } = controller;
+  const { shell, tools, usage, watchdog, workspace } = controller;
 
   return (
     <ConfigProvider
@@ -36,6 +37,7 @@ export default function App() {
         <DashboardShell shell={shell}>
           <Suspense fallback={<PageFallback />}>
             {shell.activeTab === "quest-center" ? <WorkspacePage workspace={workspace} /> : null}
+            {shell.activeTab === "watchdog" ? <WatchdogPage watchdogView={watchdog} isMobile={shell.isMobile} /> : null}
             {shell.activeTab === "tools" ? <ToolsPage toolsView={tools} isMobile={shell.isMobile} /> : null}
             {shell.activeTab === "usage" ? <UsagePage usageView={usage} isMobile={shell.isMobile} /> : null}
           </Suspense>

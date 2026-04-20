@@ -1,30 +1,26 @@
 # Dashboard UI
 
-React + TypeScript control-plane frontend intended for GitHub Pages.
+React + TypeScript control-plane frontend for the local Codex control plane.
 
-## Local usage
+## Runtime Topology
+
+- The browser-facing entrypoint is always the `release` deployment on port `80`.
+- The dashboard talks to the local control-server API on `http://127.0.0.1:8787` behind the release stack.
+- External/operator documentation should point users to the `release` port `80` URL, not to Vite dev server ports or to `8787`.
+- Treat `8787` as an internal API address only.
+
+## Local development
 
 ```bash
 npm install
 npm run dev
 ```
 
-Set the API base URL in the UI if your local server is not on `http://localhost:8787`.
+For local development only, the app defaults to `http://localhost:8787` as its API base.
 
-## Publish
+## Release Behavior
 
-GitHub Actions builds the Vite app and publishes `dist/` to GitHub Pages.
-
-For GitHub Pages / mobile usage, do not rely on `localhost`.
-Set these repository variables for Pages builds:
-
-- `VITE_GITHUB_TASK_REPO`: issue queue repository, for example `zhaohernando-code/dashboard-ui`
-
-In GitHub Pages, the UI runs in GitHub-direct mode:
-
-- connect a GitHub token from the browser
-- create tasks by creating labeled issues in `VITE_GITHUB_TASK_REPO`
-- send `/retry`, `/stop`, `/approve`, `/reject` as issue comments
-- let the local control server keep polling GitHub and executing tasks
-
-On local development / local desktop usage, the app still talks to `http://localhost:8787` by default.
+- Production builds are promoted into `release/projects/dashboard-ui/tool`.
+- The served UI is the release copy behind port `80`, not the Vite development server.
+- The dashboard now uses the local control-plane API directly; GitHub issue queue / GitHub-direct browser mode is retired.
+- Automatic GitHub repository creation remains available only as a server-side capability when the release config includes a valid GitHub API token.

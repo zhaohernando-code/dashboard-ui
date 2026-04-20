@@ -2,9 +2,11 @@ import {
   AUTO_ROUTE_PROJECT_ID,
   DEFAULT_REASONING_EFFORT,
   DEFAULT_TASK_MODEL,
+  FAST_SPEED_TIER,
+  FAST_TASK_MODEL,
   REMOTE_PROJECT_CATALOG,
 } from "./dashboardConstants";
-import { taskNeedsUserAttention } from "./dashboardPendingMutations";
+import { taskNeedsUserAttention } from "./dashboardTaskState";
 import type {
   Locale,
   PlanForm,
@@ -12,6 +14,7 @@ import type {
   Project,
   StatusFilterValue,
   Task,
+  TaskReasoningEffort,
   TaskStatus,
 } from "./dashboardTypes";
 
@@ -202,15 +205,6 @@ function requiresPlan(
   return normalized === "project_create" || normalized === "composite_task" || (normalized === "task" && isPlanModeEnabled(input, options));
 }
 
-function isHighRiskRequest(type: string, title: string, description: string) {
-  if (parseTaskType(type) !== "task") {
-    return false;
-  }
-  return /(delete|destroy|drop table|rm -rf|reset --hard|force push|rotate secret|publish|deploy prod|production)/i.test(
-    `${title}\n${description}`,
-  );
-}
-
 function getApprovalReason(
   input: string | { type?: string; planMode?: unknown; result?: { planMode?: unknown } | null },
   risky: boolean,
@@ -267,37 +261,6 @@ function isGenericProjectDescriptionLine(value: string) {
   ].some((marker) => normalized.includes(marker));
 }
 
-function extractProjectScopeItems(description: string) {
-  return String(description || "")
-    .split(/\n+/)
-    .map((line) => line.replace(/^[-*\d.\s]+/, "").trim())
-    .filter(Boolean)
-    .filter((line) => !isGenericProjectDescriptionLine(line))
-    .slice(0, 6);
-}
-
-function summarizeProjectIntent(description: string) {
-  const text = String(description || "").trim();
-  if (!text) {
-    return "New Codex-managed project request.";
-  }
-  return (
-    text
-      .split(/\n+/)
-      .map((line) => line.trim())
-      .find((line) => line && !isGenericProjectDescriptionLine(line))
-    || "New Codex-managed project request."
-  );
-}
-
-function summarizeTaskIntent(title: string, description: string) {
-  const firstUsefulLine = String(description || "")
-    .split(/\n+/)
-    .map((line) => line.replace(/^[-*\d.\s]+/, "").trim())
-    .find(Boolean);
-  return firstUsefulLine || String(title || "").trim() || "Clarify the requested change and delivery boundary.";
-}
-
 function normalizeProjectSummarySource(value: string) {
   return String(value || "")
     .replace(/\r\n/g, "\n")
@@ -351,151 +314,35 @@ export function deriveProjectMetadataDescription(name: string, description: stri
   return appendProjectSummaryPunctuation(candidate);
 }
 
-export function buildGithubDirectPlanPreview(input: {
-  type: string;
-  title: string;
-  description: string;
-  requestedProject?: { name?: string; description?: string } | null;
-  planMode?: boolean;
-}) {
-  if (parseTaskType(input.type) === "project_create" && input.requestedProject) {
-    const projectDescription = input.description || input.requestedProject.description || "";
-    const scopeItems = extractProjectScopeItems(projectDescription);
-    const scopeSummary = scopeItems.slice(0, 3).join(" / ");
-    return [
-      `Project: ${input.requestedProject.name || "Untitled project"}`,
-      `Intent: ${summarizeProjectIntent(projectDescription)}`,
-      ...(scopeItems.length
-        ? [
-            "Requested scope:",
-            ...scopeItems.map((item) => `- ${item}`),
-          ]
-        : []),
-      "Proposed plan:",
-      "1. Clarify scope, target users, constraints, and success criteria.",
-      "2. Research reusable open-source baselines, data sources, and critical dependencies.",
-      scopeSummary
-        ? `3. Turn the requested scope into delivery milestones, starting with ${scopeSummary}.`
-        : "3. Turn the requested scope into delivery milestones and execution order.",
-      "4. After approval, scaffold the repository/workspace, write project rules/process docs, and start the first milestone.",
-    ].join("\n");
-  }
-
-  if (parseTaskType(input.type) === "composite_task") {
-    return [
-      `Composite task: ${input.title || "Untitled"}`,
-      "Proposed child tasks:",
-      ...deriveCompositeSteps(input.description).map((item, index) => `${index + 1}. ${item}`),
-    ].join("\n");
-  }
-
-  if (requiresPlan(input.type, { planMode: input.planMode })) {
-    const suggestedSteps = deriveCompositeSteps(input.description);
-    const leadStep = suggestedSteps[0] || "inspect the relevant context";
-    return [
-      `Task: ${input.title || "Untitled task"}`,
-      `Intent: ${summarizeTaskIntent(input.title, input.description)}`,
-      "Proposed plan:",
-      "1. Clarify the exact success criteria, constraints, and safe phase-1 boundary.",
-      `2. Turn the request into milestones, starting with ${leadStep}.`,
-      "3. Define verification and publish checks before implementation starts.",
-      "4. Begin execution only after the plan and all open questions are confirmed.",
-    ].join("\n");
-  }
-
-  return "";
-}
-
-export function buildGithubDirectUserAction(input: {
-  status: TaskStatus;
-  type: string;
-  title: string;
-  description: string;
-  planPreview: string;
-  userAction?: Task["userAction"];
-  planMode?: boolean;
-}) {
-  if (input.status !== "waiting_user") {
-    return null;
-  }
-  if (input.userAction) {
-    return input.userAction;
-  }
-  const risky = isHighRiskRequest(input.type, input.title, input.description);
-  const planRequired = requiresPlan(input.type, { planMode: input.planMode });
-  return {
-    type: planRequired ? "plan_approval" : risky ? "high_risk_approval" : "approval_required",
-    title: getApprovalReason(input.type, risky, { planMode: input.planMode }),
-    detail: input.planPreview || input.description || input.title,
-    risk: risky ? "high" : "medium",
-  } satisfies NonNullable<Task["userAction"]>;
-}
-
-export function parseIssueBody(body: string) {
-  const embedded = body.match(/<!--\s*codex-task-payload\s*([\s\S]*?)\s*-->/i);
-  if (embedded) {
-    try {
-      const payload = JSON.parse(embedded[1]);
-      const type = parseTaskType(payload.type);
-      const requestedProject = payload.requestedProject || null;
-      return {
-        projectId: resolveTaskProjectId(type, String(payload.projectId || ""), requestedProject),
-        type,
-        title: String(payload.title || "Untitled task").trim(),
-        description: String(payload.description || "").trim(),
-        model: normalizeRequestedModel(String(payload.model || "")),
-        reasoningEffort: normalizeRequestedReasoningEffort(String(payload.reasoningEffort || payload.reasoningLevel || "")),
-        requestedProject,
-        planMode: isPlanModeEnabled(payload),
-      };
-    } catch {
-      // Fall through to plain parsing.
-    }
-  }
-
-  const meta: Record<string, string> = {};
-  for (const line of String(body || "").split("\n").slice(0, 12)) {
-    const match = line.match(/^\s*([a-zA-Z_]+)\s*:\s*(.+)\s*$/);
-    if (match) meta[match[1].toLowerCase()] = match[2].trim();
-  }
-  const type = parseTaskType(meta.type || "task");
-  return {
-    projectId: resolveTaskProjectId(type, meta.project || meta.projectid || "", null),
-    type,
-    title: "",
-    description: String(body || "").replace(/<!--[\s\S]*?-->/g, "").trim(),
-    model: normalizeRequestedModel(meta.model || ""),
-    reasoningEffort: normalizeRequestedReasoningEffort(meta.reasoning || meta.reasoninglevel || meta.reasoning_effort || ""),
-    requestedProject: null,
-    planMode: isPlanModeEnabled({ planMode: meta.planmode || meta.plan_mode || "" }),
-  };
-}
-
-export function parseEmbeddedStatusPayload(body: string) {
-  const match = String(body || "").match(/<!--\s*codex-status-snapshot\s*([\s\S]*?)\s*-->/i);
-  if (!match) {
-    return null;
-  }
-  try {
-    return JSON.parse(match[1]);
-  } catch {
-    return null;
-  }
-}
-
 export function normalizeRequestedModel(value: string): string {
   return String(value || "").trim() || DEFAULT_TASK_MODEL;
 }
 
-export function normalizeRequestedReasoningEffort(value: string): NonNullable<Task["reasoningEffort"]> {
+export function normalizeRequestedReasoningEffort(value: string): TaskReasoningEffort {
   const raw = String(value || "").trim().toLowerCase();
   if (raw === "normal") {
     return "medium";
   }
-  if (raw === "medium" || raw === "high" || raw === "xhigh") {
+  if (raw === "low" || raw === "medium" || raw === "high" || raw === "xhigh") {
     return raw;
   }
   return DEFAULT_REASONING_EFFORT;
+}
+
+export function deriveExecutionProfile(input: {
+  model?: string;
+  reasoningEffort?: string;
+  fastMode?: boolean;
+}) {
+  const requestedModel = normalizeRequestedModel(String(input.model || ""));
+  const fastMode = Boolean(input.fastMode);
+  return {
+    requestedModel,
+    model: fastMode ? FAST_TASK_MODEL : requestedModel,
+    reasoningEffort: normalizeRequestedReasoningEffort(String(input.reasoningEffort || "")),
+    fastMode,
+    speedTier: fastMode ? FAST_SPEED_TIER : undefined,
+  };
 }
 
 export function buildPlanFormFromPreview(planPreview: string, locale: Locale): PlanForm | null {
@@ -581,10 +428,12 @@ function getTaskProjectRepository(task: Pick<Task, "requestedProject">) {
 function createEmptyTaskStats() {
   return {
     total: 0,
+    pending: 0,
     running: 0,
-    failed: 0,
-    waitingUser: 0,
-    completed: 0,
+    waiting: 0,
+    awaitingAcceptance: 0,
+    succeeded: 0,
+    cancelled: 0,
   };
 }
 
@@ -604,7 +453,7 @@ function applyProjectMetadataOverrides(project: Project) {
 function createProjectRecord(project: Omit<Project, "taskStats"> | Project): Project {
   return applyProjectMetadataOverrides({
     ...project,
-    toolRoute: project.toolUrl || project.toolRoute || `/tools/${project.id}`,
+    toolRoute: project.toolRoute || `/tools/${project.id}`,
     taskStats: createEmptyTaskStats(),
   });
 }
@@ -671,10 +520,12 @@ export function mergeProjectStats(baseProjects: Project[], tasks: Task[]) {
     const project = projectMap.get(task.projectId)!;
     mergeTaskProjectMetadata(project, task);
     project.taskStats.total += 1;
+    if (task.status === "pending") project.taskStats.pending += 1;
     if (task.status === "running") project.taskStats.running += 1;
-    if (task.status === "failed") project.taskStats.failed += 1;
-    if (taskNeedsUserAttention(task)) project.taskStats.waitingUser += 1;
-    if (task.status === "completed") project.taskStats.completed += 1;
+    if (taskNeedsUserAttention(task)) project.taskStats.waiting += 1;
+    if (task.status === "awaiting_acceptance") project.taskStats.awaitingAcceptance += 1;
+    if (task.status === "succeeded") project.taskStats.succeeded += 1;
+    if (task.status === "cancelled") project.taskStats.cancelled += 1;
   }
 
   return Array.from(projectMap.values())

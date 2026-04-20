@@ -1,24 +1,21 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Grid } from "antd";
 
-import { createApiRequest, createGithubRequest } from "./dashboardClient";
+import { createApiRequest } from "./dashboardClient";
 import { createDashboardAuthActions } from "./dashboardAuthActions";
-import { buildLogsFromComments, normalizeExecutionDecisionGate, normalizePlanForm, normalizeProjectExecution, parseStatusFromComments, type IssueComment } from "./dashboardGithub";
-import { createDashboardRefreshActions } from "./dashboardRefreshActions";
+import { createDashboardRefreshActions, normalizeApiTask } from "./dashboardRefreshActions";
 import {
   CLOSED_ANOMALIES_STORAGE_KEY,
   DASHBOARD_EXPEDITED_POLL_DURATION_MS,
   DASHBOARD_EXPEDITED_POLL_INTERVAL_MS,
   DASHBOARD_POLL_INTERVAL_MS,
-  DEFAULT_API_BASE,
-  GITHUB_TASK_REPO,
-  IS_GITHUB_PAGES,
   STATUS_FILTER_ALL,
   getDashboardCopy,
   type DashboardShellViewModel,
   type DashboardTabId,
 } from "./dashboardConstants";
 import type {
+  DashboardWatchdogViewModel,
   DashboardToolsViewModel,
   DashboardUsageViewModel,
   DashboardWorkspaceViewModel,
@@ -32,7 +29,7 @@ import {
 import {
   getProjectDisplayName,
 } from "./dashboardProjectUtils";
-import { buildUsageLimitSnapshots } from "./dashboardUsageUtils";
+import { buildModelStatusSnapshots, buildUsageLimitSnapshots } from "./dashboardUsageUtils";
 import { createDashboardTaskActions } from "./dashboardTaskActions";
 import { useDashboardWorkspaceState } from "./useDashboardWorkspaceState";
 import type {
@@ -47,12 +44,13 @@ import type {
   NoticeTone,
   PlatformHealth,
   Project,
-  RuntimeMode,
   StatusFilterValue,
   Task,
+  TaskLog,
   ThemeMode,
   ToolLink,
   UsageOverview,
+  WatchdogOverview,
   WorkspaceAnomaly,
   WorkspaceLevel,
 } from "./dashboardTypes";
@@ -60,12 +58,12 @@ import type {
 export type DashboardController = {
   shell: DashboardShellViewModel;
   workspace: DashboardWorkspaceViewModel;
+  watchdog: DashboardWatchdogViewModel;
   tools: DashboardToolsViewModel;
   usage: DashboardUsageViewModel;
 };
 
 export function useDashboardController(): DashboardController {
-  const runtimeMode: RuntimeMode = IS_GITHUB_PAGES ? "github-direct" : "local-api";
   const [locale, setLocale] = useState<Locale>(() => {
     const saved = localStorage.getItem("codex.locale");
     if (saved === "zh-CN" || saved === "en-US") return saved;
@@ -77,16 +75,19 @@ export function useDashboardController(): DashboardController {
     return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
   });
   const [sessionToken, setSessionToken] = useState(localStorage.getItem("codex.sessionToken") || "");
-  const [githubToken, setGithubToken] = useState(localStorage.getItem("codex.githubAccessToken") || "");
   const [activeTab, setActiveTab] = useState<DashboardTabId>("quest-center");
   const [projects, setProjects] = useState<Project[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [taskDetailsById, setTaskDetailsById] = useState<Record<string, Task>>({});
+  const [taskLogsById, setTaskLogsById] = useState<Record<string, TaskLog[]>>({});
   const [pendingTaskMutations, setPendingTaskMutations] = useState<Record<string, PendingTaskMutation>>({});
   const [approvals, setApprovals] = useState<Approval[]>([]);
   const [tools, setTools] = useState<ToolLink[]>([]);
   const [usage, setUsage] = useState<UsageOverview | null>(null);
   const [usageSummary, setUsageSummary] = useState("");
+  const [usageRefreshing, setUsageRefreshing] = useState(false);
   const [platformHealth, setPlatformHealth] = useState<PlatformHealth | null>(null);
+  const [watchdogOverview, setWatchdogOverview] = useState<WatchdogOverview | null>(null);
   const [authConfig, setAuthConfig] = useState<AuthConfig | null>(null);
   const [connectionStatus, setConnectionStatus] = useState("");
   const [selectedTaskId, setSelectedTaskId] = useState("");
@@ -115,8 +116,13 @@ export function useDashboardController(): DashboardController {
   });
   const [copyState, setCopyState] = useState<CopyState>("idle");
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
+  const [selectedTaskDetailLoading, setSelectedTaskDetailLoading] = useState(false);
+  const [selectedTaskDetailError, setSelectedTaskDetailError] = useState("");
+  const [selectedTaskLogsLoading, setSelectedTaskLogsLoading] = useState(false);
+  const [selectedTaskLogsError, setSelectedTaskLogsError] = useState("");
   const [projectStatusFilter, setProjectStatusFilter] = useState<StatusFilterValue>(STATUS_FILTER_ALL);
   const [requirementStatusFilter, setRequirementStatusFilter] = useState<StatusFilterValue>(STATUS_FILTER_ALL);
+  const [showUnarchivedOnly, setShowUnarchivedOnly] = useState(true);
   const [requirementPage, setRequirementPage] = useState(1);
   const screens = Grid.useBreakpoint();
   const isMobile = !screens.md;
@@ -125,6 +131,8 @@ export function useDashboardController(): DashboardController {
   const autoRefreshTimerRef = useRef<number | null>(null);
   const taskSyncInFlightRef = useRef(false);
   const taskRefreshRequestRef = useRef(0);
+  const taskDetailRequestRef = useRef(0);
+  const taskLogsRequestRef = useRef(0);
   const pendingTaskMutationsRef = useRef(pendingTaskMutations);
   const selectedProjectIdRef = useRef(selectedProjectId);
   const selectedTaskIdRef = useRef(selectedTaskId);
@@ -132,16 +140,13 @@ export function useDashboardController(): DashboardController {
   const [expeditedPollUntil, setExpeditedPollUntil] = useState(0);
   const copy = useMemo(() => getDashboardCopy(locale), [locale]);
   const api = useMemo(() => createApiRequest(sessionToken), [sessionToken]);
-  const githubRequest = useMemo(
-    () => createGithubRequest(githubToken, locale === "zh-CN" ? "请先使用 GitHub 登录" : "Sign in with GitHub first"),
-    [githubToken, locale],
-  );
   const usageLimitSnapshots = useMemo(() => buildUsageLimitSnapshots(usage, locale), [locale, usage]);
+  const modelStatusSnapshots = useMemo(() => buildModelStatusSnapshots(usage, locale), [locale, usage]);
   const {
     requirementPageSize,
     visibleTasks,
     visibleRequirements,
-    selectedTask,
+    selectedTask: selectedTaskSummary,
     selectedRequirement,
     selectedRequirementAnomalies,
     dismissedAnomalyIds,
@@ -151,6 +156,7 @@ export function useDashboardController(): DashboardController {
     filteredProjects,
     filteredSelectedProjectRequirements,
     paginatedSelectedProjectRequirements,
+    visibleQueueItems,
     breadcrumbs,
     workspaceTitle,
     workspaceDescription,
@@ -160,7 +166,6 @@ export function useDashboardController(): DashboardController {
     openTaskRequirement,
     handleRequirementStatusFilterChange,
   } = useDashboardWorkspaceState({
-    runtimeMode,
     locale,
     isMobile,
     projects,
@@ -174,6 +179,7 @@ export function useDashboardController(): DashboardController {
     workspaceLevel,
     projectStatusFilter,
     requirementStatusFilter,
+    showUnarchivedOnly,
     requirementPage,
     setSelectedTaskId,
     setSelectedRequirementId,
@@ -183,6 +189,20 @@ export function useDashboardController(): DashboardController {
     setRequirementPage,
     detailTitle: copy.taskDetails,
   });
+
+  const selectedTask = useMemo(() => {
+    if (!selectedTaskSummary) {
+      return null;
+    }
+    const taskDetail = taskDetailsById[selectedTaskSummary.id];
+    const taskLogs = taskLogsById[selectedTaskSummary.id];
+    return {
+      ...selectedTaskSummary,
+      ...taskDetail,
+      logs: taskLogs ?? taskDetail?.logs ?? selectedTaskSummary.logs ?? [],
+    } satisfies Task;
+  }, [selectedTaskSummary, taskDetailsById, taskLogsById]);
+  const selectedTaskIsPlaceholder = selectedTaskSummary?.id?.startsWith("pending-local-") ?? false;
 
   useEffect(() => {
     localStorage.setItem("codex.locale", locale);
@@ -210,12 +230,21 @@ export function useDashboardController(): DashboardController {
   }, [taskSyncState.inFlight]);
 
   useEffect(() => {
+    setTaskDetailsById({});
+    setTaskLogsById({});
+    setSelectedTaskDetailLoading(false);
+    setSelectedTaskDetailError("");
+    setSelectedTaskLogsLoading(false);
+    setSelectedTaskLogsError("");
+  }, [sessionToken]);
+
+  useEffect(() => {
     setIsMobileNavOpen(false);
   }, [activeTab, locale, theme]);
 
   useEffect(() => {
     void refreshAll();
-  }, [githubToken, runtimeMode, sessionToken]);
+  }, [sessionToken]);
 
   useEffect(() => {
     if (!expeditedPollUntil) {
@@ -241,6 +270,79 @@ export function useDashboardController(): DashboardController {
   useEffect(() => {
     localStorage.setItem(CLOSED_ANOMALIES_STORAGE_KEY, JSON.stringify(dismissedAnomalies));
   }, [dismissedAnomalies]);
+
+  useEffect(() => {
+    if (!selectedTaskSummary) {
+      setSelectedTaskDetailLoading(false);
+      setSelectedTaskDetailError("");
+      return;
+    }
+    if (selectedTaskIsPlaceholder) {
+      setSelectedTaskDetailLoading(false);
+      setSelectedTaskDetailError("");
+      return;
+    }
+    const requestId = ++taskDetailRequestRef.current;
+    const taskId = selectedTaskSummary.id;
+    setSelectedTaskDetailLoading(true);
+    setSelectedTaskDetailError("");
+    void api<{ task: Task }>(`/api/tasks/${taskId}`)
+      .then((payload) => {
+        if (requestId !== taskDetailRequestRef.current) {
+          return;
+        }
+        setTaskDetailsById((current) => ({
+          ...current,
+          [taskId]: normalizeApiTask(payload.task, locale),
+        }));
+        setSelectedTaskDetailLoading(false);
+      })
+      .catch((error) => {
+        if (requestId !== taskDetailRequestRef.current) {
+          return;
+        }
+        setSelectedTaskDetailLoading(false);
+        setSelectedTaskDetailError(summarizeError(error));
+      });
+  }, [api, locale, selectedTaskIsPlaceholder, selectedTaskSummary?.id, selectedTaskSummary?.updatedAt]);
+
+  useEffect(() => {
+    if (!selectedTaskSummary) {
+      setSelectedTaskLogsLoading(false);
+      setSelectedTaskLogsError("");
+      return;
+    }
+    if (selectedTaskIsPlaceholder) {
+      setSelectedTaskLogsLoading(false);
+      setSelectedTaskLogsError("");
+      return;
+    }
+    const requestId = ++taskLogsRequestRef.current;
+    const taskId = selectedTaskSummary.id;
+    setSelectedTaskLogsLoading(true);
+    setSelectedTaskLogsError("");
+    void api<{ logs: TaskLog[] }>(`/api/tasks/${taskId}/logs`)
+      .then((payload) => {
+        if (requestId !== taskLogsRequestRef.current) {
+          return;
+        }
+        setTaskLogsById((current) => ({
+          ...current,
+          [taskId]: (payload.logs || []).map((entry) => ({
+            ...entry,
+            audience: entry.audience === "operator" ? "operator" : "raw",
+          })),
+        }));
+        setSelectedTaskLogsLoading(false);
+      })
+      .catch((error) => {
+        if (requestId !== taskLogsRequestRef.current) {
+          return;
+        }
+        setSelectedTaskLogsLoading(false);
+        setSelectedTaskLogsError(summarizeError(error));
+      });
+  }, [api, selectedTaskIsPlaceholder, selectedTaskSummary?.id, selectedTaskSummary?.updatedAt, selectedTaskSummary?.lastStatusCommentAt]);
 
   function summarizeError(error: unknown) {
     return error instanceof Error ? error.message : String(error);
@@ -272,15 +374,10 @@ export function useDashboardController(): DashboardController {
     setExpeditedPollUntil(Date.now() + DASHBOARD_EXPEDITED_POLL_DURATION_MS);
   }
 
-  const { refreshAll, refreshHealth, refreshAuth, refreshProjects, refreshTasks, refreshApprovals, refreshTools, refreshUsage } = createDashboardRefreshActions({
+  const { refreshAll, refreshHealth, refreshAuth, refreshProjects, refreshTasks, refreshApprovals, refreshTools, refreshUsage, refreshWatchdog } = createDashboardRefreshActions({
     locale,
-    runtimeMode,
     copy,
-    githubToken,
-    visibleTasks,
-    visibleRequirements,
     api,
-    githubRequest,
     selectedProjectIdRef,
     selectedTaskIdRef,
     pendingTaskMutationsRef,
@@ -299,6 +396,7 @@ export function useDashboardController(): DashboardController {
     setTools,
     setUsage,
     setUsageSummary,
+    setWatchdogOverview,
     summarizeError,
   });
 
@@ -307,13 +405,18 @@ export function useDashboardController(): DashboardController {
       if (taskSyncInFlightRef.current) {
         return;
       }
-      const refreshes = [refreshTasks({ trigger: "auto" }), refreshUsage(), refreshAuth()];
-      if (runtimeMode !== "github-direct") {
-        refreshes.splice(1, 0, refreshApprovals());
-      }
-      await Promise.all(refreshes);
+      await Promise.all([refreshTasks({ trigger: "auto" }), refreshApprovals(), refreshUsage(), refreshAuth(), refreshWatchdog()]);
     };
-  }, [refreshApprovals, refreshAuth, refreshTasks, refreshUsage, runtimeMode]);
+  }, [refreshApprovals, refreshAuth, refreshTasks, refreshUsage, refreshWatchdog]);
+
+  async function handleRefreshUsage() {
+    setUsageRefreshing(true);
+    try {
+      await refreshUsage({ manual: true });
+    } finally {
+      setUsageRefreshing(false);
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -330,7 +433,7 @@ export function useDashboardController(): DashboardController {
         return;
       }
       clearScheduledPoll();
-      const pollIntervalMs = Date.now() < expeditedPollUntil
+      const pollIntervalMs = (watchdogOverview?.activeSession || Date.now() < expeditedPollUntil)
         ? DASHBOARD_EXPEDITED_POLL_INTERVAL_MS
         : DASHBOARD_POLL_INTERVAL_MS;
       autoRefreshTimerRef.current = window.setTimeout(() => {
@@ -347,16 +450,67 @@ export function useDashboardController(): DashboardController {
       cancelled = true;
       clearScheduledPoll();
     };
-  }, [expeditedPollUntil, githubToken, runtimeMode, sessionToken]);
+  }, [expeditedPollUntil, sessionToken, watchdogOverview?.activeSession?.id]);
+
+  async function toggleWatchdogEnabled(next: boolean) {
+    try {
+      const payload = await api<{ enabled: boolean; watchdog: WatchdogOverview | null }>("/api/watchdog/config", {
+        method: "POST",
+        body: JSON.stringify({ enabled: next }),
+      });
+      setWatchdogOverview(payload.watchdog);
+      setTransientNotice(
+        next
+          ? (locale === "zh-CN" ? "看护模式已开启" : "Watchdog mode enabled")
+          : (locale === "zh-CN" ? "看护模式已关闭" : "Watchdog mode disabled"),
+        "success",
+      );
+      await refreshWatchdog();
+    } catch (error) {
+      setTransientNotice(summarizeError(error), "error");
+    }
+  }
+
+  async function acknowledgeWatchdog(jobId: string) {
+    try {
+      await api(`/api/watchdog/${jobId}/acknowledge`, {
+        method: "POST",
+      });
+      setTransientNotice(locale === "zh-CN" ? "已确认看护暂停，队列可继续" : "Watchdog pause acknowledged", "success");
+      await Promise.all([refreshWatchdog(), refreshTasks(), refreshApprovals()]);
+    } catch (error) {
+      setTransientNotice(summarizeError(error), "error");
+    }
+  }
+
+  function openTaskFromWatchdog(taskId: string) {
+    if (!taskId) {
+      return;
+    }
+    setSelectedTaskId(taskId);
+    setWorkspaceLevel("detail");
+    setActiveTab("quest-center");
+  }
+
+  const watchdogBanner = watchdogOverview?.activeSession
+    ? {
+        title: locale === "zh-CN"
+          ? `看护中 · ${watchdogOverview.activeSession.taskTitle || watchdogOverview.activeSession.taskId}`
+          : `Watchdog active · ${watchdogOverview.activeSession.taskTitle || watchdogOverview.activeSession.taskId}`,
+        detail: watchdogOverview.activeSession.summary
+          || watchdogOverview.pauseReason
+          || (locale === "zh-CN" ? "看护正在校验当前任务状态。" : "Watchdog is validating the current task state."),
+        tone: watchdogOverview.activeSession.requiresAcknowledgement ? ("warning" as const) : ("info" as const),
+        sessionId: watchdogOverview.activeSession.id,
+        requiresAcknowledgement: watchdogOverview.activeSession.requiresAcknowledgement,
+      }
+    : null;
 
   const { onCreateProject, onCreateTask, mutateTask, respondToTask } = createDashboardTaskActions({
     locale,
-    runtimeMode,
-    authConfig,
     visibleTasks,
     tasks,
     api,
-    githubRequest,
     setPendingTaskMutations,
     setSelectedProjectId,
     setSelectedTaskId,
@@ -371,14 +525,11 @@ export function useDashboardController(): DashboardController {
   });
   const { loginWithGithub, copyDeviceCode, cancelDeviceLogin, logout } = createDashboardAuthActions({
     locale,
-    runtimeMode,
-    githubToken,
     authConfig,
     deviceLogin,
     api,
     refreshAll,
     pollTokenRef,
-    setGithubToken,
     setSessionToken,
     setPendingTaskMutations,
     setDeviceLogin,
@@ -389,7 +540,6 @@ export function useDashboardController(): DashboardController {
 
 
   const shell: DashboardShellViewModel = {
-    runtimeMode,
     locale,
     theme,
     activeTab,
@@ -400,13 +550,17 @@ export function useDashboardController(): DashboardController {
     copyState,
     notices,
     copy,
-    apiBaseLabel: runtimeMode === "github-direct" ? GITHUB_TASK_REPO : DEFAULT_API_BASE,
+    watchdogEnabled: Boolean(watchdogOverview?.enabled),
+    watchdogActive: Boolean(watchdogOverview?.activeSession),
+    watchdogBanner,
     onToggleTheme: () => setTheme(theme === "dark" ? "light" : "dark"),
     onChangeLocale: setLocale,
     onChangeTab: (next) => {
       setActiveTab(next);
       setIsMobileNavOpen(false);
     },
+    onToggleWatchdog: toggleWatchdogEnabled,
+    onAcknowledgeWatchdog: acknowledgeWatchdog,
     onOpenMobileNav: () => setIsMobileNavOpen(true),
     onCloseMobileNav: () => setIsMobileNavOpen(false),
     onLogin: loginWithGithub,
@@ -434,15 +588,22 @@ export function useDashboardController(): DashboardController {
     requirementPageSize,
     selectedTask,
     selectedRequirement,
+    selectedTaskDetailLoading,
+    selectedTaskDetailError,
+    selectedTaskLogsLoading,
+    selectedTaskLogsError,
     selectedRequirementAnomalies,
     dismissedAnomalyIds,
     visibleWorkspaceAnomalies,
     visibleApprovals,
+    visibleQueueItems,
     taskSyncState,
     projectStatusFilter,
     requirementStatusFilter,
+    showUnarchivedOnly,
     onProjectStatusFilterChange: setProjectStatusFilter,
     onRequirementStatusFilterChange: handleRequirementStatusFilterChange,
+    onToggleShowUnarchivedOnly: setShowUnarchivedOnly,
     onRequirementPageChange: setRequirementPage,
     onRefreshAll: refreshAll,
     onRefreshTasks: refreshTasks,
@@ -467,6 +628,9 @@ export function useDashboardController(): DashboardController {
     usageSummary,
     platformHealth,
     usageLimitSnapshots,
+    modelStatusSnapshots,
+    usageRefreshing,
+    onRefreshUsage: handleRefreshUsage,
   };
 
   const toolsView: DashboardToolsViewModel = {
@@ -474,9 +638,19 @@ export function useDashboardController(): DashboardController {
     tools,
   };
 
+  const watchdogView: DashboardWatchdogViewModel = {
+    locale,
+    overview: watchdogOverview,
+    activeSession: watchdogOverview?.activeSession || null,
+    onToggleEnabled: toggleWatchdogEnabled,
+    onAcknowledge: acknowledgeWatchdog,
+    onOpenTask: openTaskFromWatchdog,
+  };
+
   return {
     shell,
     workspace,
+    watchdog: watchdogView,
     tools: toolsView,
     usage: usageView,
   };

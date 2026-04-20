@@ -3,10 +3,12 @@
 ## Product Direction
 
 - Preserve the existing control-plane product positioning unless a deliberate redesign is requested.
+- The operator-facing dashboard URL is always the `release` stack on port `80`; do not document or design around exposing the internal `8787` API port directly.
 - Prefer a structured operations dashboard over experimental custom layouts.
 - Use Ant Design as the default component and layout system for most new UI work.
 - Keep a small repo-native shell layer for branding, background, and a few product-specific interaction patterns.
-- Keep the dashboard deployable to GitHub Pages from a build output directory.
+- Keep the dashboard build promotable into `release/projects/dashboard-ui/tool` for the port `80` runtime surface.
+- If a control-plane change depends on backend contract updates, do not treat the dashboard update as an optional follow-up; keep the UI compatible with both the current backend and the pending rollout before promotion.
 
 ## Design Reference
 

@@ -1,4 +1,4 @@
-import { Button, Card, Divider, Empty, Flex, Space, Tag, Typography } from "antd";
+import { Button, Card, Checkbox, Divider, Empty, Flex, Space, Tag, Typography } from "antd";
 import { PlusOutlined, ReloadOutlined } from "@ant-design/icons";
 
 import {
@@ -20,12 +20,16 @@ import { buildLogViews } from "./dashboardLogs";
 import { getRequirementPreview, normalizeDisplayText } from "./dashboardTaskViews";
 import type { Requirement, Task } from "./dashboardTypes";
 
-function getRequirementStatusSource(requirement: Requirement): Pick<Task, "status" | "planDraftPending" | "pendingAction" | "executionDecisionGate"> {
+function getRequirementStatusSource(requirement: Requirement): Pick<Task, "status" | "planDraftPending" | "pendingAction" | "executionDecisionGate" | "pendingReason" | "pendingReasonLabel" | "userAction" | "planPreview"> {
   return requirement.attempts[0] || {
     status: requirement.status,
     planDraftPending: false,
     pendingAction: null,
     executionDecisionGate: null,
+    pendingReason: null,
+    pendingReasonLabel: "",
+    userAction: null,
+    planPreview: "",
   };
 }
 
@@ -53,13 +57,19 @@ function WorkspaceMainPane({ workspace }: WorkspaceMainPaneProps) {
     requirementPageSize,
     selectedTask,
     selectedRequirement,
+    selectedTaskDetailLoading,
+    selectedTaskDetailError,
+    selectedTaskLogsLoading,
+    selectedTaskLogsError,
     selectedRequirementAnomalies,
     dismissedAnomalyIds,
     taskSyncState,
     projectStatusFilter,
     requirementStatusFilter,
+    showUnarchivedOnly,
     onProjectStatusFilterChange,
     onRequirementStatusFilterChange,
+    onToggleShowUnarchivedOnly,
     onRequirementPageChange,
     onRefreshAll,
     onOpenCreateDialog,
@@ -114,22 +124,19 @@ function WorkspaceMainPane({ workspace }: WorkspaceMainPaneProps) {
         title={workspaceTitle}
         subtitle={workspaceDescription}
         actions={
-          workspaceLevel === "projects" ? (
-            <StatusFilterBar
-              locale={locale}
-              value={projectStatusFilter}
-              onChange={onProjectStatusFilterChange}
-              statusFilterAll={STATUS_FILTER_ALL}
-              statusLabel={statusLabel}
-            />
-          ) : workspaceLevel === "tasks" ? (
-            <StatusFilterBar
-              locale={locale}
-              value={requirementStatusFilter}
-              onChange={onRequirementStatusFilterChange}
-              statusFilterAll={STATUS_FILTER_ALL}
-              statusLabel={statusLabel}
-            />
+          workspaceLevel === "projects" || workspaceLevel === "tasks" ? (
+            <Space wrap size={12}>
+              <Checkbox checked={showUnarchivedOnly} onChange={(event) => onToggleShowUnarchivedOnly(event.target.checked)}>
+                {locale === "zh-CN" ? "仅展示未归档任务" : "Only unarchived"}
+              </Checkbox>
+              <StatusFilterBar
+                locale={locale}
+                value={workspaceLevel === "projects" ? projectStatusFilter : requirementStatusFilter}
+                onChange={workspaceLevel === "projects" ? onProjectStatusFilterChange : onRequirementStatusFilterChange}
+                statusFilterAll={STATUS_FILTER_ALL}
+                statusLabel={statusLabel}
+              />
+            </Space>
           ) : undefined
         }
       />
@@ -158,7 +165,7 @@ function WorkspaceMainPane({ workspace }: WorkspaceMainPaneProps) {
                     </Typography.Text>
                   </Space>
                   <Tag color="blue">
-                    {project.taskStats.running}/{project.taskStats.total}
+                    {project.taskStats.running + project.taskStats.waiting}/{project.taskStats.total}
                   </Tag>
                 </Flex>
                 <Divider />
@@ -238,6 +245,10 @@ function WorkspaceMainPane({ workspace }: WorkspaceMainPaneProps) {
             requirement={selectedRequirement}
             task={selectedTask}
             locale={locale}
+            detailLoading={selectedTaskDetailLoading}
+            detailError={selectedTaskDetailError}
+            logsLoading={selectedTaskLogsLoading}
+            logsError={selectedTaskLogsError}
             onMutate={onMutateTask}
             onRespond={onRespondToTask}
             anomalies={selectedRequirementAnomalies}
@@ -267,6 +278,7 @@ function WorkspaceSidePane({ workspace }: WorkspaceSidePaneProps) {
     copy,
     visibleWorkspaceAnomalies,
     visibleApprovals,
+    visibleQueueItems,
     taskSyncState,
     onRefreshTasks,
     onOpenTaskRequirement,
@@ -301,8 +313,41 @@ function WorkspaceSidePane({ workspace }: WorkspaceSidePaneProps) {
           ) : (
             <Empty
               image={Empty.PRESENTED_IMAGE_SIMPLE}
-              description={locale === "zh-CN" ? "当前没有待审批" : "No pending approvals"}
+              description={locale === "zh-CN" ? "当前没有待处理任务" : "No pending tasks"}
             />
+          )}
+        </div>
+        <Divider />
+        <SectionHeader title={locale === "zh-CN" ? "队列列表" : "Queue"} />
+        <div className="section-stack">
+          {visibleQueueItems.length ? (
+            visibleQueueItems.map((item) => (
+              <Card key={item.taskId} size="small" className="list-card">
+                <Space direction="vertical" size={8} className="full-width">
+                  <Flex justify="space-between" align="flex-start" gap={12}>
+                    <Typography.Text strong className="wrap-anywhere">
+                      #{item.position} · {item.title}
+                    </Typography.Text>
+                    <Tag color={statusTagColor[item.status]}>{statusLabel[item.status][locale]}</Tag>
+                  </Flex>
+                  <Typography.Text type="secondary" className="wrap-anywhere">
+                    {getProjectDisplayName(item.projectId, locale, item.projectName)}
+                    {item.queueName ? ` · ${item.queueName}` : ""}
+                    {item.issueNumber ? ` · Issue #${item.issueNumber}` : ""}
+                  </Typography.Text>
+                  {item.summary ? (
+                    <Typography.Paragraph className="entity-preview" ellipsis={{ rows: 2 }}>
+                      {normalizeDisplayText(item.summary)}
+                    </Typography.Paragraph>
+                  ) : null}
+                  <Button onClick={() => onOpenTaskRequirement(item.taskId)}>
+                    {locale === "zh-CN" ? "打开任务" : "Open task"}
+                  </Button>
+                </Space>
+              </Card>
+            ))
+          ) : (
+            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={locale === "zh-CN" ? "当前队列为空" : "Queue is empty"} />
           )}
         </div>
         <Divider />

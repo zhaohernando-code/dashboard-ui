@@ -1,5 +1,7 @@
 # PROCESS
 
+> Note: historical GitHub Pages / GitHub-direct entries below are deprecated context only. The active dashboard delivery model is the local self-hosted control-plane route.
+
 ## 2026-04-18
 
 - Problem: the workspace toolbar surfaced a per-refresh sync timestamp, while the auto-refresh loop used a fixed `setInterval`, so routine polling could look noisy to operators and could overlap when a refresh cycle took longer than the nominal interval.
@@ -383,3 +385,151 @@ no changes added to commit (use "git add" and/or "git commit -a")
 - Prevention: keep project metadata normalization separate from long-form execution briefs, and filter disposable placeholder projects before building visible task/project state instead of only at the final card-render step.
 - Commit ID: `29ee146`
 - Context: project=dashboard-ui, source=task-mnzwte9t-1q4z48
+
+## 2026-04-19
+
+- Problem: task task-mo5avwpw-gox7nh (同步状态逻辑更新) finished with status needs_revision.
+- Resolution: Changes synced to the local project baseline and promoted to /root/codex/release/projects/dashboard-ui/tool. Remote publish is disabled by policy.
+- Prevention: Finalization path now records and surfaces publish outcomes to avoid silent drift.
+- Commit ID: pending
+- Context: project=dashboard-ui, source=direct
+
+## 2026-04-19
+
+- Problem: dashboard docs still implied local dev/API addresses were suitable operator-facing URLs, even though the real external surface is always served from the `release` stack on port `80`.
+- Resolution: updated the dashboard README and project rules so external usage points to the `release` deployment on port `80`, while `127.0.0.1:8787` is documented only as the internal API/backend address.
+- Prevention: future dashboard documentation and acceptance notes must describe port `80` as the canonical user-facing entrypoint and reserve `8787` for internal wiring or local development context only.
+- Commit ID: pending
+
+## 2026-04-19
+
+- Problem: task task-mo5tk5bc-xnwd5q (切换前端状态展示与操作) finished with status publish_failed.
+- Resolution: Auto-publish warning: error: cannot rebase: You have unstaged changes.
+error: Please commit or stash them.
+
+- Prevention: Finalization path now records and surfaces publish outcomes to avoid silent drift.
+- Commit ID: pending
+- Context: project=dashboard-ui, source=direct
+
+## 2026-04-19
+
+- Problem: task task-mo5wgdlo-30kjkm (切换前端状态展示与操作) finished with status publish_failed.
+- Resolution: Auto-publish warning: error: cannot rebase: You have unstaged changes.
+error: Please commit or stash them.
+
+- Prevention: Finalization path now records and surfaces publish outcomes to avoid silent drift.
+- Commit ID: pending
+- Context: project=dashboard-ui, source=direct
+
+## 2026-04-19
+
+- Problem: task task-mo5wgdlo-30kjkm (切换前端状态展示与操作) finished with status blocked.
+- Resolution: Auto-publish warning: EISDIR: illegal operation on a directory, copyfile '/root/codex/release/.codex-system/worktrees/dashboard-ui/task-mo5wgdlo-30kjkm/node_modules' -> '/root/codex/release/.codex-system/dashboard-ui-baseline-lzWKuH/worktree/node_modules'
+- Prevention: Finalization path now records and surfaces publish outcomes to avoid silent drift.
+- Commit ID: pending
+- Context: project=dashboard-ui, source=direct
+
+## 2026-04-19
+
+- Problem: task task-mo5wgdlo-30kjkm (切换前端状态展示与操作) finished with status blocked.
+- Resolution: Auto-publish warning: node:internal/modules/cjs/loader:1459
+  throw err;
+  ^
+
+Error: Cannot find module '/root/codex/release/.codex-system/dashboard-ui-baseline-qgriYO/worktree/node_modules/typescript/bin/tsc'
+    at Module._resolveFilename (node:internal/modules/cjs/loader:1456:15)
+    at defaultResolveImpl (node:internal/modules/cjs/loader:1066:19)
+    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1071:22)
+    at Module._load (node:internal/modules/cjs/loader:1242:25)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:255:19)
+    at Module.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:154:5)
+    at node:internal/main/run_main_module:33:47 {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: []
+}
+
+Node.js v24.14.1
+
+- Prevention: Finalization path now records and surfaces publish outcomes to avoid silent drift.
+- Commit ID: pending
+- Context: project=dashboard-ui, source=direct
+
+## 2026-04-19
+
+- Problem: task task-mo5wgdlo-30kjkm (切换前端状态展示与操作) finished with status awaiting_acceptance.
+- Resolution: Changes synced to the isolated local baseline and promoted to /root/codex/release/projects/dashboard-ui/tool. Remote publish is disabled by policy.
+- Prevention: Finalization path now records and surfaces publish outcomes to avoid silent drift.
+- Commit ID: pending
+- Context: project=dashboard-ui, source=direct
+
+## 2026-04-20
+
+- Problem: task task-mo6kr8qg-8djd8i (ui修复) finished with status awaiting_acceptance.
+- Resolution: Changes synced to the isolated local baseline and promoted to /root/codex/release/projects/dashboard-ui/tool. Remote publish is disabled by policy.
+- Prevention: Finalization path now records and surfaces publish outcomes to avoid silent drift.
+- Commit ID: pending
+- Context: project=dashboard-ui, source=direct
+
+## 2026-04-20
+
+- Problem: task task-mo6kr8qg-8djd8i (ui修复) finished with status awaiting_acceptance.
+- Resolution: Changes synced to the isolated local baseline and promoted to /root/codex/release/projects/dashboard-ui/tool. Remote publish is disabled by policy.
+- Prevention: Finalization path now records and surfaces publish outcomes to avoid silent drift.
+- Commit ID: pending
+- Context: project=dashboard-ui, source=direct
+
+## 2026-04-20
+
+- Problem: task task-mo6pzjyl-4ot60y (新增model和修改用量概览) finished with status awaiting_acceptance.
+- Resolution: Changes synced to the isolated local baseline and promoted to /root/codex/release/projects/dashboard-ui/tool. Remote publish is disabled by policy.
+- Prevention: Finalization path now records and surfaces publish outcomes to avoid silent drift.
+- Commit ID: pending
+- Context: project=dashboard-ui, source=direct
+
+## 2026-04-20
+
+- Problem: task task-mo6pzjyl-4ot60y (新增model和修改用量概览) finished with status awaiting_acceptance.
+- Resolution: Changes synced to the isolated local baseline and promoted to /root/codex/release/projects/dashboard-ui/tool. Remote publish is disabled by policy.
+- Prevention: Finalization path now records and surfaces publish outcomes to avoid silent drift.
+- Commit ID: pending
+- Context: project=dashboard-ui, source=direct
+
+## 2026-04-20
+
+- Problem: task task-mo6pzjyl-4ot60y (新增model和修改用量概览) finished with status awaiting_acceptance.
+- Resolution: Changes synced to the isolated local baseline and promoted to /root/codex/release/projects/dashboard-ui/tool. Remote publish is disabled by policy.
+- Prevention: Finalization path now records and surfaces publish outcomes to avoid silent drift.
+- Commit ID: pending
+- Context: project=dashboard-ui, source=direct
+
+## 2026-04-20
+
+- Problem: task task-mo74r60r-xvhji3 (ui调整) finished with status awaiting_acceptance.
+- Resolution: Changes synced to the isolated local baseline and promoted to /root/codex/release/projects/dashboard-ui/tool. Remote publish is disabled by policy.
+- Prevention: Finalization path now records and surfaces publish outcomes to avoid silent drift.
+- Commit ID: pending
+- Context: project=dashboard-ui, source=direct
+
+## 2026-04-20
+
+- Problem: task task-mo750kv4-he077z (ui更新) finished with status awaiting_acceptance.
+- Resolution: Changes synced to the isolated local baseline and promoted to /root/codex/release/projects/dashboard-ui/tool. Remote publish is disabled by policy.
+- Prevention: Finalization path now records and surfaces publish outcomes to avoid silent drift.
+- Commit ID: pending
+- Context: project=dashboard-ui, source=direct
+
+## 2026-04-20
+
+- Problem: task task-mo75fijz-ulm6up (plan mode未生效) finished with status awaiting_acceptance.
+- Resolution: Changes synced to the isolated local baseline and promoted to /root/codex/release/projects/dashboard-ui/tool. Remote publish is disabled by policy.
+- Prevention: Finalization path now records and surfaces publish outcomes to avoid silent drift.
+- Commit ID: pending
+- Context: project=dashboard-ui, source=direct
+
+## 2026-04-20
+
+- Problem: task task-mo75fijz-ulm6up (plan mode未生效) finished with status awaiting_acceptance.
+- Resolution: Changes synced to the isolated local baseline and promoted to /root/codex/release/projects/dashboard-ui/tool. Remote publish is disabled by policy.
+- Prevention: Finalization path now records and surfaces publish outcomes to avoid silent drift.
+- Commit ID: pending
+- Context: project=dashboard-ui, source=direct

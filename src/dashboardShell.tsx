@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Alert, Button, Card, Drawer, Flex, Layout, Segmented, Space, Tabs, Tag, Typography } from "antd";
+import { Alert, Button, Card, Drawer, Flex, Layout, Segmented, Space, Tabs, Typography } from "antd";
 import { MenuOutlined } from "@ant-design/icons";
 
 import { HeaderLocaleSwitch, HeaderSwitch, SectionHeader } from "./dashboardComponents";
@@ -32,12 +32,13 @@ export function DashboardShell({ shell, children }: DashboardShellProps) {
               </div>
             </Flex>
             <Space size={12} wrap className="topbar-actions">
-              <Tag color="blue">{shell.runtimeMode === "github-direct" ? "GitHub Direct" : "Local API"}</Tag>
-              <Typography.Text type="secondary" className="api-base-label">
-                {copy.localApi} {shell.apiBaseLabel}
-              </Typography.Text>
               {!shell.isMobile ? (
                 <>
+                  <HeaderSwitch
+                    checked={shell.watchdogEnabled}
+                    label={copy.watchdogSetting}
+                    onToggle={() => void shell.onToggleWatchdog(!shell.watchdogEnabled)}
+                  />
                   <HeaderSwitch
                     checked={shell.theme === "dark"}
                     label={copy.themeSetting}
@@ -50,15 +51,14 @@ export function DashboardShell({ shell, children }: DashboardShellProps) {
                   />
                   {shell.authConfig?.user ? (
                     <Button onClick={() => void shell.onLogout()}>{copy.logoutButton}</Button>
-                  ) : (
+                  ) : shell.authConfig?.enabled ? (
                     <Button
                       type="primary"
                       onClick={() => void shell.onLogin()}
-                      disabled={shell.runtimeMode !== "github-direct" && !shell.authConfig?.enabled}
                     >
                       {copy.loginButton}
                     </Button>
-                  )}
+                  ) : null}
                 </>
               ) : null}
             </Space>
@@ -100,6 +100,32 @@ export function DashboardShell({ shell, children }: DashboardShellProps) {
               {shell.deviceLogin.error ? <Alert type="error" message={shell.deviceLogin.error} showIcon /> : null}
             </Space>
           </Card>
+        ) : null}
+
+        {shell.watchdogBanner ? (
+          <Alert
+            type={shell.watchdogBanner.tone}
+            showIcon
+            className="section-card"
+            message={shell.watchdogBanner.title}
+            description={shell.watchdogBanner.detail}
+            action={(
+              <Space wrap>
+                <Button size="small" onClick={() => shell.onChangeTab("watchdog")}>
+                  {shell.locale === "zh-CN" ? "查看看护" : "Open watchdog"}
+                </Button>
+                {shell.watchdogBanner.requiresAcknowledgement && shell.watchdogBanner.sessionId ? (
+                  <Button
+                    size="small"
+                    type="primary"
+                    onClick={() => void shell.onAcknowledgeWatchdog(shell.watchdogBanner!.sessionId!)}
+                  >
+                    {shell.locale === "zh-CN" ? "确认并继续" : "Acknowledge"}
+                  </Button>
+                ) : null}
+              </Space>
+            )}
+          />
         ) : null}
 
         {shell.notices.length ? (
@@ -154,6 +180,11 @@ export function DashboardShell({ shell, children }: DashboardShellProps) {
         >
           <Space direction="vertical" size={16} className="full-width">
             <HeaderSwitch
+              checked={shell.watchdogEnabled}
+              label={copy.watchdogSetting}
+              onToggle={() => void shell.onToggleWatchdog(!shell.watchdogEnabled)}
+            />
+            <HeaderSwitch
               checked={shell.theme === "dark"}
               label={copy.themeSetting}
               onToggle={shell.onToggleTheme}
@@ -167,16 +198,15 @@ export function DashboardShell({ shell, children }: DashboardShellProps) {
               <Button block onClick={() => void shell.onLogout()}>
                 {copy.logoutButton}
               </Button>
-            ) : (
+            ) : shell.authConfig?.enabled ? (
               <Button
                 block
                 type="primary"
                 onClick={() => void shell.onLogin()}
-                disabled={shell.runtimeMode !== "github-direct" && !shell.authConfig?.enabled}
               >
                 {copy.loginButton}
               </Button>
-            )}
+            ) : null}
           </Space>
         </Drawer>
 

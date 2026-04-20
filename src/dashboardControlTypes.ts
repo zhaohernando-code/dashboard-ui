@@ -12,9 +12,12 @@ import type {
   Task,
   TaskPendingActionPhase,
   TaskPendingActionType,
+  TaskQueueItem,
   TaskStatus,
   ToolLink,
   UsageOverview,
+  WatchdogOverview,
+  WatchdogSession,
   WorkspaceAnomaly,
   WorkspaceLevel,
 } from "./dashboardTypes";
@@ -65,7 +68,17 @@ export type DashboardUsageLimitSnapshot = {
   sourceLabel: string;
 };
 
-export type TaskStatusDisplayState = Pick<Task, "status" | "planDraftPending" | "pendingAction" | "executionDecisionGate">;
+export type DashboardUsageModelStatusSnapshot = {
+  key: string;
+  model: string;
+  available: boolean;
+  sourceLabel: string;
+  collectedAtText: string;
+  emptyText: string;
+  lines: DashboardUsageLimitSnapshot[];
+};
+
+export type TaskStatusDisplayState = Pick<Task, "status" | "planDraftPending" | "pendingAction" | "executionDecisionGate" | "pendingReason" | "pendingReasonLabel" | "userAction" | "planPreview">;
 
 export type DashboardWorkspaceViewModel = {
   locale: Locale;
@@ -86,15 +99,22 @@ export type DashboardWorkspaceViewModel = {
   requirementPageSize: number;
   selectedTask: Task | null;
   selectedRequirement: Requirement | null;
+  selectedTaskDetailLoading: boolean;
+  selectedTaskDetailError: string;
+  selectedTaskLogsLoading: boolean;
+  selectedTaskLogsError: string;
   selectedRequirementAnomalies: WorkspaceAnomaly[];
   dismissedAnomalyIds: Set<string>;
   visibleWorkspaceAnomalies: WorkspaceAnomaly[];
   visibleApprovals: Approval[];
+  visibleQueueItems: TaskQueueItem[];
   taskSyncState: TaskSyncState;
   projectStatusFilter: StatusFilterValue;
   requirementStatusFilter: StatusFilterValue;
+  showUnarchivedOnly: boolean;
   onProjectStatusFilterChange: (next: StatusFilterValue) => void;
   onRequirementStatusFilterChange: (next: StatusFilterValue) => void;
+  onToggleShowUnarchivedOnly: (next: boolean) => void;
   onRequirementPageChange: (next: number) => void;
   onRefreshAll: () => Promise<void>;
   onRefreshTasks: () => Promise<void>;
@@ -105,7 +125,7 @@ export type DashboardWorkspaceViewModel = {
   onOpenProject: (projectId: string) => void;
   onOpenRequirement: (requirement: Requirement) => void;
   onOpenTaskRequirement: (taskId: string) => void;
-  onMutateTask: (taskId: string, action: "stop" | "retry") => Promise<void>;
+  onMutateTask: (taskId: string, action: "cancel" | "retry") => Promise<void>;
   onRespondToTask: (taskId: string, decision: "approve" | "reject" | "feedback", feedback: string) => Promise<boolean>;
   onDismissAnomaly: (anomaly: WorkspaceAnomaly) => void;
   getProjectDisplayName: (projectId: string, locale: Locale, displayName?: string) => string;
@@ -124,4 +144,16 @@ export type DashboardUsageViewModel = {
   usageSummary: string;
   platformHealth: PlatformHealth | null;
   usageLimitSnapshots: DashboardUsageLimitSnapshot[];
+  modelStatusSnapshots: DashboardUsageModelStatusSnapshot[];
+  usageRefreshing: boolean;
+  onRefreshUsage: () => Promise<void>;
+};
+
+export type DashboardWatchdogViewModel = {
+  locale: Locale;
+  overview: WatchdogOverview | null;
+  onToggleEnabled: (next: boolean) => Promise<void>;
+  onAcknowledge: (jobId: string) => Promise<void>;
+  onOpenTask: (taskId: string) => void;
+  activeSession: WatchdogSession | null;
 };

@@ -1,25 +1,21 @@
 import type { Dispatch, SetStateAction } from "react";
 
-import { AUTO_ROUTE_PROJECT_ID, GITHUB_TASK_REPO } from "./dashboardConstants";
+import { AUTO_ROUTE_PROJECT_ID } from "./dashboardConstants";
 import type { PendingTaskMutation } from "./dashboardControlTypes";
 import { buildTaskLookupKey } from "./dashboardPendingMutations";
 import {
+  deriveExecutionProfile,
   deriveProjectMetadataDescription,
   deriveRequestedProjectId,
   getProjectDisplayName,
   getTaskProjectId,
-  normalizeRequestedModel,
-  normalizeRequestedReasoningEffort,
 } from "./dashboardProjectUtils";
 import type {
-  AuthConfig,
   CreateDialogMode,
   CreateProjectValues,
   CreateTaskValues,
-  IssueTask,
   Locale,
   NoticeTone,
-  RuntimeMode,
   Task,
   TaskPendingActionType,
   WorkspaceLevel,
@@ -29,12 +25,9 @@ type DashboardRequest = <T>(path: string, init?: RequestInit) => Promise<T>;
 
 type DashboardTaskActionsInput = {
   locale: Locale;
-  runtimeMode: RuntimeMode;
-  authConfig: AuthConfig | null;
   visibleTasks: Task[];
   tasks: Task[];
   api: DashboardRequest;
-  githubRequest: DashboardRequest;
   setPendingTaskMutations: Dispatch<SetStateAction<Record<string, PendingTaskMutation>>>;
   setSelectedProjectId: (next: string) => void;
   setSelectedTaskId: (next: string) => void;
@@ -51,12 +44,9 @@ type DashboardTaskActionsInput = {
 export function createDashboardTaskActions(input: DashboardTaskActionsInput) {
   const {
     locale,
-    runtimeMode,
-    authConfig,
     visibleTasks,
     tasks,
     api,
-    githubRequest,
     setPendingTaskMutations,
     setSelectedProjectId,
     setSelectedTaskId,
@@ -78,167 +68,25 @@ export function createDashboardTaskActions(input: DashboardTaskActionsInput) {
       const repository = String(values.repository || "").trim();
       const visibility = String(values.visibility || "public");
       const autoCreateRepo = Boolean(values.autoCreateRepo);
-      const model = normalizeRequestedModel(String(values.model || ""));
-      const reasoningEffort = normalizeRequestedReasoningEffort(String(values.reasoningEffort || ""));
+      const executionProfile = deriveExecutionProfile(values);
       const requestedProjectId = deriveRequestedProjectId(name, repository);
-      const requestedProject = {
-        id: requestedProjectId,
-        name,
-        description: projectDescription,
-        repository,
-        visibility,
-        autoCreateRepo,
-      };
-      const title = `Create project: ${name}`;
-      const taskDescription = description || `Create a new Codex-managed project named ${name}.`;
 
-      if (runtimeMode === "github-direct") {
-        const [owner, repoName] = GITHUB_TASK_REPO.split("/");
-        const payload = {
-          projectId: requestedProjectId,
-          type: "project_create",
-          title,
-          description: taskDescription,
-          model,
-          reasoningEffort,
-          requestedProject,
-        };
-        const issue = await githubRequest<{ number: number; html_url: string }>(`/repos/${owner}/${repoName}/issues`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            title: payload.title,
-            body: [
-              `project: ${payload.projectId}`,
-              `type: ${payload.type}`,
-              `model: ${payload.model}`,
-              `reasoning: ${payload.reasoningEffort === "medium" ? "normal" : payload.reasoningEffort}`,
-              "",
-              payload.description,
-              "",
-              "<!-- codex-task-payload",
-              JSON.stringify({
-                ...payload,
-                requestedBy: authConfig?.user?.login || "",
-                createdAt: new Date().toISOString(),
-              }),
-              "-->",
-            ].join("\n"),
-            labels: ["codex-task"],
-          }),
-        });
-        const acceptedAt = new Date().toISOString();
-        const createdPlaceholder: Task = {
-          id: `pending-issue-${issue.number}`,
-          updatedAt: acceptedAt,
-          issueNumber: issue.number,
-          issueUrl: issue.html_url,
-          projectId: requestedProjectId,
-          projectName: name || getProjectDisplayName(requestedProjectId, locale),
-          requestedProject,
-          type: "project_create",
-          title,
-          description: taskDescription,
-          model,
-          reasoningEffort,
-          status: "pending_capture",
-          summary: "",
-          userSummary: "",
-          planPreview: "",
-          workspacePath: "",
-          branchName: "",
-          logs: [],
-          children: [],
-        };
-        setPendingTaskMutations((current) => ({
-          ...current,
-          [createdPlaceholder.id]: {
-            taskId: createdPlaceholder.id,
-            issueNumber: issue.number,
-            lookupKey: buildTaskLookupKey(createdPlaceholder),
-            actionType: "create_project",
-            phase: "waiting_remote",
-            startedAt: acceptedAt,
-            acceptedAt,
-            timeoutAt: new Date(Date.now() + 45_000).toISOString(),
-            placeholderTask: createdPlaceholder,
-          },
-        }));
-        setTransientNotice(
-          locale === "zh-CN" ? `项目请求已入队：Issue #${issue.number}` : `Project queued via issue #${issue.number}`,
-          "success",
-        );
-      } else if (authConfig?.taskBackend === "github-issues") {
-        const queued = await api<{ issue: IssueTask }>("/api/issue-tasks", {
-          method: "POST",
-          body: JSON.stringify({
-            projectId: requestedProjectId,
-            type: "project_create",
-            title,
-            description: taskDescription,
-            model,
-            reasoningEffort,
-            requestedProject,
-          }),
-        });
-        const acceptedAt = new Date().toISOString();
-        const createdPlaceholder: Task = {
-          id: `pending-issue-${queued.issue.number}`,
-          updatedAt: acceptedAt,
-          issueNumber: queued.issue.number,
-          issueUrl: queued.issue.url,
-          projectId: requestedProjectId,
-          projectName: name || getProjectDisplayName(requestedProjectId, locale),
-          requestedProject,
-          type: "project_create",
-          title,
-          description: taskDescription,
-          model,
-          reasoningEffort,
-          status: "pending_capture",
-          summary: "",
-          userSummary: "",
-          planPreview: "",
-          workspacePath: "",
-          branchName: "",
-          logs: [],
-          children: [],
-        };
-        setPendingTaskMutations((current) => ({
-          ...current,
-          [createdPlaceholder.id]: {
-            taskId: createdPlaceholder.id,
-            issueNumber: queued.issue.number,
-            lookupKey: buildTaskLookupKey(createdPlaceholder),
-            actionType: "create_project",
-            phase: "waiting_remote",
-            startedAt: acceptedAt,
-            acceptedAt,
-            timeoutAt: new Date(Date.now() + 45_000).toISOString(),
-            placeholderTask: createdPlaceholder,
-          },
-        }));
-        setTransientNotice(
-          locale === "zh-CN"
-            ? `项目请求已入队：Issue #${queued.issue.number}`
-            : `Project queued via issue #${queued.issue.number}`,
-          "success",
-        );
-      } else {
-        await api("/api/projects", {
-          method: "POST",
-          body: JSON.stringify({
-            name,
-            description: projectDescription,
-            repository,
-            visibility,
-            autoCreateRepo,
-            model,
-            reasoningEffort,
-          }),
-        });
-        setTransientNotice(locale === "zh-CN" ? "项目已创建" : "Project created", "success");
-      }
+      await api("/api/projects", {
+        method: "POST",
+        body: JSON.stringify({
+          name,
+          description: projectDescription,
+          repository,
+          visibility,
+          autoCreateRepo,
+          requestedModel: executionProfile.requestedModel,
+          model: executionProfile.model,
+          reasoningEffort: executionProfile.reasoningEffort,
+          fastMode: executionProfile.fastMode,
+          speedTier: executionProfile.speedTier,
+        }),
+      });
+      setTransientNotice(locale === "zh-CN" ? "项目已创建" : "Project created", "success");
       setSelectedProjectId(requestedProjectId);
       setCreateDialogMode(null);
       startExpeditedTaskPolling();
@@ -254,186 +102,66 @@ export function createDashboardTaskActions(input: DashboardTaskActionsInput) {
       const projectId = getTaskProjectId(type, String(values.projectId || "").trim());
       const title = String(values.title || "").trim();
       const description = String(values.description || "").trim();
-      const model = normalizeRequestedModel(String(values.model || ""));
-      const reasoningEffort = normalizeRequestedReasoningEffort(String(values.reasoningEffort || ""));
+      const executionProfile = deriveExecutionProfile(values);
       const planMode = type === "task" ? Boolean(values.planMode) : false;
-      let createdTaskId = "";
 
-      if (runtimeMode === "github-direct") {
-        const [owner, repoName] = GITHUB_TASK_REPO.split("/");
-        const payload = { projectId, type, title, description, model, reasoningEffort, planMode };
-        const issue = await githubRequest<{ number: number; html_url: string }>(`/repos/${owner}/${repoName}/issues`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            title,
-            body: [
-              `project: ${projectId}`,
-              `type: ${type}`,
-              `model: ${model}`,
-              `reasoning: ${reasoningEffort === "medium" ? "normal" : reasoningEffort}`,
-              ...(planMode ? ["plan_mode: true"] : []),
-              "",
-              description,
-              "",
-              "<!-- codex-task-payload",
-              JSON.stringify({
-                ...payload,
-                routingMode: projectId === AUTO_ROUTE_PROJECT_ID ? "ai" : "fixed",
-                requestedBy: authConfig?.user?.login || "",
-                createdAt: new Date().toISOString(),
-              }),
-              "-->",
-            ].join("\n"),
-            labels: ["codex-task"],
-          }),
-        });
-        const createdTask: Task = {
-          id: `pending-issue-${issue.number}`,
-          updatedAt: new Date().toISOString(),
-          issueNumber: issue.number,
-          issueUrl: issue.html_url,
+      await api("/api/tasks", {
+        method: "POST",
+        body: JSON.stringify({
           projectId,
-          projectName: getProjectDisplayName(projectId, locale),
           type,
           title,
           description,
-          model,
-          reasoningEffort,
+          requestedModel: executionProfile.requestedModel,
+          model: executionProfile.model,
+          reasoningEffort: executionProfile.reasoningEffort,
           planMode,
-          status: "pending_capture",
-          summary: "",
-          planPreview: "",
-          workspacePath: "",
-          branchName: "",
-          logs: [],
-          children: [],
-        };
-        createdTaskId = createdTask.id;
-        setPendingTaskMutations((current) => ({
-          ...current,
-          [createdTask.id]: {
-            taskId: createdTask.id,
-            issueNumber: issue.number,
-            lookupKey: buildTaskLookupKey(createdTask),
-            actionType: "create_task",
-            phase: "waiting_remote",
-            startedAt: createdTask.updatedAt || new Date().toISOString(),
-            acceptedAt: createdTask.updatedAt || new Date().toISOString(),
-            timeoutAt: new Date(Date.now() + 45_000).toISOString(),
-            placeholderTask: createdTask,
-          },
-        }));
-        setTransientNotice(locale === "zh-CN" ? `任务已入队：Issue #${issue.number}` : `Task queued via issue #${issue.number}`, "success");
-      } else if (authConfig?.taskBackend === "github-issues") {
-        const queued = await api<{ issue: IssueTask }>("/api/issue-tasks", {
-          method: "POST",
-          body: JSON.stringify({
-            projectId,
-            type,
-            title,
-            description,
-            model,
-            reasoningEffort,
-            planMode,
-          }),
-        });
-        const createdTask: Task = {
-          id: `pending-issue-${queued.issue.number}`,
-          updatedAt: new Date().toISOString(),
-          issueNumber: queued.issue.number,
-          issueUrl: queued.issue.url,
-          projectId,
-          projectName: getProjectDisplayName(projectId, locale),
-          type,
-          title,
-          description,
-          model,
-          reasoningEffort,
-          planMode,
-          status: "pending_capture",
-          summary: "",
-          planPreview: "",
-          workspacePath: "",
-          branchName: "",
-          logs: [],
-          children: [],
-        };
-        createdTaskId = createdTask.id;
-        setPendingTaskMutations((current) => ({
-          ...current,
-          [createdTask.id]: {
-            taskId: createdTask.id,
-            issueNumber: queued.issue.number,
-            lookupKey: buildTaskLookupKey(createdTask),
-            actionType: "create_task",
-            phase: "waiting_remote",
-            startedAt: createdTask.updatedAt || new Date().toISOString(),
-            acceptedAt: createdTask.updatedAt || new Date().toISOString(),
-            timeoutAt: new Date(Date.now() + 45_000).toISOString(),
-            placeholderTask: createdTask,
-          },
-        }));
-        setTransientNotice(
-          locale === "zh-CN"
-            ? `任务已入队：Issue #${queued.issue.number}`
-            : `Task queued via issue #${queued.issue.number}`,
-          "success",
-        );
-      } else {
-        await api("/api/tasks", {
-          method: "POST",
-          body: JSON.stringify({
-            projectId,
-            type,
-            title,
-            description,
-            model,
-            reasoningEffort,
-            planMode,
-          }),
-        });
-        const createdTask: Task = {
-          id: `pending-local-${Date.now().toString(36)}`,
-          updatedAt: new Date().toISOString(),
-          projectId,
-          projectName: getProjectDisplayName(projectId, locale),
-          type,
-          title,
-          description,
-          model,
-          reasoningEffort,
-          planMode,
-          status: "pending_capture",
-          summary: "",
-          userSummary: "",
-          planPreview: "",
-          workspacePath: "",
-          branchName: "",
-          logs: [],
-          children: [],
-        };
-        createdTaskId = createdTask.id;
-        setPendingTaskMutations((current) => ({
-          ...current,
-          [createdTask.id]: {
-            taskId: createdTask.id,
-            lookupKey: buildTaskLookupKey(createdTask),
-            actionType: "create_task",
-            phase: "waiting_remote",
-            startedAt: createdTask.updatedAt || new Date().toISOString(),
-            acceptedAt: createdTask.updatedAt || new Date().toISOString(),
-            timeoutAt: new Date(Date.now() + 45_000).toISOString(),
-            placeholderTask: createdTask,
-          },
-        }));
-        setTransientNotice(locale === "zh-CN" ? "任务已创建" : "Task created", "success");
-      }
-      if (createdTaskId) {
-        setSelectedProjectId(projectId);
-        setSelectedTaskId(createdTaskId);
-        setWorkspaceLevel("tasks");
-      }
+          fastMode: executionProfile.fastMode,
+          speedTier: executionProfile.speedTier,
+        }),
+      });
+
+      const pendingSummary = locale === "zh-CN" ? "任务请求已提交，等待系统捕获。" : "The task request was submitted. Waiting for the system to capture it.";
+      const createdTask: Task = {
+        id: `pending-local-${Date.now().toString(36)}`,
+        updatedAt: new Date().toISOString(),
+        projectId,
+        projectName: getProjectDisplayName(projectId, locale),
+        type,
+        title,
+        description,
+        model: executionProfile.model,
+        requestedModel: executionProfile.requestedModel,
+        reasoningEffort: executionProfile.reasoningEffort,
+        planMode,
+        fastMode: executionProfile.fastMode,
+        speedTier: executionProfile.speedTier,
+        status: "pending",
+        summary: pendingSummary,
+        userSummary: pendingSummary,
+        planPreview: "",
+        workspacePath: "",
+        branchName: "",
+        logs: [],
+        children: [],
+      };
+      setPendingTaskMutations((current) => ({
+        ...current,
+        [createdTask.id]: {
+          taskId: createdTask.id,
+          lookupKey: buildTaskLookupKey(createdTask),
+          actionType: "create_task",
+          phase: "waiting_remote",
+          startedAt: createdTask.updatedAt || new Date().toISOString(),
+          acceptedAt: createdTask.updatedAt || new Date().toISOString(),
+          timeoutAt: new Date(Date.now() + 45_000).toISOString(),
+          placeholderTask: createdTask,
+        },
+      }));
+      setTransientNotice(locale === "zh-CN" ? "任务已创建" : "Task created", "success");
+      setSelectedProjectId(projectId);
+      setSelectedTaskId(createdTask.id);
+      setWorkspaceLevel("tasks");
       setCreateDialogMode(null);
       startExpeditedTaskPolling();
       await refreshTasks();
@@ -442,7 +170,7 @@ export function createDashboardTaskActions(input: DashboardTaskActionsInput) {
     }
   }
 
-  async function mutateTask(taskId: string, action: "stop" | "retry") {
+  async function mutateTask(taskId: string, action: "cancel" | "retry") {
     const task = visibleTasks.find((item) => item.id === taskId) || tasks.find((item) => item.id === taskId);
     if (!task) {
       setTransientNotice(locale === "zh-CN" ? "未找到对应任务" : "Task not found", "error");
@@ -468,19 +196,7 @@ export function createDashboardTaskActions(input: DashboardTaskActionsInput) {
       },
     }));
     try {
-      if (runtimeMode === "github-direct") {
-        if (!task.issueNumber) {
-          throw new Error(locale === "zh-CN" ? "当前任务没有对应的 Issue 编号" : "This task is missing an issue number");
-        }
-        const [owner, repoName] = GITHUB_TASK_REPO.split("/");
-        await githubRequest(`/repos/${owner}/${repoName}/issues/${task.issueNumber}/comments`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ body: action === "stop" ? "/stop" : "/retry" }),
-        });
-      } else {
-        await api(`/api/tasks/${taskId}/${action}`, { method: "POST" });
-      }
+      await api(`/api/tasks/${taskId}/${action}`, { method: "POST" });
       const acceptedAt = new Date().toISOString();
       setPendingTaskMutations((current) => ({
         ...current,
@@ -506,13 +222,11 @@ export function createDashboardTaskActions(input: DashboardTaskActionsInput) {
       }));
       startExpeditedTaskPolling();
       setTransientNotice(
-        action === "stop" ? (locale === "zh-CN" ? "已发送停止指令" : "Stop requested") : locale === "zh-CN" ? "已重试任务" : "Task retried",
+        action === "cancel" ? (locale === "zh-CN" ? "已提交取消请求" : "Cancel requested") : locale === "zh-CN" ? "已提交继续处理" : "Retry requested",
         "success",
       );
       await refreshTasks();
-      if (runtimeMode !== "github-direct") {
-        await refreshApprovals();
-      }
+      await refreshApprovals();
     } catch (error) {
       setPendingTaskMutations((current) => {
         const next = { ...current };
@@ -551,27 +265,10 @@ export function createDashboardTaskActions(input: DashboardTaskActionsInput) {
       },
     }));
     try {
-      if (runtimeMode === "github-direct") {
-        if (!task.issueNumber) {
-          throw new Error(locale === "zh-CN" ? "当前任务没有对应的 Issue 编号" : "This task is missing an issue number");
-        }
-        const [owner, repoName] = GITHUB_TASK_REPO.split("/");
-        const command = decision === "feedback"
-          ? `/feedback ${feedback}`.trim()
-          : decision === "approve"
-            ? `/approve ${feedback}`.trim()
-            : `/reject ${feedback}`.trim();
-        await githubRequest(`/repos/${owner}/${repoName}/issues/${task.issueNumber}/comments`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ body: command }),
-        });
-      } else {
-        await api(`/api/tasks/${taskId}/respond`, {
-          method: "POST",
-          body: JSON.stringify({ decision, feedback, finalize: decision === "approve" }),
-        });
-      }
+      await api(`/api/tasks/${taskId}/respond`, {
+        method: "POST",
+        body: JSON.stringify({ decision, feedback, finalize: decision === "approve" }),
+      });
       const acceptedAt = new Date().toISOString();
       setPendingTaskMutations((current) => ({
         ...current,
@@ -606,9 +303,7 @@ export function createDashboardTaskActions(input: DashboardTaskActionsInput) {
         "success",
       );
       await refreshTasks();
-      if (runtimeMode !== "github-direct") {
-        await refreshApprovals();
-      }
+      await refreshApprovals();
       return true;
     } catch (error) {
       setPendingTaskMutations((current) => {

@@ -1,9 +1,13 @@
 export type TaskStatus =
-  | "pending_capture"
   | "pending"
   | "running"
-  | "waiting_user"
+  | "waiting"
   | "awaiting_acceptance"
+  | "succeeded"
+  | "cancelled"
+  | "pending_capture"
+  | "blocked"
+  | "waiting_user"
   | "needs_revision"
   | "publish_failed"
   | "superseded"
@@ -11,6 +15,10 @@ export type TaskStatus =
   | "failed"
   | "completed"
   | "stopped";
+
+export type TaskPendingReason = "plan_feedback" | "manual_intervention" | "user_decision" | (string & {});
+export type TaskReasoningEffort = "low" | "medium" | "high" | "xhigh";
+export type TaskSpeedTier = "fast" | (string & {});
 
 export type Project = {
   id: string;
@@ -25,10 +33,12 @@ export type Project = {
   deploymentError?: string;
   taskStats: {
     total: number;
+    pending: number;
     running: number;
-    failed: number;
-    waitingUser: number;
-    completed: number;
+    waiting: number;
+    awaitingAcceptance: number;
+    succeeded: number;
+    cancelled: number;
   };
 };
 
@@ -67,7 +77,7 @@ export type TaskPendingActionType =
   | "approve"
   | "reject"
   | "retry"
-  | "stop";
+  | "cancel";
 
 export type TaskPendingActionPhase = "submitting" | "waiting_remote" | "timed_out";
 
@@ -123,7 +133,9 @@ export type ExecutionDecisionGate = {
 
 export type Task = {
   id: string;
+  createdAt?: string;
   updatedAt?: string;
+  rawStatus?: string;
   requirementId?: string;
   attemptNumber?: number;
   projectId: string;
@@ -148,6 +160,10 @@ export type Task = {
     detail: string;
     risk: "low" | "medium" | "high";
   } | null;
+  pendingReason?: TaskPendingReason | null;
+  pendingReasonLabel?: string;
+  pendingReasonDetail?: string;
+  canStartExecution?: boolean;
   pendingAction?: TaskPendingAction | null;
   lastStatusCommentAt?: string;
   planPreview: string;
@@ -170,19 +186,38 @@ export type Task = {
   workspacePath: string;
   branchName: string;
   model?: string;
-  reasoningEffort?: "medium" | "high" | "xhigh";
+  requestedModel?: string;
+  reasoningEffort?: TaskReasoningEffort;
   planMode?: boolean;
+  fastMode?: boolean;
+  speedTier?: TaskSpeedTier;
   publishStatus?: string;
   publishMethod?: string;
   publishVerified?: boolean;
   healthFlags?: string[];
   openFailureReason?: string;
+  acceptanceCompleted?: number;
+  acceptanceTotal?: number;
   acceptanceCriteria?: Array<{ id: string; text: string }>;
   verificationResults?: Array<{ criterionId: string; type: string; status: string; evidence: string }>;
   logs: TaskLog[];
   children: TaskChild[];
+  queuePosition?: number;
+  queueEnteredAt?: string;
+  queueName?: string;
+  queueBlockedByTaskId?: string;
+  queueBlockedByTaskTitle?: string;
   issueNumber?: number;
   issueUrl?: string;
+  allowedActions?: string[];
+  queueState?: {
+    inQueue?: boolean;
+    placement?: string;
+    requestedAt?: string;
+  } | null;
+  nodeStatusSummary?: Record<string, unknown> | null;
+  latestProgress?: Record<string, unknown> | null;
+  latestFailure?: Record<string, unknown> | null;
 };
 
 export type Requirement = {
@@ -216,10 +251,14 @@ export type Approval = {
 
 export type UsageOverview = {
   totalTasks: number;
-  activeTasks: number;
-  pendingApprovals: number;
-  completedTasks: number;
-  failedTasks: number;
+  unarchivedTasks: number;
+  archivedTasks: number;
+  pendingTasks: number;
+  runningTasks: number;
+  waitingTasks: number;
+  awaitingAcceptanceTasks: number;
+  successfulTasks: number;
+  cancelledTasks: number;
   estimatedTokens: number;
   totalRuns: number;
   lastRunAt: string;
@@ -232,6 +271,7 @@ export type UsageOverview = {
     primary: UsageLimitWindow | null;
     secondary: UsageLimitWindow | null;
   };
+  modelSnapshots: UsageModelSnapshot[];
   statusCollectedAt?: string;
   statusSource?: string;
 };
@@ -243,20 +283,19 @@ export type UsageLimitWindow = {
   sourceLabel?: string;
 };
 
+export type UsageModelSnapshot = {
+  model: string;
+  rateLimits: {
+    primary: UsageLimitWindow | null;
+    secondary: UsageLimitWindow | null;
+  };
+  statusCollectedAt?: string;
+  statusSource?: string;
+};
+
 export type PlatformHealth = {
   generatedAt: string;
   taskBackend: string;
-  githubTaskRepo: string;
-  issuePoller: {
-    enabled: boolean;
-    status: string;
-    intervalMs: number;
-    inFlight: boolean;
-    lastStartedAt: string;
-    lastSuccessAt: string;
-    lastDurationMs: number;
-    lastError: string;
-  };
   githubApi: {
     inFlight: number;
     queued: number;
@@ -273,19 +312,23 @@ export type PlatformHealth = {
     lastPublishedTaskTitle: string;
     lastPublishMethod: string;
     lastPublishError: string;
+    lastPublishBaselineRef?: string;
+    lastPublishBaselineSha?: string;
+    lastPublishSourceSha?: string;
+    lastReleaseBundleAsset?: string;
+    lastGuardrailStatus?: string;
     publishedTasks: number;
     noopTasks: number;
-    publishFailedTasks: number;
-    completedWithoutVerifiedPublish: number;
+    unverifiedSuccessTasks: number;
   };
   taskState: {
     total: number;
+    pending: number;
     running: number;
-    waitingUser: number;
+    waiting: number;
     awaitingAcceptance: number;
-    needsRevision: number;
-    publishFailed: number;
-    stoppedLatest: number;
+    succeeded: number;
+    cancelled: number;
   };
   anomalies: Array<{
     id: string;
@@ -296,6 +339,45 @@ export type PlatformHealth = {
   }>;
 };
 
+export type WatchdogFinding = {
+  code: string;
+  severity: string;
+  repairable: boolean;
+  summary: string;
+  detail?: string;
+};
+
+export type WatchdogSession = {
+  id: string;
+  taskId: string;
+  taskTitle: string;
+  projectId: string;
+  projectName: string;
+  triggerFromStatus: string;
+  triggerToStatus: string;
+  triggerOrigin?: string;
+  status: string;
+  phase: string;
+  summary: string;
+  findings: WatchdogFinding[];
+  cycleCount: number;
+  requiresAcknowledgement: boolean;
+  acknowledgedAt?: string;
+  externalInput?: string;
+  startedAt: string;
+  updatedAt: string;
+  completedAt?: string;
+  queuePaused: boolean;
+};
+
+export type WatchdogOverview = {
+  enabled: boolean;
+  queuePaused: boolean;
+  pauseReason: string;
+  activeSession: WatchdogSession | null;
+  recentSessions: WatchdogSession[];
+};
+
 export type AuthConfig = {
   enabled: boolean;
   mode: string;
@@ -303,17 +385,10 @@ export type AuthConfig = {
   hasClientId: boolean;
   repoAutomationEnabled: boolean;
   taskBackend?: string;
-  githubTaskRepo?: string;
   user: null | {
     login: string;
     name: string;
   };
-};
-
-export type IssueTask = {
-  number: number;
-  url: string;
-  repo: string;
 };
 
 export type DeviceLoginSession = {
@@ -333,7 +408,8 @@ export type CreateProjectValues = {
   visibility?: string;
   autoCreateRepo?: boolean;
   model?: string;
-  reasoningEffort?: "medium" | "high" | "xhigh";
+  reasoningEffort?: TaskReasoningEffort;
+  fastMode?: boolean;
 };
 
 export type CreateTaskValues = {
@@ -342,8 +418,9 @@ export type CreateTaskValues = {
   title: string;
   description: string;
   model?: string;
-  reasoningEffort?: "medium" | "high" | "xhigh";
+  reasoningEffort?: TaskReasoningEffort;
   planMode?: boolean;
+  fastMode?: boolean;
 };
 
 export type NoticeTone = "info" | "success" | "error";
@@ -368,11 +445,23 @@ export type WorkspaceAnomaly = {
   fingerprint: string;
 };
 
+export type TaskQueueItem = {
+  taskId: string;
+  title: string;
+  projectId: string;
+  projectName: string;
+  status: TaskStatus;
+  position: number;
+  queueEnteredAt?: string;
+  queueName?: string;
+  summary?: string;
+  issueNumber?: number;
+};
+
 export type Locale = "zh-CN" | "en-US";
 export type CopyState = "idle" | "copied";
 export type ThemeMode = "light" | "dark";
 export type WorkspaceLevel = "projects" | "tasks" | "detail";
-export type RuntimeMode = "local-api" | "github-direct";
 export type CreateDialogMode = "project" | "task" | "composite_task";
 export type StatusFilterValue = TaskStatus | "all";
 export type StatusLabelMap = Record<TaskStatus, Record<Locale, string>>;

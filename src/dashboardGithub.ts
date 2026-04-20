@@ -4,6 +4,9 @@ const TASK_STATUSES = new Set<TaskStatus>([
   "pending_capture",
   "pending",
   "running",
+  "blocked",
+  "succeeded",
+  "cancelled",
   "waiting_user",
   "awaiting_acceptance",
   "needs_revision",
@@ -221,7 +224,7 @@ function buildOperatorCommentMessage(snapshot: {
   failurePhase: string;
 }) {
   const currentStepTitle = getCurrentStepTitle(snapshot.projectExecution);
-  if (snapshot.executionDecisionGate?.title && snapshot.status === "waiting_user") {
+  if (snapshot.executionDecisionGate?.title && (snapshot.status === "waiting_user" || snapshot.status === "blocked")) {
     return `步骤「${snapshot.executionDecisionGate.title}」已完成，等待你的决策。`;
   }
   if (snapshot.executionMode === "orchestrated" && snapshot.status === "running" && currentStepTitle) {
@@ -230,7 +233,7 @@ function buildOperatorCommentMessage(snapshot: {
   if (snapshot.executionMode === "orchestrated" && snapshot.status === "pending" && currentStepTitle) {
     return `项目流已排队，准备继续步骤「${currentStepTitle}」。`;
   }
-  if (snapshot.status === "failed" && snapshot.failureType === "step_failed") {
+  if ((snapshot.status === "failed" || snapshot.status === "blocked") && snapshot.failureType === "step_failed") {
     const stepLabel = currentStepTitle || snapshot.failurePhase || "当前步骤";
     return `步骤「${stepLabel}」失败：${snapshot.openFailureReason || snapshot.userSummary || snapshot.summary || "没有返回更多原因。"}`
       .trim();
@@ -238,11 +241,11 @@ function buildOperatorCommentMessage(snapshot: {
   if (snapshot.status === "awaiting_acceptance" && snapshot.executionMode === "orchestrated") {
     return "项目流全部步骤已完成，等待最终验收。";
   }
-  if (snapshot.status === "publish_failed") {
+  if (snapshot.status === "publish_failed" || (snapshot.status === "blocked" && snapshot.publishStatus === "failed")) {
     return `实现已完成，但发布失败：${snapshot.openFailureReason || snapshot.summary || "没有返回更多原因。"}`
       .trim();
   }
-  if (snapshot.status === "needs_revision") {
+  if (snapshot.status === "needs_revision" || (snapshot.status === "blocked" && /acceptance|revision|返修/i.test(String(snapshot.openFailureReason || snapshot.userSummary || snapshot.summary || "")))) {
     return `当前结果仍需返修：${snapshot.openFailureReason || snapshot.userSummary || snapshot.summary || "没有返回更多原因。"}`
       .trim();
   }
@@ -270,7 +273,7 @@ export function parseStatusFromComments(comments: IssueComment[], fallbackClosed
   failurePhase: string;
   internalOnly: boolean;
 } {
-  let status: TaskStatus = fallbackClosed ? "completed" : "pending";
+  let status: TaskStatus = fallbackClosed ? "succeeded" : "pending";
   let taskId = "";
   let summary = "";
   let userSummary = "";

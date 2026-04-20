@@ -1,42 +1,26 @@
 import type { MutableRefObject } from "react";
 
+import type { DashboardCopy } from "./dashboardConstants";
+import { normalizeExecutionDecisionGate, normalizePlanForm, normalizeProjectExecution } from "./dashboardGithub";
+import { reconcilePendingTaskMutations } from "./dashboardPendingMutations";
+import { buildPlanFormFromPreview } from "./dashboardProjectUtils";
+import { getTaskDisplayStatus, getTaskPendingReason, taskNeedsUserAttention } from "./dashboardTaskState";
 import {
-  DEFAULT_API_BASE,
-  GITHUB_CLIENT_ID,
-  GITHUB_TASK_REPO,
-  HAS_MIXED_CONTENT_LOCAL_API,
-  REMOTE_PROJECT_CATALOG,
-  type DashboardCopy,
-} from "./dashboardConstants";
-import { buildLogsFromComments, normalizeExecutionDecisionGate, normalizePlanForm, normalizeProjectExecution, parseStatusFromComments, type IssueComment } from "./dashboardGithub";
-import { loadGithubStatusSnapshot } from "./dashboardClient";
-import { applyPendingMutationsToTasks, reconcilePendingTaskMutations } from "./dashboardPendingMutations";
-import {
-  buildGithubDirectPlanPreview,
-  buildGithubDirectUserAction,
-  buildPlanFormFromPreview,
-  getProjectDisplayName,
-  parseIssueBody,
-  parseEmbeddedStatusPayload,
-} from "./dashboardProjectUtils";
-import {
-  buildGithubDirectPlatformHealth,
-  buildGithubDirectUsageFallback,
   buildUsageSummary,
   normalizePlatformHealth,
   normalizeUsageOverview,
 } from "./dashboardUsageUtils";
+import { normalizeWatchdogOverview } from "./dashboardWatchdogUtils";
 import type {
   Approval,
   AuthConfig,
   Locale,
   PlatformHealth,
   Project,
-  Requirement,
-  RuntimeMode,
   Task,
   ToolLink,
   UsageOverview,
+  WatchdogOverview,
 } from "./dashboardTypes";
 import type { PendingTaskMutation, TaskSyncState, TaskSyncTrigger } from "./dashboardControlTypes";
 
@@ -44,13 +28,8 @@ type DashboardRequest = <T>(path: string, init?: RequestInit) => Promise<T>;
 
 type DashboardRefreshActionsInput = {
   locale: Locale;
-  runtimeMode: RuntimeMode;
   copy: DashboardCopy;
-  githubToken: string;
-  visibleTasks: Task[];
-  visibleRequirements: Requirement[];
   api: DashboardRequest;
-  githubRequest: DashboardRequest;
   selectedProjectIdRef: MutableRefObject<string>;
   selectedTaskIdRef: MutableRefObject<string>;
   pendingTaskMutationsRef: MutableRefObject<Record<string, PendingTaskMutation>>;
@@ -69,19 +48,15 @@ type DashboardRefreshActionsInput = {
   setTools: (next: ToolLink[]) => void;
   setUsage: (next: UsageOverview | null | ((current: UsageOverview | null) => UsageOverview | null)) => void;
   setUsageSummary: (next: string) => void;
+  setWatchdogOverview: (next: WatchdogOverview | null) => void;
   summarizeError: (error: unknown) => string;
 };
 
 export function createDashboardRefreshActions(input: DashboardRefreshActionsInput) {
   const {
     locale,
-    runtimeMode,
     copy,
-    githubToken,
-    visibleTasks,
-    visibleRequirements,
     api,
-    githubRequest,
     selectedProjectIdRef,
     selectedTaskIdRef,
     pendingTaskMutationsRef,
@@ -100,6 +75,7 @@ export function createDashboardRefreshActions(input: DashboardRefreshActionsInpu
     setTools,
     setUsage,
     setUsageSummary,
+    setWatchdogOverview,
     summarizeError,
   } = input;
 
@@ -114,21 +90,6 @@ export function createDashboardRefreshActions(input: DashboardRefreshActionsInpu
   }
 
   async function refreshHealth() {
-    if (runtimeMode === "github-direct") {
-      setConnectionStatus(
-        locale === "zh-CN"
-          ? `GitHub Issue 队列模式 · ${GITHUB_TASK_REPO}`
-          : `GitHub issue queue mode · ${GITHUB_TASK_REPO}`,
-      );
-      setPlatformHealth(buildGithubDirectPlatformHealth({
-        githubTaskRepo: GITHUB_TASK_REPO,
-        githubToken,
-        locale,
-        visibleTasks,
-        visibleRequirements,
-      }));
-      return;
-    }
     try {
       const [payload, platform] = await Promise.all([
         api<{ serverName: string; host: string }>("/api/health"),
@@ -147,60 +108,6 @@ export function createDashboardRefreshActions(input: DashboardRefreshActionsInpu
   }
 
   async function refreshAuth() {
-    if (runtimeMode === "github-direct") {
-      if (!GITHUB_CLIENT_ID) {
-        setAuthConfig({
-          enabled: true,
-          mode: "github-token",
-          provider: "github",
-          hasClientId: false,
-          repoAutomationEnabled: true,
-          taskBackend: "github-issues",
-          githubTaskRepo: GITHUB_TASK_REPO,
-          user: null,
-        });
-        setAuthStatus(locale === "zh-CN" ? "请连接可写入 issue 的 GitHub Token。" : "Connect a GitHub token with issue access.");
-        return;
-      }
-
-      if (!githubToken) {
-        setAuthConfig({
-          enabled: true,
-          mode: "github-token",
-          provider: "github",
-          hasClientId: true,
-          repoAutomationEnabled: true,
-          taskBackend: "github-issues",
-          githubTaskRepo: GITHUB_TASK_REPO,
-          user: null,
-        });
-        setAuthStatus(locale === "zh-CN" ? "请连接 GitHub Token 后直接提交 Issue 任务。" : "Connect a GitHub token to create and control issue tasks.");
-        return;
-      }
-
-      try {
-        const user = await githubRequest<{ login: string; name: string }>("/user");
-        setAuthConfig({
-          enabled: true,
-          mode: "github-token",
-          provider: "github",
-          hasClientId: true,
-          repoAutomationEnabled: true,
-          taskBackend: "github-issues",
-          githubTaskRepo: GITHUB_TASK_REPO,
-          user: {
-            login: user.login,
-            name: user.name || user.login,
-          },
-        });
-        setAuthStatus(locale === "zh-CN" ? `当前用户：${user.name || user.login}` : `Signed in as ${user.name || user.login}`);
-      } catch (error) {
-        localStorage.removeItem("codex.githubAccessToken");
-        setAuthStatus(summarizeError(error));
-      }
-      return;
-    }
-
     try {
       const payload = await api<AuthConfig>("/api/auth/config");
       setAuthConfig(payload);
@@ -218,55 +125,6 @@ export function createDashboardRefreshActions(input: DashboardRefreshActionsInpu
   }
 
   async function refreshProjects() {
-    if (runtimeMode === "github-direct") {
-      try {
-        const snapshot = await loadGithubStatusSnapshot<{
-          projects?: Array<{
-            id?: string;
-            name?: string;
-            description?: string;
-            repository?: string;
-            toolRoute?: string;
-            toolUrl?: string;
-            type?: string;
-            deploymentProvider?: string;
-            deploymentStatus?: string;
-            deploymentError?: string;
-          }>;
-        }>({
-          githubTaskRepo: GITHUB_TASK_REPO,
-          githubToken,
-          parsePayload: parseEmbeddedStatusPayload,
-        });
-        const snapshotProjects = Array.isArray(snapshot?.projects)
-          ? snapshot.projects
-            .map((project) => ({
-              id: String(project.id || "").trim(),
-              name: String(project.name || "").trim(),
-              description: String(project.description || "").trim(),
-              repository: String(project.repository || "").trim(),
-              toolRoute: String(project.toolRoute || "").trim(),
-              toolUrl: String(project.toolUrl || "").trim() || undefined,
-              type: String(project.type || "").trim() || undefined,
-              deploymentProvider: String(project.deploymentProvider || "").trim() || undefined,
-              deploymentStatus: String(project.deploymentStatus || "").trim() || undefined,
-              deploymentError: String(project.deploymentError || "").trim() || undefined,
-              taskStats: {
-                total: 0,
-                running: 0,
-                failed: 0,
-                waitingUser: 0,
-                completed: 0,
-              },
-            }))
-            .filter((project) => project.id)
-          : [];
-        setProjects(snapshotProjects);
-      } catch {
-        setProjects([]);
-      }
-      return;
-    }
     try {
       const payload = await api<{ projects: Project[] }>("/api/projects");
       setProjects(payload.projects);
@@ -293,165 +151,10 @@ export function createDashboardRefreshActions(input: DashboardRefreshActionsInpu
     const requestId = ++taskRefreshRequestRef.current;
     const trigger = normalizeTaskSyncTrigger(options?.trigger);
     setTaskSyncState({ inFlight: true, trigger });
-    if (runtimeMode === "github-direct") {
-      if (!githubToken) {
-        if (requestId !== taskRefreshRequestRef.current) {
-          return;
-        }
-        setTasks([]);
-        setPendingTaskMutations({});
-        setTaskSyncState({ inFlight: false });
-        return;
-      }
-
-      try {
-        const [owner, repo] = GITHUB_TASK_REPO.split("/");
-        const issues = await githubRequest<Array<{
-          number: number;
-          title: string;
-          body: string;
-          state: string;
-          html_url: string;
-          updated_at: string;
-          labels: Array<{ name: string }>;
-          pull_request?: unknown;
-        }>>(`/repos/${owner}/${repo}/issues?state=all&labels=codex-task&per_page=100&sort=updated&direction=desc`);
-
-        const taskList = (
-          await Promise.all(
-            issues
-              .filter((issue) => !issue.pull_request)
-              .map(async (issue) => {
-                const parsed = parseIssueBody(issue.body || "");
-                const comments = await githubRequest<IssueComment[]>(
-                  `/repos/${owner}/${repo}/issues/${issue.number}/comments?per_page=100&sort=created&direction=asc`,
-                );
-                const statusMeta = parseStatusFromComments(comments, issue.state === "closed");
-                const logs = buildLogsFromComments(comments);
-                const projectId = parsed.projectId || "dashboard-ui";
-                const title = parsed.title || issue.title;
-                const description = parsed.description || issue.body || "";
-                const planPreview =
-                  statusMeta.planPreview ||
-                  buildGithubDirectPlanPreview({
-                    type: parsed.type,
-                    title,
-                    description,
-                    requestedProject: parsed.requestedProject,
-                    planMode: statusMeta.planMode || parsed.planMode,
-                  });
-                const planForm = statusMeta.planForm || buildPlanFormFromPreview(planPreview, locale);
-                const userAction = buildGithubDirectUserAction({
-                  status: statusMeta.status,
-                  type: parsed.type,
-                  title,
-                  description,
-                  planPreview,
-                  planMode: statusMeta.planMode || parsed.planMode,
-                  userAction: statusMeta.userAction,
-                });
-                return {
-                  id: statusMeta.taskId || `issue-${issue.number}`,
-                  updatedAt: issue.updated_at,
-                  issueNumber: issue.number,
-                  issueUrl: issue.html_url,
-                  projectId,
-                  projectName: getProjectDisplayName(projectId, locale, parsed.requestedProject?.name || ""),
-                  requestedProject: parsed.requestedProject,
-                  type: parsed.type,
-                  title,
-                  description,
-                  model: parsed.model,
-                  reasoningEffort: parsed.reasoningEffort,
-                  planMode: statusMeta.planMode || parsed.planMode,
-                  status: statusMeta.status,
-                  summary: statusMeta.summary,
-                  userSummary: statusMeta.userSummary,
-                  userAction,
-                  lastStatusCommentAt: statusMeta.lastStatusCommentAt || undefined,
-                  planPreview,
-                  planForm,
-                  planDraftPending: statusMeta.planDraftPending,
-                  executionMode: statusMeta.executionMode || undefined,
-                  projectExecution: statusMeta.projectExecution,
-                  executionDecisionGate: statusMeta.executionDecisionGate,
-                  resumeEligible: statusMeta.resumeEligible,
-                  failureType: statusMeta.failureType || undefined,
-                  failurePhase: statusMeta.failurePhase || undefined,
-                  isInternal: statusMeta.internalOnly,
-                  publishStatus: statusMeta.publishStatus || undefined,
-                  openFailureReason: statusMeta.openFailureReason || undefined,
-                  workspacePath: "",
-                  branchName: "",
-                  logs,
-                  children: [],
-                } satisfies Task;
-              }),
-          )
-        )
-          .filter((task) => !task.isInternal)
-          .sort((left, right) => (right.issueNumber || 0) - (left.issueNumber || 0));
-
-        if (requestId !== taskRefreshRequestRef.current) {
-          return;
-        }
-        const nextPendingTaskMutations = reconcilePendingTaskMutations(taskList, pendingTaskMutationsRef.current);
-        setTasks(taskList);
-        setPendingTaskMutations(nextPendingTaskMutations);
-        setUsage((current) => {
-          const hasRuntimeSnapshot = Boolean(
-            current?.rateLimits?.primary ||
-            current?.rateLimits?.secondary ||
-            current?.statusCollectedAt,
-          );
-          return hasRuntimeSnapshot ? current : buildGithubDirectUsageFallback(applyPendingMutationsToTasks(taskList, nextPendingTaskMutations, locale), locale);
-        });
-        setTaskSyncState({ inFlight: false });
-
-        const visibleTaskIds = new Set([
-          ...taskList.map((task) => task.id),
-          ...Object.values(nextPendingTaskMutations)
-            .filter((mutation) => mutation.placeholderTask)
-            .map((mutation) => mutation.taskId),
-        ]);
-        if (!visibleTaskIds.size) {
-          setSelectedTaskId("");
-          return;
-        }
-        const currentTaskId = selectedTaskIdRef.current;
-        const nextTaskId = currentTaskId && visibleTaskIds.has(currentTaskId)
-          ? currentTaskId
-          : taskList[0]?.id
-            || Object.values(nextPendingTaskMutations).find((mutation) => mutation.placeholderTask)?.taskId
-            || "";
-        if (currentTaskId && nextTaskId !== currentTaskId) {
-          setSelectedTaskId(nextTaskId);
-        }
-      } catch {
-        if (requestId !== taskRefreshRequestRef.current) {
-          return;
-        }
-        setTasks([]);
-        setTaskSyncState((current) => ({ ...current, inFlight: false }));
-      }
-      return;
-    }
 
     try {
       const payload = await api<{ tasks: Task[] }>("/api/tasks");
-      const normalizedTasks = payload.tasks.map((task) => ({
-        ...task,
-        logs: (task.logs || []).map((entry) => ({
-          ...entry,
-          audience: entry.audience === "operator" ? ("operator" as const) : ("raw" as const),
-        })),
-        planForm: normalizePlanForm(task.planForm) || buildPlanFormFromPreview(task.planPreview, locale),
-        planDraftPending: Boolean(task.planDraftPending),
-        projectExecution: normalizeProjectExecution(task.projectExecution),
-        executionDecisionGate: normalizeExecutionDecisionGate(task.executionDecisionGate),
-        resumeEligible: Boolean(task.resumeEligible),
-        isInternal: Boolean(task.isInternal),
-      })).filter((task) => !task.isInternal);
+      const normalizedTasks = payload.tasks.map((task) => normalizeApiTask(task, locale)).filter((task) => !task.isInternal);
       if (requestId !== taskRefreshRequestRef.current) {
         return;
       }
@@ -492,9 +195,6 @@ export function createDashboardRefreshActions(input: DashboardRefreshActionsInpu
   }
 
   async function refreshApprovals() {
-    if (runtimeMode === "github-direct") {
-      return;
-    }
     try {
       const payload = await api<{ approvals: Approval[] }>("/api/approvals");
       setApprovals(
@@ -502,17 +202,11 @@ export function createDashboardRefreshActions(input: DashboardRefreshActionsInpu
           .map((approval) => ({
             ...approval,
             task: {
-              ...approval.task,
-              logs: (approval.task.logs || []).map((entry) => ({
-                ...entry,
-                audience: entry.audience === "operator" ? ("operator" as const) : ("raw" as const),
-              })),
-              planForm: normalizePlanForm(approval.task.planForm) || buildPlanFormFromPreview(approval.task.planPreview, locale),
-              planDraftPending: Boolean(approval.task.planDraftPending),
+              ...normalizeApiTask(approval.task, locale),
               pendingAction: null,
             },
           }))
-          .filter((approval) => approval.task.status === "waiting_user"),
+          .filter((approval) => taskNeedsUserAttention(approval.task)),
       );
     } catch {
       setApprovals([]);
@@ -520,55 +214,6 @@ export function createDashboardRefreshActions(input: DashboardRefreshActionsInpu
   }
 
   async function refreshTools() {
-    const fallbackTools = REMOTE_PROJECT_CATALOG
-      .filter((project) => project.type === "ui")
-      .map((project) => ({
-        id: project.id,
-        name: getProjectDisplayName(project.id, locale, project.name),
-        route: project.toolUrl || project.repository,
-        description: project.description,
-        repository: project.repository,
-        deploymentStatus: project.deploymentStatus || "",
-      }));
-
-    if (runtimeMode === "github-direct") {
-      try {
-        const snapshot = await loadGithubStatusSnapshot<{
-          tools?: Array<{
-            id?: string;
-            name?: string;
-            route?: string;
-            description?: string;
-            repository?: string;
-            deploymentStatus?: string;
-            deploymentError?: string;
-            deploymentProvider?: string;
-          }>;
-        }>({
-          githubTaskRepo: GITHUB_TASK_REPO,
-          githubToken,
-          parsePayload: parseEmbeddedStatusPayload,
-        });
-        const tools = Array.isArray(snapshot?.tools)
-          ? snapshot.tools
-            .map((tool) => ({
-              id: String(tool.id || "").trim(),
-              name: getProjectDisplayName(String(tool.id || "").trim(), locale, String(tool.name || "").trim()),
-              route: String(tool.route || "").trim(),
-              description: String(tool.description || "").trim(),
-              repository: String(tool.repository || "").trim() || undefined,
-              deploymentStatus: String(tool.deploymentStatus || "").trim() || undefined,
-              deploymentError: String(tool.deploymentError || "").trim() || undefined,
-              deploymentProvider: String(tool.deploymentProvider || "").trim() || undefined,
-            }))
-            .filter((tool) => tool.id && tool.route)
-          : [];
-        setTools(tools.length ? tools : fallbackTools);
-      } catch {
-        setTools(fallbackTools);
-      }
-      return;
-    }
     try {
       const payload = await api<{
         tools: Array<{
@@ -588,75 +233,31 @@ export function createDashboardRefreshActions(input: DashboardRefreshActionsInpu
     }
   }
 
-  async function refreshUsage() {
-    if (runtimeMode === "github-direct") {
-      try {
-        const snapshot = await loadGithubStatusSnapshot({
-          githubTaskRepo: GITHUB_TASK_REPO,
-          githubToken,
-          parsePayload: parseEmbeddedStatusPayload,
-        });
-        if (snapshot?.usage) {
-          applyUsageOverview(snapshot.usage);
-          if (snapshot.health) {
-            setPlatformHealth(normalizePlatformHealth(snapshot.health));
-          }
-          return;
-        }
-      } catch (error) {
-        if (!HAS_MIXED_CONTENT_LOCAL_API) {
-          setUsage(buildGithubDirectUsageFallback(visibleTasks, locale));
-          setUsageSummary(
-            locale === "zh-CN"
-              ? `无法从 GitHub 状态快照读取本机用量，已回退到任务统计：${summarizeError(error)}`
-              : `Unable to read local usage from the GitHub status snapshot. Falling back to task activity: ${summarizeError(error)}`,
-          );
-          return;
-        }
-        if (window.location.protocol === "https:" && /^http:\/\//i.test(DEFAULT_API_BASE)) {
-          setUsage(buildGithubDirectUsageFallback(visibleTasks, locale));
-          setUsageSummary(
-            locale === "zh-CN"
-              ? `当前页面通过 HTTPS 打开，但后端地址是 ${DEFAULT_API_BASE}。浏览器会拦截 GitHub Pages 到本机 HTTP API 的请求；页面现在会优先读取 GitHub 状态快照，如果该快照还未同步出来，则只能先显示任务统计。`
-              : `This page is served over HTTPS, but the backend is configured as ${DEFAULT_API_BASE}. Browsers block GitHub Pages from calling a local HTTP API; the dashboard now prefers a GitHub-backed status snapshot, and falls back to task activity until that snapshot is available.`,
-          );
-          return;
-        }
-      }
-    }
+  async function refreshUsage(options?: { manual?: boolean }) {
     try {
-      const payload = await api<{ overview: UsageOverview }>("/api/usage");
+      const path = options?.manual ? `/api/usage?refresh=1&t=${Date.now()}` : "/api/usage";
+      const payload = await api<{ overview: UsageOverview }>(path, options?.manual ? { cache: "no-store" } : undefined);
       applyUsageOverview(payload.overview);
     } catch (error) {
-      if (runtimeMode === "github-direct") {
-        setUsage(buildGithubDirectUsageFallback(visibleTasks, locale));
-      } else {
-        setUsage(null);
-      }
+      setUsage(null);
       setUsageSummary(
-        runtimeMode === "github-direct"
-          ? locale === "zh-CN"
-            ? `无法读取本机用量快照，已回退到 GitHub Issue 任务统计：${summarizeError(error)}`
-            : `Unable to read the local usage snapshot. Falling back to GitHub issue activity: ${summarizeError(error)}`
-          : locale === "zh-CN"
-            ? `无法获取用量概览：${summarizeError(error)}`
-            : `Unable to load usage overview: ${summarizeError(error)}`,
+        locale === "zh-CN"
+          ? `无法获取用量概览：${summarizeError(error)}`
+          : `Unable to load usage overview: ${summarizeError(error)}`,
       );
     }
   }
 
-  async function refreshAll(options?: { trigger?: TaskSyncTrigger }) {
-    if (runtimeMode === "github-direct") {
-      await Promise.all([
-        refreshHealth(),
-        refreshAuth(),
-        refreshProjects(),
-        refreshTasks(options),
-        refreshTools(),
-        refreshUsage(),
-      ]);
-      return;
+  async function refreshWatchdog() {
+    try {
+      const payload = await api<{ watchdog: WatchdogOverview | null }>("/api/watchdog");
+      setWatchdogOverview(normalizeWatchdogOverview(payload.watchdog));
+    } catch {
+      setWatchdogOverview(null);
     }
+  }
+
+  async function refreshAll(options?: { trigger?: TaskSyncTrigger }) {
     await Promise.all([
       refreshHealth(),
       refreshAuth(),
@@ -665,6 +266,7 @@ export function createDashboardRefreshActions(input: DashboardRefreshActionsInpu
       refreshApprovals(),
       refreshTools(),
       refreshUsage(),
+      refreshWatchdog(),
     ]);
   }
 
@@ -677,5 +279,90 @@ export function createDashboardRefreshActions(input: DashboardRefreshActionsInpu
     refreshApprovals,
     refreshTools,
     refreshUsage,
+    refreshWatchdog,
   };
+}
+
+export function normalizeApiTask(task: Partial<Task>, locale: Locale): Task {
+  const legacyTask = task as Partial<Task> & { baseModel?: string };
+  const normalizedTask: Task = {
+    id: String(task.id || "").trim(),
+    createdAt: String(task.createdAt || "").trim() || undefined,
+    updatedAt: String(task.updatedAt || "").trim() || undefined,
+    rawStatus: String(task.rawStatus || task.status || "").trim() || undefined,
+    requirementId: String(task.requirementId || "").trim() || undefined,
+    attemptNumber: typeof task.attemptNumber === "number" ? task.attemptNumber : undefined,
+    projectId: String(task.projectId || "").trim(),
+    projectName: String(task.projectName || task.projectId || "").trim(),
+    requestedProject: task.requestedProject || null,
+    type: String(task.type || "").trim(),
+    title: String(task.title || "").trim(),
+    description: String(task.description || "").trim(),
+    status: getTaskDisplayStatus(task as Task),
+    requirementStatus: task.requirementStatus,
+    summary: String(task.summary || "").trim(),
+    rawWorkerSummary: String(task.rawWorkerSummary || task.summary || "").trim(),
+    userSummary: String(task.userSummary || task.summary || "").trim(),
+    userAction: task.userAction || null,
+    pendingReason: task.pendingReason || undefined,
+    pendingReasonLabel: task.pendingReasonLabel || undefined,
+    pendingReasonDetail: task.pendingReasonDetail || task.openFailureReason || undefined,
+    canStartExecution: Boolean(task.allowedActions?.includes("start")),
+    pendingAction: task.pendingAction || null,
+    lastStatusCommentAt: String(task.lastStatusCommentAt || "").trim() || undefined,
+    planPreview: String(task.planPreview || "").trim(),
+    planForm: normalizePlanForm(task.planForm) || buildPlanFormFromPreview(String(task.planPreview || ""), locale),
+    planDraftPending: Boolean(task.planDraftPending),
+    executionMode: String(task.executionMode || "").trim() || undefined,
+    projectExecution: normalizeProjectExecution(task.projectExecution),
+    executionDecisionGate: normalizeExecutionDecisionGate(task.executionDecisionGate),
+    resumeEligible: Boolean(task.resumeEligible),
+    failureType: String(task.failureType || "").trim() || undefined,
+    failurePhase: String(task.failurePhase || "").trim() || undefined,
+    isInternal: Boolean(task.isInternal),
+    projectStepMeta: task.projectStepMeta || null,
+    workspacePath: String(task.workspacePath || "").trim(),
+    branchName: String(task.branchName || "").trim(),
+    model: String(task.model || "").trim() || undefined,
+    requestedModel: String(task.requestedModel || legacyTask.baseModel || "").trim() || undefined,
+    reasoningEffort: task.reasoningEffort,
+    planMode: Boolean(task.planMode),
+    fastMode: Boolean(task.fastMode || task.speedTier === "fast"),
+    speedTier: String(task.speedTier || "").trim() || undefined,
+    publishStatus: String(task.publishStatus || "").trim() || undefined,
+    publishMethod: String(task.publishMethod || "").trim() || undefined,
+    publishVerified: Boolean(task.publishVerified),
+    healthFlags: Array.isArray(task.healthFlags) ? task.healthFlags : [],
+    openFailureReason: String(task.openFailureReason || "").trim() || undefined,
+    acceptanceCompleted: typeof task.acceptanceCompleted === "number" ? task.acceptanceCompleted : undefined,
+    acceptanceTotal: typeof task.acceptanceTotal === "number" ? task.acceptanceTotal : undefined,
+    acceptanceCriteria: Array.isArray(task.acceptanceCriteria) ? task.acceptanceCriteria : undefined,
+    verificationResults: Array.isArray(task.verificationResults) ? task.verificationResults : undefined,
+    logs: (task.logs || []).map((entry) => ({
+      ...entry,
+      audience: entry.audience === "operator" ? ("operator" as const) : ("raw" as const),
+    })),
+    children: Array.isArray(task.children) ? task.children : [],
+    queuePosition: typeof task.queuePosition === "number" ? task.queuePosition : undefined,
+    queueEnteredAt: task.queueEnteredAt || task.queueState?.requestedAt || undefined,
+    queueName: task.queueName || undefined,
+    queueBlockedByTaskId: task.queueBlockedByTaskId || undefined,
+    queueBlockedByTaskTitle: task.queueBlockedByTaskTitle || undefined,
+    issueNumber: typeof task.issueNumber === "number" ? task.issueNumber : undefined,
+    issueUrl: String(task.issueUrl || "").trim() || undefined,
+    allowedActions: Array.isArray(task.allowedActions) ? task.allowedActions : [],
+    queueState: task.queueState || null,
+    nodeStatusSummary: task.nodeStatusSummary || null,
+    latestProgress: task.latestProgress || null,
+    latestFailure: task.latestFailure || null,
+  };
+  if (normalizedTask.status === "waiting") {
+    normalizedTask.pendingReason = getTaskPendingReason(normalizedTask) || undefined;
+    if (!normalizedTask.pendingReasonLabel && normalizedTask.pendingReason === "manual_intervention") {
+      normalizedTask.pendingReasonLabel = locale === "zh-CN" ? "人工介入" : "Manual intervention";
+    }
+  } else {
+    normalizedTask.pendingReason = normalizedTask.pendingReason || undefined;
+  }
+  return normalizedTask;
 }

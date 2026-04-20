@@ -6,7 +6,6 @@ import {
   applyPendingMutationsToTasks,
   buildPendingPlaceholderTasks,
   buildTaskLookupKey,
-  taskNeedsUserAttention,
 } from "./dashboardPendingMutations";
 import {
   getProjectDisplayName,
@@ -14,6 +13,7 @@ import {
   matchesStatusFilter,
   mergeProjectStats,
 } from "./dashboardProjectUtils";
+import { buildTaskQueueItems, isArchivedTask, taskNeedsUserAttention } from "./dashboardTaskState";
 import { buildRequirementsFromTasks, getRequirementAnomalies } from "./dashboardTaskViews";
 import type {
   Approval,
@@ -21,7 +21,6 @@ import type {
   Locale,
   Project,
   Requirement,
-  RuntimeMode,
   StatusFilterValue,
   Task,
   WorkspaceAnomaly,
@@ -29,7 +28,6 @@ import type {
 } from "./dashboardTypes";
 
 type UseDashboardWorkspaceStateInput = {
-  runtimeMode: RuntimeMode;
   locale: Locale;
   isMobile: boolean;
   projects: Project[];
@@ -43,6 +41,7 @@ type UseDashboardWorkspaceStateInput = {
   workspaceLevel: WorkspaceLevel;
   projectStatusFilter: StatusFilterValue;
   requirementStatusFilter: StatusFilterValue;
+  showUnarchivedOnly: boolean;
   requirementPage: number;
   setSelectedTaskId: (next: string) => void;
   setSelectedRequirementId: (next: string) => void;
@@ -55,7 +54,6 @@ type UseDashboardWorkspaceStateInput = {
 
 export function useDashboardWorkspaceState(input: UseDashboardWorkspaceStateInput) {
   const {
-    runtimeMode,
     locale,
     isMobile,
     projects,
@@ -69,6 +67,7 @@ export function useDashboardWorkspaceState(input: UseDashboardWorkspaceStateInpu
     workspaceLevel,
     projectStatusFilter,
     requirementStatusFilter,
+    showUnarchivedOnly,
     requirementPage,
     setSelectedTaskId,
     setSelectedRequirementId,
@@ -86,7 +85,7 @@ export function useDashboardWorkspaceState(input: UseDashboardWorkspaceStateInpu
     [locale, pendingTaskMutations, tasks],
   );
 
-  const visibleTasks = useMemo(() => {
+  const allVisibleTasks = useMemo(() => {
     const pendingPlaceholders = buildPendingPlaceholderTasks(pendingTaskMutations, locale);
     if (!pendingPlaceholders.length) {
       return remoteTasksWithPending.filter((task) => !isDisposableSmokeProjectReference({
@@ -111,6 +110,11 @@ export function useDashboardWorkspaceState(input: UseDashboardWorkspaceStateInpu
       repository: task.requestedProject?.repository || "",
     }));
   }, [locale, pendingTaskMutations, remoteTasksWithPending]);
+
+  const visibleTasks = useMemo(
+    () => (showUnarchivedOnly ? allVisibleTasks.filter((task) => !isArchivedTask(task)) : allVisibleTasks),
+    [allVisibleTasks, showUnarchivedOnly],
+  );
 
   const selectedTask = useMemo(
     () => visibleTasks.find((task) => task.id === selectedTaskId) ?? null,
@@ -183,6 +187,11 @@ export function useDashboardWorkspaceState(input: UseDashboardWorkspaceStateInpu
       (left, right) => Date.parse(right.task.updatedAt || "") - Date.parse(left.task.updatedAt || ""),
     );
   }, [approvals, locale, visibleTasks]);
+
+  const visibleQueueItems = useMemo(
+    () => buildTaskQueueItems(visibleTasks),
+    [visibleTasks],
+  );
 
   const filteredProjects = useMemo(
     () =>
@@ -390,6 +399,7 @@ export function useDashboardWorkspaceState(input: UseDashboardWorkspaceStateInpu
     visibleWorkspaceAnomalies,
     visibleProjects,
     visibleApprovals,
+    visibleQueueItems,
     filteredProjects,
     filteredSelectedProjectRequirements,
     paginatedSelectedProjectRequirements,

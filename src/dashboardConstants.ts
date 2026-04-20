@@ -1,33 +1,32 @@
-import type { AuthConfig, CopyState, DeviceLoginSession, Locale, NoticeItem, Project, RuntimeMode, StatusLabelMap, StatusTagColorMap, ThemeMode } from "./dashboardTypes";
+import type { AuthConfig, CopyState, DeviceLoginSession, Locale, NoticeItem, Project, StatusLabelMap, StatusTagColorMap, ThemeMode } from "./dashboardTypes";
 
-export const DEFAULT_API_BASE = (import.meta.env.VITE_DEFAULT_API_BASE as string | undefined)?.trim() || "http://localhost:8787";
-export const GITHUB_CLIENT_ID = (import.meta.env.VITE_GITHUB_CLIENT_ID as string | undefined)?.trim() || "";
-export const GITHUB_TASK_REPO = (import.meta.env.VITE_GITHUB_TASK_REPO as string | undefined)?.trim() || "zhaohernando-code/dashboard-ui";
-export const GITHUB_STATUS_ISSUE_TITLE = (import.meta.env.VITE_GITHUB_STATUS_ISSUE_TITLE as string | undefined)?.trim() || "Codex Control Plane Status";
-export const GITHUB_SCOPES = (import.meta.env.VITE_GITHUB_OAUTH_SCOPES as string | undefined)?.trim() || "read:user repo";
-export const IS_GITHUB_PAGES = typeof window !== "undefined" && window.location.hostname.endsWith("github.io");
-export const HAS_MIXED_CONTENT_LOCAL_API =
-  typeof window !== "undefined"
-  && window.location.protocol === "https:"
-  && /^http:\/\/(?:localhost|127(?:\.\d+){3}|0\.0\.0\.0)(?::\d+)?(?:\/|$)/i.test(DEFAULT_API_BASE);
+export const DEFAULT_API_BASE =
+  (import.meta.env.VITE_DEFAULT_API_BASE as string | undefined)?.trim()
+  || (import.meta.env.DEV ? "http://localhost:8787" : "");
 export const AUTO_ROUTE_PROJECT_ID = "__auto_route__";
 export const CLOSED_ANOMALIES_STORAGE_KEY = "codex.dismissedAnomalies";
 export const STATUS_FILTER_ALL = "all";
 export const DEFAULT_TASK_MODEL = "gpt-5.4";
+export const FAST_TASK_MODEL = "gpt-5.3-codex-spark";
+export const FAST_SPEED_TIER = "fast";
 export const DEFAULT_REASONING_EFFORT = "high";
 export const REQUIREMENT_PAGE_SIZE_DESKTOP = 8;
 export const REQUIREMENT_PAGE_SIZE_MOBILE = 6;
 export const DASHBOARD_POLL_INTERVAL_MS = 5_000;
 export const DASHBOARD_EXPEDITED_POLL_INTERVAL_MS = 4_000;
 export const DASHBOARD_EXPEDITED_POLL_DURATION_MS = 15_000;
+export const TASK_MODEL_OPTIONS = [
+  { label: DEFAULT_TASK_MODEL, value: DEFAULT_TASK_MODEL },
+  { label: FAST_TASK_MODEL, value: FAST_TASK_MODEL },
+] as const;
+export const USAGE_STATUS_MODELS = [DEFAULT_TASK_MODEL, FAST_TASK_MODEL] as const;
 
 export const REMOTE_PROJECT_CATALOG = [
   {
     id: "dashboard-ui",
     name: "dashboard-ui",
-    description: "GitHub Pages dashboard for project and issue-driven task dispatch.",
+    description: "Self-hosted dashboard for local control-plane projects and tasks.",
     repository: "https://github.com/zhaohernando-code/dashboard-ui",
-    toolUrl: "https://zhaohernando-code.github.io/dashboard-ui/",
     toolRoute: "/tools/dashboard-ui",
     type: "ui",
     deploymentStatus: "ready",
@@ -35,15 +34,16 @@ export const REMOTE_PROJECT_CATALOG = [
   {
     id: "local-control-server",
     name: "local-control-server",
-    description: "Local poller/executor that consumes GitHub issue tasks.",
+    description: "Local orchestration server that manages projects, tasks, approvals, and publishing.",
     repository: "https://github.com/zhaohernando-code/local-control-server",
     toolRoute: "/tools/local-control-server",
     type: "service",
   },
-] satisfies Array<Pick<Project, "id" | "name" | "description" | "repository" | "toolRoute" | "toolUrl" | "type" | "deploymentStatus">>;
+] satisfies Array<Pick<Project, "id" | "name" | "description" | "repository" | "toolRoute" | "type" | "deploymentStatus">>;
 
 export const tabs = [
   { id: "quest-center", label: { "zh-CN": "工作台", "en-US": "Workspace" } },
+  { id: "watchdog", label: { "zh-CN": "看护", "en-US": "Watchdog" } },
   { id: "tools", label: { "zh-CN": "工具入口", "en-US": "Tools" } },
   { id: "usage", label: { "zh-CN": "用量概览", "en-US": "Usage" } },
 ] as const;
@@ -51,39 +51,59 @@ export const tabs = [
 export type DashboardTabId = (typeof tabs)[number]["id"];
 
 export const statusLabel: StatusLabelMap = {
-  pending_capture: { "zh-CN": "待捕获", "en-US": "Awaiting pickup" },
-  pending: { "zh-CN": "等待中", "en-US": "Pending" },
-  running: { "zh-CN": "运行中", "en-US": "Running" },
-  waiting_user: { "zh-CN": "待你确认", "en-US": "Awaiting Approval" },
+  pending: { "zh-CN": "待执行", "en-US": "Queued" },
+  running: { "zh-CN": "执行中", "en-US": "Running" },
+  waiting: { "zh-CN": "待处理", "en-US": "Pending" },
   awaiting_acceptance: { "zh-CN": "待验收", "en-US": "Awaiting acceptance" },
-  needs_revision: { "zh-CN": "待返修", "en-US": "Needs revision" },
-  publish_failed: { "zh-CN": "发布失败", "en-US": "Publish failed" },
-  superseded: { "zh-CN": "已归档", "en-US": "Superseded" },
-  implemented: { "zh-CN": "已实现", "en-US": "Implemented" },
-  failed: { "zh-CN": "失败", "en-US": "Failed" },
-  completed: { "zh-CN": "完成", "en-US": "Completed" },
-  stopped: { "zh-CN": "已停止", "en-US": "Stopped" },
+  succeeded: { "zh-CN": "成功", "en-US": "Succeeded" },
+  cancelled: { "zh-CN": "已取消", "en-US": "Cancelled" },
+  pending_capture: { "zh-CN": "待执行", "en-US": "Queued" },
+  blocked: { "zh-CN": "待处理", "en-US": "Pending" },
+  waiting_user: { "zh-CN": "待处理", "en-US": "Pending" },
+  needs_revision: { "zh-CN": "待处理", "en-US": "Pending" },
+  publish_failed: { "zh-CN": "待处理", "en-US": "Pending" },
+  superseded: { "zh-CN": "已取消", "en-US": "Cancelled" },
+  implemented: { "zh-CN": "待验收", "en-US": "Awaiting acceptance" },
+  failed: { "zh-CN": "待处理", "en-US": "Pending" },
+  completed: { "zh-CN": "成功", "en-US": "Succeeded" },
+  stopped: { "zh-CN": "待处理", "en-US": "Pending" },
 };
 
 export const statusTagColor: StatusTagColorMap = {
-  pending_capture: "blue",
-  pending: "orange",
+  pending: "blue",
   running: "processing",
-  waiting_user: "purple",
+  waiting: "orange",
   awaiting_acceptance: "gold",
-  needs_revision: "volcano",
-  publish_failed: "red",
+  succeeded: "success",
+  cancelled: "default",
+  pending_capture: "blue",
+  blocked: "orange",
+  waiting_user: "orange",
+  needs_revision: "orange",
+  publish_failed: "orange",
   superseded: "default",
-  implemented: "cyan",
-  failed: "red",
+  implemented: "gold",
+  failed: "orange",
   completed: "success",
-  stopped: "default",
+  stopped: "orange",
 };
+
+const UNKNOWN_STATUS_LABEL: Record<Locale, string> = {
+  "zh-CN": "未知状态",
+  "en-US": "Unknown",
+};
+
+export function getStatusLabelText(status: string | undefined, locale: Locale) {
+  return statusLabel[status as keyof typeof statusLabel]?.[locale] || UNKNOWN_STATUS_LABEL[locale];
+}
+
+export function getStatusTagTone(status: string | undefined) {
+  return statusTagColor[status as keyof typeof statusTagColor] || "default";
+}
 
 export type DashboardCopy = {
   title: string;
   subtitle: string;
-  localApi: string;
   authDisabled: string;
   authRequired: string;
   loginButton: string;
@@ -95,6 +115,7 @@ export type DashboardCopy = {
   mobileControlTitle: string;
   themeSetting: string;
   languageSetting: string;
+  watchdogSetting: string;
 };
 
 export function getDashboardCopy(locale: Locale): DashboardCopy {
@@ -102,9 +123,8 @@ export function getDashboardCopy(locale: Locale): DashboardCopy {
     title: locale === "zh-CN" ? "Codex 控制中台" : "Codex Control Center",
     subtitle:
       locale === "zh-CN"
-        ? "项目、任务、审批与运行数据统一管理"
-        : "Unified workspace for projects, tasks, approvals and usage",
-    localApi: locale === "zh-CN" ? "本地服务地址：" : "Local API:",
+        ? "项目、任务、待处理与运行数据统一管理"
+        : "Unified workspace for projects, tasks, pending work, and usage",
     authDisabled:
       locale === "zh-CN"
         ? "当前服务未启用登录，可直接使用看板。"
@@ -117,16 +137,16 @@ export function getDashboardCopy(locale: Locale): DashboardCopy {
     logoutButton: locale === "zh-CN" ? "退出登录" : "Sign out",
     refresh: locale === "zh-CN" ? "刷新" : "Refresh",
     taskDetails: locale === "zh-CN" ? "任务详情" : "Task details",
-    pendingApprovals: locale === "zh-CN" ? "待处理审批" : "Pending approvals",
+    pendingApprovals: locale === "zh-CN" ? "待处理任务" : "Pending tasks",
     noTask: locale === "zh-CN" ? "请选择任务查看详情" : "Select one task to inspect",
     mobileControlTitle: locale === "zh-CN" ? "控制中心" : "Control center",
     themeSetting: locale === "zh-CN" ? "主题色" : "Theme",
     languageSetting: locale === "zh-CN" ? "界面语言" : "Language",
+    watchdogSetting: locale === "zh-CN" ? "看护模式" : "Watchdog mode",
   };
 }
 
 export type DashboardShellViewModel = {
-  runtimeMode: RuntimeMode;
   locale: Locale;
   theme: ThemeMode;
   activeTab: DashboardTabId;
@@ -137,10 +157,20 @@ export type DashboardShellViewModel = {
   copyState: CopyState;
   notices: NoticeItem[];
   copy: DashboardCopy;
-  apiBaseLabel: string;
+  watchdogEnabled: boolean;
+  watchdogActive: boolean;
+  watchdogBanner: {
+    title: string;
+    detail: string;
+    tone: "info" | "warning";
+    sessionId?: string;
+    requiresAcknowledgement?: boolean;
+  } | null;
   onToggleTheme: () => void;
   onChangeLocale: (next: Locale) => void;
   onChangeTab: (next: DashboardTabId) => void;
+  onToggleWatchdog: (next: boolean) => void | Promise<void>;
+  onAcknowledgeWatchdog: (jobId: string) => void | Promise<void>;
   onOpenMobileNav: () => void;
   onCloseMobileNav: () => void;
   onLogin: () => void | Promise<void>;
