@@ -25,7 +25,15 @@ import { GlobalOutlined, MoonOutlined, SunOutlined } from "@ant-design/icons";
 
 import { DEFAULT_TASK_MODEL, FAST_TASK_MODEL, TASK_MODEL_OPTIONS } from "./dashboardConstants";
 import { getLogSummaryText, getLogTrackLabel, type LogTrack, type LogViews } from "./dashboardLogs";
-import { TASK_STATUS_ORDER, canCancelTask, getRetryActionLabel, getTaskPendingReason, getTaskPendingReasonLabel } from "./dashboardTaskState";
+import {
+  TASK_STATUS_ORDER,
+  canCancelTask,
+  getRetryActionLabel,
+  getTaskPendingReason,
+  getTaskPendingReasonLabel,
+  isArchivedTask,
+  isPublishedTaskCancellationLocked,
+} from "./dashboardTaskState";
 import type {
   Approval,
   PlanForm,
@@ -251,18 +259,23 @@ function getTaskFailureDiagnosis(task: Task, locale: Locale) {
     };
   }
 
+  const canTaskBeCancelled = canCancelTask(task);
   return {
     type: "warning" as const,
     title: locale === "zh-CN" ? "任务需要人工介入" : "The task needs manual intervention",
     summary: locale === "zh-CN"
-      ? "任务没有完成，但也没有被归档。系统已经把它转为待处理，等待你决定继续还是取消。"
+      ? "任务没有完成，但也没有被归档。系统已经把它转为待处理，等待你决定下一步动作。"
       : "The task did not finish and has been moved into pending handling while it waits for your next action.",
     timeline: locale === "zh-CN"
       ? `最近待处理记录：${formatTaskTimestamp(task.updatedAt, locale)}`
       : `Latest pending-handling record: ${formatTaskTimestamp(task.updatedAt, locale)}`,
     guidance: locale === "zh-CN"
-      ? "先看当前原因，再决定继续处理、重试，还是直接取消。"
-      : "Read the current reason first, then decide whether to continue, retry, or cancel.",
+      ? (canTaskBeCancelled
+          ? "先看当前原因，再决定继续处理、重试，还是直接取消。"
+          : "先看当前原因，再决定继续处理或重试；如果已发布结果不符合预期，请打回返修。")
+      : (canTaskBeCancelled
+          ? "Read the current reason first, then decide whether to continue, retry, or cancel."
+          : "Read the current reason first, then continue or retry. If the published result is wrong, send it back for revision instead of cancelling."),
     rawReasonLabel: locale === "zh-CN" ? "当前原因" : "Current reason",
   };
 }
@@ -555,6 +568,8 @@ export function TaskDetail({
   const trimmedAcceptanceRejectFeedback = acceptanceRejectFeedback.trim();
   const failureDiagnosis = getTaskFailureDiagnosis(task, locale);
   const canTaskBeCancelled = canCancelTask(task);
+  const cancelLockedAfterPublish = isPublishedTaskCancellationLocked(task);
+  const showPublishedCancelGuidance = cancelLockedAfterPublish && !isArchivedTask(task);
   const currentProjectStep = task.projectExecution?.steps?.find((step) => step.id === task.projectExecution?.currentStepId) || null;
   const hasDraftPlanResponse = Boolean(
     planResponseValues
@@ -874,6 +889,23 @@ export function TaskDetail({
                 ) : null}
               </Space>
             )}
+          />
+        ) : null}
+
+        {showPublishedCancelGuidance ? (
+          <Alert
+            type="info"
+            showIcon
+            message={
+              locale === "zh-CN"
+                ? "该任务已发布，不能再取消"
+                : "This task has already been published and can no longer be cancelled"
+            }
+            description={
+              locale === "zh-CN"
+                ? "当前结果可能已经成为后续任务的开发基线。若结果符合预期，请直接验收；若不符合预期，请打回返修。"
+                : "Its result may already be the baseline for later work. Accept it if it is correct, or send it back for revision if it is not."
+            }
           />
         ) : null}
 
@@ -1397,8 +1429,8 @@ export function TaskDetail({
             showIcon
             message={
               locale === "zh-CN"
-                ? "取消会让后台执行 release 回退与中间痕迹清理，完成后任务才会进入“已取消”。"
-                : "Cancellation will trigger backend rollback and cleanup. The task becomes cancelled only after cleanup finishes."
+                ? "取消只会清理当前未发布任务的工作区和中间痕迹，不会回退已经发布的版本。"
+                : "Cancellation only cleans up workspace artifacts for unpublished tasks. It does not roll back an already published release."
             }
             description={
               locale === "zh-CN"
@@ -1526,9 +1558,17 @@ export function ApprovalCard({
               )
             : getTaskPendingReason(approval.task) === "manual_intervention"
             ? (
-                locale === "zh-CN"
-                  ? "当前任务需要人工介入，请在详情页选择继续处理、重试或取消。"
-                  : "This task needs manual handling. Open the detail view to continue, retry, or cancel it."
+                canCancelTask(approval.task)
+                  ? (
+                      locale === "zh-CN"
+                        ? "当前任务需要人工介入，请在详情页选择继续处理、重试或取消。"
+                        : "This task needs manual handling. Open the detail view to continue, retry, or cancel it."
+                    )
+                  : (
+                      locale === "zh-CN"
+                        ? "当前任务需要人工介入，请在详情页继续处理或重试；若结果不符合预期，请打回返修。"
+                        : "This task needs manual handling. Open the detail view to continue or retry; if the published result is wrong, send it back for revision."
+                    )
               )
             : (
                 locale === "zh-CN"

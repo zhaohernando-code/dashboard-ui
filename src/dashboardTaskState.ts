@@ -106,8 +106,19 @@ export function getTaskPendingReasonLabel(task: Pick<Task, "pendingReasonLabel" 
   }
 }
 
-export function canCancelTask(task: Pick<Task, "status" | "pendingAction">) {
-  return !isArchivedTask(task) && task.pendingAction?.type !== "cancel";
+export function isPublishedTaskCancellationLocked(task: Pick<Task, "status" | "publishVerified" | "publishStatus" | "publishMethod">) {
+  const publishStatus = String(task.publishStatus || "").trim();
+  const publishMethod = String(task.publishMethod || "").trim();
+  const publishedMethod = ["git_push", "api_fallback", "local_sync", "reconciled_main", "reconciled_issue"].includes(publishMethod);
+
+  return getTaskDisplayStatus(task) === "awaiting_acceptance"
+    || Boolean(task.publishVerified)
+    || ["published", "local_only", "noop"].includes(publishStatus)
+    || (publishedMethod && publishStatus !== "failed" && publishStatus !== "pending" && publishStatus !== "skipped");
+}
+
+export function canCancelTask(task: Pick<Task, "status" | "pendingAction" | "publishVerified" | "publishStatus" | "publishMethod">) {
+  return !isArchivedTask(task) && task.pendingAction?.type !== "cancel" && !isPublishedTaskCancellationLocked(task);
 }
 
 export function getRetryActionLabel(task: Pick<Task, "resumeEligible">, locale: Locale) {
