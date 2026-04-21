@@ -359,7 +359,11 @@ export function normalizeApiTask(task: Partial<Task>, locale: Locale): Task {
   if (normalizedTask.status === "waiting") {
     normalizedTask.pendingReason = getTaskPendingReason(normalizedTask) || undefined;
     if (!normalizedTask.pendingReasonLabel && normalizedTask.pendingReason === "manual_intervention") {
-      normalizedTask.pendingReasonLabel = locale === "zh-CN" ? "人工介入" : "Manual intervention";
+      const gateRecovery = normalizedTask.failureType === "verification_gate_failed"
+        && /task_completion gate failed/i.test(String(normalizedTask.openFailureReason || ""));
+      normalizedTask.pendingReasonLabel = gateRecovery
+        ? (locale === "zh-CN" ? "系统修复中" : "System recovery")
+        : (locale === "zh-CN" ? "人工介入" : "Manual intervention");
     }
   } else {
     normalizedTask.pendingReason = normalizedTask.pendingReason || undefined;
