@@ -98,7 +98,7 @@ export function getTaskPendingReasonLabel(task: Pick<Task, "pendingReasonLabel" 
     case "plan_feedback":
       return locale === "zh-CN" ? "计划待反馈" : "Plan feedback";
     case "manual_intervention":
-      return locale === "zh-CN" ? "人工介入" : "Manual intervention";
+      return locale === "zh-CN" ? "系统跟进" : "System follow-up";
     case "user_decision":
       return locale === "zh-CN" ? "需用户拍板" : "User decision";
     default:

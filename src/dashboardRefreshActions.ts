@@ -363,7 +363,7 @@ export function normalizeApiTask(task: Partial<Task>, locale: Locale): Task {
         && /task_completion gate failed/i.test(String(normalizedTask.openFailureReason || ""));
       normalizedTask.pendingReasonLabel = gateRecovery
         ? (locale === "zh-CN" ? "系统修复中" : "System recovery")
-        : (locale === "zh-CN" ? "人工介入" : "Manual intervention");
+        : (locale === "zh-CN" ? "系统跟进" : "System follow-up");
     }
   } else {
     normalizedTask.pendingReason = normalizedTask.pendingReason || undefined;

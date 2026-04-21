@@ -2,6 +2,13 @@
 
 > Note: historical GitHub Pages / GitHub-direct entries below are deprecated context only. The active dashboard delivery model is the local self-hosted control-plane route.
 
+## 2026-04-21
+
+- Problem: blocked and revision-oriented task views could still phrase system-owned recovery work like a human action queue, including copy that implied the web operator should continue, retry, or otherwise resolve internal platform problems manually.
+- Resolution: dashboard pending-state labels and helper copy now frame these cases as system follow-up, and detail/list hints only ask the operator for real decisions such as approval or revision feedback.
+- Prevention: dashboard wording must never imply that a web-only operator can repair git state, restart services, inspect logs, or manually unblock internal execution. If the system can own the fix, the UI should say that directly.
+- Commit ID: pending
+
 ## 2026-04-18
 
 - Problem: the workspace toolbar surfaced a per-refresh sync timestamp, while the auto-refresh loop used a fixed `setInterval`, so routine polling could look noisy to operators and could overlap when a refresh cycle took longer than the nominal interval.

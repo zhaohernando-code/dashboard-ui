@@ -1561,19 +1561,19 @@ export function ApprovalCard({
                 canCancelTask(approval.task)
                   ? (
                       locale === "zh-CN"
-                        ? "当前任务需要人工介入，请在详情页选择继续处理、重试或取消。"
-                        : "This task needs manual handling. Open the detail view to continue, retry, or cancel it."
+                        ? "当前任务处于系统跟进状态，请在详情页查看当前处理结果；只有确实需要你的判断时才会单独提示。"
+                        : "This task is under system follow-up. Open the detail view to inspect the current state; you will only be asked for input when a real decision is needed."
                     )
                   : (
                       locale === "zh-CN"
-                        ? "当前任务需要人工介入，请在详情页继续处理或重试；若结果不符合预期，请打回返修。"
-                        : "This task needs manual handling. Open the detail view to continue or retry; if the published result is wrong, send it back for revision."
+                        ? "当前任务处于系统跟进状态，请在详情页查看最新结果；若发布结果不符合预期，请直接打回返修。"
+                        : "This task is under system follow-up. Open the detail view for the latest result; if the published output is wrong, send it back for revision."
                     )
               )
             : (
                 locale === "zh-CN"
-                  ? "请在详情页继续处理当前任务。"
-                  : "Handle this task in the detail view."
+                  ? "请在详情页查看当前处理状态。"
+                  : "Open the detail view for the current task state."
               )}
         </Typography.Text>
         <Space wrap>
@@ -1590,8 +1590,8 @@ export function ApprovalCard({
           message={
             approval.task.pendingAction?.message
             || (locale === "zh-CN"
-              ? "请在详情页处理当前待处理任务。"
-              : "Handle this pending task in the detail view.")
+              ? "请在详情页查看当前待处理状态。"
+              : "Open the detail view for the current pending state.")
           }
         />
         <Flex gap={8} wrap>

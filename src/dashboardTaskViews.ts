@@ -91,8 +91,8 @@ export function getTaskFailurePreview(task: Task | null | undefined, locale: Loc
     }
     if (pendingReason === "manual_intervention") {
       return locale === "zh-CN"
-        ? `任务当前需要人工介入：${reason || "请打开详情查看最近故障点和建议动作。"}`
-        : `The task currently needs manual intervention: ${reason || "Open the detail view for the latest issue and suggested action."}`;
+        ? `任务当前处于系统跟进状态：${reason || "请打开详情查看最近故障点和系统处理结果。"}`
+        : `The task is currently under system follow-up: ${reason || "Open the detail view for the latest issue and system handling result."}`;
     }
   }
   return "";
