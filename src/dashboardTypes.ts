@@ -28,6 +28,14 @@ export type Project = {
   toolRoute: string;
   toolUrl?: string;
   type?: string;
+  exposureMode?: string;
+  exposureBasePath?: string;
+  exposureRoute?: string;
+  exposureOnline?: boolean;
+  exposureWorkerId?: string;
+  exposureWorkerLabel?: string;
+  upstreamLoopbackPort?: string;
+  apiUpstreamLoopbackPort?: string;
   deploymentProvider?: string;
   deploymentStatus?: string;
   deploymentError?: string;
@@ -476,4 +484,6 @@ export type ToolLink = {
   deploymentProvider?: string;
   deploymentStatus?: string;
   deploymentError?: string;
+  workerLabel?: string;
+  exposureMode?: string;
 };

@@ -28,6 +28,9 @@ export function ToolsPage({ toolsView, isMobile }: ToolsPageProps) {
     if (status === "ready") {
       return <Tag color="success">{locale === "zh-CN" ? "已就绪" : "Ready"}</Tag>;
     }
+    if (status === "offline") {
+      return <Tag color="default">{locale === "zh-CN" ? "本机离线" : "Local offline"}</Tag>;
+    }
     if (status === "deploying") {
       return <Tag color="processing">{locale === "zh-CN" ? "部署中" : "Deploying"}</Tag>;
     }
@@ -56,6 +59,11 @@ export function ToolsPage({ toolsView, isMobile }: ToolsPageProps) {
                 extra={
                   <Space direction="vertical" size={8} className="full-width">
                     {getDeploymentTag(tool)}
+                    {tool.workerLabel ? (
+                      <Typography.Text type="secondary">
+                        {locale === "zh-CN" ? `执行节点：${tool.workerLabel}` : `Worker: ${tool.workerLabel}`}
+                      </Typography.Text>
+                    ) : null}
                     {canOpenTool(tool) ? (
                       <a className="wrap-anywhere" href={tool.route} target="_blank" rel="noreferrer">
                         {locale === "zh-CN" ? `打开 ${tool.route}` : `Open ${tool.route}`}
