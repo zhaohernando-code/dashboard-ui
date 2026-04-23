@@ -68,8 +68,12 @@ export function createDashboardTaskActions(input: DashboardTaskActionsInput) {
       const repository = String(values.repository || "").trim();
       const visibility = String(values.visibility || "public");
       const autoCreateRepo = Boolean(values.autoCreateRepo);
+      const enableLocalTunnel = Boolean(values.enableLocalTunnel);
       const executionProfile = deriveExecutionProfile(values);
       const requestedProjectId = deriveRequestedProjectId(name, repository);
+      const frontendLocalPort = String(values.frontendLocalPort || "").trim();
+      const apiLocalPort = String(values.apiLocalPort || "").trim();
+      const localProjectPath = String(values.localProjectPath || "").trim();
 
       await api("/api/projects", {
         method: "POST",
@@ -84,6 +88,17 @@ export function createDashboardTaskActions(input: DashboardTaskActionsInput) {
           reasoningEffort: executionProfile.reasoningEffort,
           fastMode: executionProfile.fastMode,
           speedTier: executionProfile.speedTier,
+          localRuntime: enableLocalTunnel
+            ? {
+                enabled: true,
+                mode: "tunnel",
+                localProjectPath,
+                frontendLocalPort,
+                apiLocalPort,
+              }
+            : {
+                enabled: false,
+              },
         }),
       });
       setTransientNotice(locale === "zh-CN" ? "项目已创建" : "Project created", "success");

@@ -307,6 +307,7 @@ export function CreateDialog({
   const [projectForm] = Form.useForm<CreateProjectValues>();
   const [taskForm] = Form.useForm<CreateTaskValues>();
   const projectFastMode = Form.useWatch("fastMode", projectForm);
+  const projectLocalTunnelEnabled = Form.useWatch("enableLocalTunnel", projectForm);
   const taskFastMode = Form.useWatch("fastMode", taskForm);
   const reasoningOptions: Array<{ label: string; value: NonNullable<CreateTaskValues["reasoningEffort"]> }> = [
     { label: locale === "zh-CN" ? "normal" : "normal", value: "medium" },
@@ -328,7 +329,7 @@ export function CreateDialog({
         <Form
           form={projectForm}
           layout="vertical"
-          initialValues={{ visibility: "public", autoCreateRepo: false, model: DEFAULT_TASK_MODEL, reasoningEffort: "high", fastMode: false }}
+          initialValues={{ visibility: "public", autoCreateRepo: false, enableLocalTunnel: false, model: DEFAULT_TASK_MODEL, reasoningEffort: "high", fastMode: false }}
           onFinish={(values) => void onCreateProject(values)}
         >
           <Form.Item
@@ -364,6 +365,56 @@ export function CreateDialog({
           <Form.Item name="autoCreateRepo" valuePropName="checked">
             <Checkbox>{locale === "zh-CN" ? "自动创建 GitHub 仓库" : "Auto-create GitHub repository"}</Checkbox>
           </Form.Item>
+          <Form.Item
+            name="enableLocalTunnel"
+            valuePropName="checked"
+            extra={locale === "zh-CN"
+              ? "开启后，本机 worker 会自动为这个项目生成 tunnel env、LaunchAgent 和项目映射，并预留 /projects/<project-id>/ 路径。"
+              : "When enabled, the local worker auto-generates the tunnel env, LaunchAgent, and project mapping for this project and reserves a /projects/<project-id>/ route."}
+          >
+            <Switch checkedChildren="/projects/*" unCheckedChildren="/tools/*" />
+          </Form.Item>
+          {projectLocalTunnelEnabled ? (
+            <>
+              <Form.Item
+                name="frontendLocalPort"
+                label={locale === "zh-CN" ? "前端本机端口" : "Frontend local port"}
+                rules={[
+                  { required: true, message: locale === "zh-CN" ? "请输入前端本机端口" : "Frontend local port is required" },
+                  { pattern: /^\d+$/, message: locale === "zh-CN" ? "端口必须是数字" : "Port must be numeric" },
+                ]}
+              >
+                <Input placeholder={locale === "zh-CN" ? "例如 3000 / 5173" : "For example 3000 or 5173"} />
+              </Form.Item>
+              <Form.Item
+                name="apiLocalPort"
+                label={locale === "zh-CN" ? "API 本机端口" : "API local port"}
+                rules={[{ pattern: /^\d+$/, message: locale === "zh-CN" ? "端口必须是数字" : "Port must be numeric" }]}
+                extra={locale === "zh-CN"
+                  ? "可选。填写后中台会一并为 /projects/<project-id>/api/* 预留反向隧道端口。"
+                  : "Optional. When provided, the control plane also reserves a reverse-tunnel port for /projects/<project-id>/api/*."}
+              >
+                <Input placeholder={locale === "zh-CN" ? "例如 4000 / 8000" : "For example 4000 or 8000"} />
+              </Form.Item>
+              <Form.Item
+                name="localProjectPath"
+                label={locale === "zh-CN" ? "本机项目目录" : "Local project path"}
+                extra={locale === "zh-CN"
+                  ? "可选。留空时本机 worker 会按仓库名或项目 ID 自动推断到 ~/codex/projects 下。"
+                  : "Optional. When omitted, the local worker infers a path under ~/codex/projects from the repository or project id."}
+              >
+                <Input placeholder={locale === "zh-CN" ? "/Users/you/codex/projects/my-app" : "/Users/you/codex/projects/my-app"} />
+              </Form.Item>
+              <Alert
+                type="info"
+                showIcon
+                message={locale === "zh-CN" ? "远端映射端口会自动分配" : "Remote tunnel ports are allocated automatically"}
+                description={locale === "zh-CN"
+                  ? "创建完成后，本机 worker 会自动写入 ~/.config/codex/project-tunnel.<project-id>.env 和对应的 LaunchAgent。你只需要按约定端口启动本机前后端服务。"
+                  : "After creation, the local worker writes ~/.config/codex/project-tunnel.<project-id>.env and the matching LaunchAgent automatically. You only need to start the local frontend/backend on the configured ports."}
+              />
+            </>
+          ) : null}
           <Typography.Text type="secondary">
             {locale === "zh-CN"
               ? "仓库地址仅用于代码托管或自动化；控制中台默认通过本地 self-hosted 工具入口验收 UI 项目。"

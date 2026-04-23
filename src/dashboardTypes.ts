@@ -39,6 +39,23 @@ export type Project = {
   deploymentProvider?: string;
   deploymentStatus?: string;
   deploymentError?: string;
+  localRuntime?: {
+    enabled?: boolean;
+    mode?: string;
+    exposureBasePath?: string;
+    localProjectPath?: string;
+    frontendLocalPort?: string;
+    frontendRemotePort?: string;
+    apiLocalPort?: string;
+    apiRemotePort?: string;
+    status?: string;
+    lastError?: string;
+    lastAppliedAt?: string;
+    envFile?: string;
+    plistFile?: string;
+    launchAgentLabel?: string;
+    workerId?: string;
+  };
   taskStats: {
     total: number;
     pending: number;
@@ -416,6 +433,10 @@ export type CreateProjectValues = {
   repository?: string;
   visibility?: string;
   autoCreateRepo?: boolean;
+  enableLocalTunnel?: boolean;
+  localProjectPath?: string;
+  frontendLocalPort?: string;
+  apiLocalPort?: string;
   model?: string;
   reasoningEffort?: TaskReasoningEffort;
   fastMode?: boolean;

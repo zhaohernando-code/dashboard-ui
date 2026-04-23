@@ -16,3 +16,8 @@
 - Resolution: keep refresh behavior completion-driven and keep project/tool visibility derived from current runtime metadata instead of stale historical flags.
 - Prevention: when the dashboard reflects live orchestration state, prefer current backend truth over cached or narrative-only deployment assumptions.
 - Commit ID: pending
+
+- Problem: project creation still depended on manual tunnel env and launchd setup outside the dashboard, so the UI stopped at intent capture instead of providing a true self-service `/projects/*` onboarding path.
+- Resolution: the create-project flow now captures local tunnel inputs and surfaces automation status from the local worker sync path.
+- Prevention: when the dashboard offers a creation flow, it must either complete the operational setup automatically or show the remaining machine-owned status explicitly.
+- Commit ID: pending
