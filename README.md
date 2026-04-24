@@ -24,3 +24,4 @@ For local development only, the app defaults to `http://localhost:8787` as its A
 - The dashboard talks to the live control-plane API directly; GitHub issue queue and GitHub Pages browser transport are historical paths only.
 - Repository automation remains a server-side capability when valid GitHub credentials are configured.
 - When a project is created with local tunnel exposure enabled, the dashboard sends the desired local ports and lets the local worker generate the tunnel env and LaunchAgent automatically.
+- This repo now ships a `.codex.deploy.json` profile so successful local-worker tasks can build the UI on the Mac and sync the release bundle to the server automatically.

@@ -21,3 +21,8 @@
 - Resolution: the create-project flow now captures local tunnel inputs and surfaces automation status from the local worker sync path.
 - Prevention: when the dashboard offers a creation flow, it must either complete the operational setup automatically or show the remaining machine-owned status explicitly.
 - Commit ID: pending
+
+- Problem: after the platform moved to “Mac builds, server entrypoint”, dashboard-ui changes still needed a separate manual build-and-sync step before the public control plane reflected the new frontend.
+- Resolution: the dashboard repo now carries an explicit deploy profile so the local worker can build the UI locally and sync the release bundle to the server automatically after successful control-plane work.
+- Prevention: any server-hosted frontend in this topology should declare its publish path explicitly, otherwise “task completed” and “public UI updated” drift apart.
+- Commit ID: pending
