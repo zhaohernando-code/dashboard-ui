@@ -89,7 +89,7 @@ type TaskDetailProps = {
   statusTagColor: StatusTagColorMap;
   getProjectDisplayName: (projectId: string, locale: Locale, displayName?: string) => string;
   normalizeDisplayText: (value: string) => string;
-  buildLogViews: (logs: TaskLog[]) => LogViews;
+  buildLogViews: (logs: TaskLog[], totalCount?: number) => LogViews;
 };
 
 type ApprovalCardProps = {
@@ -593,7 +593,7 @@ export function TaskDetail({
   const [acceptanceRejectModalOpen, setAcceptanceRejectModalOpen] = useState(false);
   const [acceptanceRejectFeedback, setAcceptanceRejectFeedback] = useState("");
   const [planResponseForm] = Form.useForm<Record<string, string | string[]>>();
-  const logViews = buildLogViews(task.logs);
+  const logViews = buildLogViews(task.logs, task.logTotal ?? task.logs.length);
   const previewLogs = logViews.preview;
   const modalLogs = activeLogTrack === "operator" ? (logViews.operator.length ? logViews.operator : logViews.raw) : logViews.raw;
   const executionDecisionGate = task.executionDecisionGate;
@@ -1387,9 +1387,13 @@ export function TaskDetail({
               />
               {logViews.hasOverflow ? (
                 <Typography.Text type="secondary">
-                  {locale === "zh-CN"
-                    ? `还有 ${logViews.hiddenCount} 条未展开日志，点击“查看全部日志”浏览完整记录。`
-                    : `${logViews.hiddenCount} more log entries are hidden from the preview. Open the full log view to inspect them.`}
+                  {logViews.omittedCount > 0
+                    ? (locale === "zh-CN"
+                      ? `较早的 ${logViews.omittedCount} 条日志未加载，当前只保留最近窗口。`
+                      : `${logViews.omittedCount} older log entries are not loaded; the UI keeps only the latest window.`)
+                    : (locale === "zh-CN"
+                      ? `还有 ${logViews.hiddenCount} 条未展开日志，点击“查看全部日志”浏览完整记录。`
+                      : `${logViews.hiddenCount} more log entries are hidden from the preview. Open the full log view to inspect them.`)}
                 </Typography.Text>
               ) : null}
             </Space>

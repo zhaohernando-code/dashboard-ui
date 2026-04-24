@@ -79,6 +79,17 @@ export type TaskLog = {
   audience?: "operator" | "raw";
 };
 
+export type TaskLogFeed = {
+  logs: TaskLog[];
+  total: number;
+  returned: number;
+  limit: number;
+  loadedFrom: number;
+  nextCursor: number;
+  hasMore: boolean;
+  truncated: boolean;
+};
+
 export type PlanQuestion = {
   id: string;
   prompt: string;
@@ -227,6 +238,11 @@ export type Task = {
   acceptanceCriteria?: Array<{ id: string; text: string }>;
   verificationResults?: Array<{ criterionId: string; type: string; status: string; evidence: string }>;
   logs: TaskLog[];
+  logTotal?: number;
+  logLoadedFrom?: number;
+  logNextCursor?: number;
+  logTruncated?: boolean;
+  logHasMore?: boolean;
   children: TaskChild[];
   queuePosition?: number;
   queueEnteredAt?: string;
