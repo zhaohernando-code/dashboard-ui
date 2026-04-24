@@ -369,8 +369,8 @@ export function CreateDialog({
             name="enableLocalTunnel"
             valuePropName="checked"
             extra={locale === "zh-CN"
-              ? "开启后，本机 worker 会自动为这个项目生成 tunnel env、LaunchAgent 和项目映射，并预留 /projects/<project-id>/ 路径。"
-              : "When enabled, the local worker auto-generates the tunnel env, LaunchAgent, and project mapping for this project and reserves a /projects/<project-id>/ route."}
+              ? "开启后，本机 worker 会自动为这个项目生成 tunnel env、LaunchAgent 和项目映射，预留 /projects/<project-id>/ 路径，并让成功任务默认发布到 ~/codex/runtime/projects/<project-id>。"
+              : "When enabled, the local worker auto-generates the tunnel env, LaunchAgent, and project mapping for this project, reserves a /projects/<project-id>/ route, and publishes successful tasks into ~/codex/runtime/projects/<project-id> by default."}
           >
             <Switch checkedChildren="/projects/*" unCheckedChildren="/tools/*" />
           </Form.Item>
@@ -410,8 +410,8 @@ export function CreateDialog({
                 showIcon
                 message={locale === "zh-CN" ? "远端映射端口会自动分配" : "Remote tunnel ports are allocated automatically"}
                 description={locale === "zh-CN"
-                  ? "创建完成后，本机 worker 会自动写入 ~/.config/codex/project-tunnel.<project-id>.env 和对应的 LaunchAgent。你只需要按约定端口启动本机前后端服务。"
-                  : "After creation, the local worker writes ~/.config/codex/project-tunnel.<project-id>.env and the matching LaunchAgent automatically. You only need to start the local frontend/backend on the configured ports."}
+                  ? "创建完成后，本机 worker 会自动写入 ~/.config/codex/project-tunnel.<project-id>.env 和对应的 LaunchAgent，并让后续成功任务默认发布到独立 runtime 目录。长跑的前后端服务应指向 ~/codex/runtime/projects/<project-id>，不要直接跑开发目录。"
+                  : "After creation, the local worker writes ~/.config/codex/project-tunnel.<project-id>.env and the matching LaunchAgent automatically, and later successful tasks publish into a separate runtime tree. Long-running frontend/backend services should point at ~/codex/runtime/projects/<project-id>, not the editable dev checkout."}
               />
             </>
           ) : null}
