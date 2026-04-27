@@ -1,0 +1,7 @@
+{
+  "mode": "server_ui_release",
+  "serverSourceDir": "/root/codex/dev/dashboard-ui",
+  "serverReleaseDir": "/root/codex/release/projects/dashboard-ui/tool",
+  "toolRoute": "/tools/dashboard-ui",
+  "buildCommand": ["npm", "run", "build"]
+}

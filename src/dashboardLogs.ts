@@ -8,6 +8,8 @@ export type LogViews = {
   preview: TaskLog[];
   previewTrack: LogTrack;
   hiddenCount: number;
+  totalCount: number;
+  omittedCount: number;
   hasOverflow: boolean;
   hasStructuredOperatorLogs: boolean;
 };
@@ -71,22 +73,26 @@ function capPreview(logs: TaskLog[]) {
   return logs.slice(Math.max(0, logs.length - LOG_PREVIEW_LIMIT));
 }
 
-export function buildLogViews(logs: TaskLog[]): LogViews {
+export function buildLogViews(logs: TaskLog[], totalCount = logs.length): LogViews {
   const normalizedLogs = (logs || []).map((entry) => ({
     ...entry,
     audience: entry.audience === "operator" ? ("operator" as const) : ("raw" as const),
   }));
+  const effectiveTotalCount = Math.max(totalCount, normalizedLogs.length);
   const operatorLogs = normalizedLogs.filter((entry) => entry.audience === "operator");
   const fallbackOperatorLogs = operatorLogs.length ? operatorLogs : normalizedLogs.filter((entry) => isFallbackOperatorLog(entry));
   const previewSource = fallbackOperatorLogs.length ? fallbackOperatorLogs : normalizedLogs;
   const preview = capPreview(previewSource);
+  const omittedCount = Math.max(0, effectiveTotalCount - normalizedLogs.length);
   return {
     operator: fallbackOperatorLogs,
     raw: normalizedLogs,
     preview,
     previewTrack: fallbackOperatorLogs.length ? "operator" : "raw",
     hiddenCount: Math.max(0, previewSource.length - preview.length),
-    hasOverflow: previewSource.length > preview.length,
+    totalCount: effectiveTotalCount,
+    omittedCount,
+    hasOverflow: previewSource.length > preview.length || omittedCount > 0,
     hasStructuredOperatorLogs: operatorLogs.length > 0,
   };
 }
@@ -101,14 +107,28 @@ export function getLogTrackLabel(track: LogTrack, locale: Locale) {
 export function getLogSummaryText(logViews: LogViews, locale: Locale) {
   const operatorCount = logViews.operator.length;
   const rawCount = logViews.raw.length;
+  const totalCount = logViews.totalCount;
+  const omittedCount = logViews.omittedCount;
   if (locale === "zh-CN") {
     if (logViews.hasStructuredOperatorLogs) {
+      if (omittedCount > 0) {
+        return `当前仅加载最近 ${rawCount} 条日志，总计 ${totalCount} 条；默认展示 ${operatorCount} 条操作者摘要。`;
+      }
       return `默认显示 ${operatorCount} 条操作者日志摘要，完整日志 ${rawCount} 条。`;
+    }
+    if (omittedCount > 0) {
+      return `当前仅加载最近 ${rawCount} 条原始日志，总计 ${totalCount} 条；预览会从已加载日志里提取最近进展。`;
     }
     return `当前任务还没有结构化操作者日志，默认从 ${rawCount} 条原始日志里收起展示最近进展。`;
   }
   if (logViews.hasStructuredOperatorLogs) {
+    if (omittedCount > 0) {
+      return `Showing the latest ${rawCount} logs out of ${totalCount}, with ${operatorCount} operator updates highlighted by default.`;
+    }
     return `Showing ${operatorCount} operator logs by default, with ${rawCount} total logs available.`;
+  }
+  if (omittedCount > 0) {
+    return `Showing the latest ${rawCount} raw logs out of ${totalCount}; the preview is derived from the loaded window.`;
   }
   return `Structured operator logs are not available for this task yet, so the preview falls back to recent raw logs from ${rawCount} entries.`;
 }

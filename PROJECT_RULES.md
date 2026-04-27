@@ -3,11 +3,12 @@
 ## Product Direction
 
 - Preserve the existing control-plane product positioning unless a deliberate redesign is requested.
-- The operator-facing dashboard URL is always the `release` stack on port `80`; do not document or design around exposing the internal `8787` API port directly.
+- Keep the canonical project entry docs aligned: `PROJECT_STATUS.json`, `README.md`, `PROJECT_RULES.md`, `DECISIONS.md`, `PROCESS.md`, and `REQUIREMENTS_COVERAGE.md` when it is active.
+- The operator-facing dashboard surface is the public control-plane entrypoint; do not document or design around exposing the internal `8787` API port directly.
 - Prefer a structured operations dashboard over experimental custom layouts.
 - Use Ant Design as the default component and layout system for most new UI work.
 - Keep a small repo-native shell layer for branding, background, and a few product-specific interaction patterns.
-- Keep the dashboard build promotable into `release/projects/dashboard-ui/tool` for the port `80` runtime surface.
+- Keep the dashboard build consumable by the server-hosted control-plane route, and keep dev-only API defaults clearly separated from public entrypoint docs.
 - If a control-plane change depends on backend contract updates, do not treat the dashboard update as an optional follow-up; keep the UI compatible with both the current backend and the pending rollout before promotion.
 
 ## Design Reference
@@ -67,3 +68,5 @@
 - New UI should prefer existing shared components or Ant Design primitives before adding new custom wrappers.
 - When a new token or pattern is needed, add it to the shared theme/style layer first instead of hardcoding values inline.
 - Avoid reintroducing large custom CSS systems when the same behavior can be expressed with Ant Design theme tokens and component props.
+- Durable product or rollout decisions go to `DECISIONS.md`; reusable UI/process lessons go to `PROCESS.md`; current progress and blockers go to `PROJECT_STATUS.json`.
+- Dashboard changes are not complete until the served `/middle` route reflects the expected behavior.

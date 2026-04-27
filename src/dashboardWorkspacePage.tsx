@@ -178,6 +178,25 @@ function WorkspaceMainPane({ workspace }: WorkspaceMainPaneProps) {
                     locale === "zh-CN" ? "未绑定仓库" : "No repository"
                   )}
                 </Typography.Text>
+                {project.localRuntime?.enabled ? (
+                  <>
+                    <Divider />
+                    <Space direction="vertical" size={4} className="full-width">
+                      <Typography.Text type="secondary">
+                        {locale === "zh-CN" ? "动态入口：" : "Dynamic route: "}
+                        <Typography.Text code>{project.localRuntime.exposureBasePath || project.exposureRoute || `/projects/${project.id}`}</Typography.Text>
+                      </Typography.Text>
+                      <Typography.Text type="secondary">
+                        {locale === "zh-CN" ? "自动接入：" : "Automation: "}
+                        {project.localRuntime.status === "configured"
+                          ? (locale === "zh-CN" ? "已配置" : "Configured")
+                          : project.localRuntime.status === "failed"
+                            ? (locale === "zh-CN" ? "失败" : "Failed")
+                            : (locale === "zh-CN" ? "待本机 worker 同步" : "Waiting for local worker sync")}
+                      </Typography.Text>
+                    </Space>
+                  </>
+                ) : null}
               </Card>
             ))}
           </div>

@@ -28,9 +28,34 @@ export type Project = {
   toolRoute: string;
   toolUrl?: string;
   type?: string;
+  exposureMode?: string;
+  exposureBasePath?: string;
+  exposureRoute?: string;
+  exposureOnline?: boolean;
+  exposureWorkerId?: string;
+  exposureWorkerLabel?: string;
+  upstreamLoopbackPort?: string;
+  apiUpstreamLoopbackPort?: string;
   deploymentProvider?: string;
   deploymentStatus?: string;
   deploymentError?: string;
+  localRuntime?: {
+    enabled?: boolean;
+    mode?: string;
+    exposureBasePath?: string;
+    localProjectPath?: string;
+    frontendLocalPort?: string;
+    frontendRemotePort?: string;
+    apiLocalPort?: string;
+    apiRemotePort?: string;
+    status?: string;
+    lastError?: string;
+    lastAppliedAt?: string;
+    envFile?: string;
+    plistFile?: string;
+    launchAgentLabel?: string;
+    workerId?: string;
+  };
   taskStats: {
     total: number;
     pending: number;
@@ -52,6 +77,17 @@ export type TaskLog = {
   timestamp: string;
   message: string;
   audience?: "operator" | "raw";
+};
+
+export type TaskLogFeed = {
+  logs: TaskLog[];
+  total: number;
+  returned: number;
+  limit: number;
+  loadedFrom: number;
+  nextCursor: number;
+  hasMore: boolean;
+  truncated: boolean;
 };
 
 export type PlanQuestion = {
@@ -202,6 +238,11 @@ export type Task = {
   acceptanceCriteria?: Array<{ id: string; text: string }>;
   verificationResults?: Array<{ criterionId: string; type: string; status: string; evidence: string }>;
   logs: TaskLog[];
+  logTotal?: number;
+  logLoadedFrom?: number;
+  logNextCursor?: number;
+  logTruncated?: boolean;
+  logHasMore?: boolean;
   children: TaskChild[];
   queuePosition?: number;
   queueEnteredAt?: string;
@@ -408,6 +449,10 @@ export type CreateProjectValues = {
   repository?: string;
   visibility?: string;
   autoCreateRepo?: boolean;
+  enableLocalTunnel?: boolean;
+  localProjectPath?: string;
+  frontendLocalPort?: string;
+  apiLocalPort?: string;
   model?: string;
   reasoningEffort?: TaskReasoningEffort;
   fastMode?: boolean;
@@ -476,4 +521,6 @@ export type ToolLink = {
   deploymentProvider?: string;
   deploymentStatus?: string;
   deploymentError?: string;
+  workerLabel?: string;
+  exposureMode?: string;
 };

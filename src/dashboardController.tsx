@@ -47,6 +47,7 @@ import type {
   StatusFilterValue,
   Task,
   TaskLog,
+  TaskLogFeed,
   ThemeMode,
   ToolLink,
   UsageOverview,
@@ -54,6 +55,8 @@ import type {
   WorkspaceAnomaly,
   WorkspaceLevel,
 } from "./dashboardTypes";
+
+const TASK_LOG_WINDOW_SIZE = 200;
 
 export type DashboardController = {
   shell: DashboardShellViewModel;
@@ -79,7 +82,7 @@ export function useDashboardController(): DashboardController {
   const [projects, setProjects] = useState<Project[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [taskDetailsById, setTaskDetailsById] = useState<Record<string, Task>>({});
-  const [taskLogsById, setTaskLogsById] = useState<Record<string, TaskLog[]>>({});
+  const [taskLogsById, setTaskLogsById] = useState<Record<string, TaskLogFeed>>({});
   const [pendingTaskMutations, setPendingTaskMutations] = useState<Record<string, PendingTaskMutation>>({});
   const [approvals, setApprovals] = useState<Approval[]>([]);
   const [tools, setTools] = useState<ToolLink[]>([]);
@@ -195,11 +198,16 @@ export function useDashboardController(): DashboardController {
       return null;
     }
     const taskDetail = taskDetailsById[selectedTaskSummary.id];
-    const taskLogs = taskLogsById[selectedTaskSummary.id];
+    const taskLogFeed = taskLogsById[selectedTaskSummary.id];
     return {
       ...selectedTaskSummary,
       ...taskDetail,
-      logs: taskLogs ?? taskDetail?.logs ?? selectedTaskSummary.logs ?? [],
+      logs: taskLogFeed?.logs ?? taskDetail?.logs ?? selectedTaskSummary.logs ?? [],
+      logTotal: taskLogFeed?.total ?? taskDetail?.logTotal ?? selectedTaskSummary.logTotal,
+      logLoadedFrom: taskLogFeed?.loadedFrom ?? taskDetail?.logLoadedFrom ?? selectedTaskSummary.logLoadedFrom,
+      logNextCursor: taskLogFeed?.nextCursor ?? taskDetail?.logNextCursor ?? selectedTaskSummary.logNextCursor,
+      logTruncated: taskLogFeed?.truncated ?? taskDetail?.logTruncated ?? selectedTaskSummary.logTruncated,
+      logHasMore: taskLogFeed?.hasMore ?? taskDetail?.logHasMore ?? selectedTaskSummary.logHasMore,
     } satisfies Task;
   }, [selectedTaskSummary, taskDetailsById, taskLogsById]);
   const selectedTaskIsPlaceholder = selectedTaskSummary?.id?.startsWith("pending-local-") ?? false;
@@ -319,19 +327,40 @@ export function useDashboardController(): DashboardController {
     }
     const requestId = ++taskLogsRequestRef.current;
     const taskId = selectedTaskSummary.id;
+    const existingFeed = taskLogsById[taskId];
+    const requestPath = existingFeed
+      ? `/api/tasks/${taskId}/logs?cursor=${existingFeed.nextCursor}&limit=${TASK_LOG_WINDOW_SIZE}`
+      : `/api/tasks/${taskId}/logs?limit=${TASK_LOG_WINDOW_SIZE}`;
     setSelectedTaskLogsLoading(true);
     setSelectedTaskLogsError("");
-    void api<{ logs: TaskLog[] }>(`/api/tasks/${taskId}/logs`)
+    void api<TaskLogFeed>(requestPath)
       .then((payload) => {
         if (requestId !== taskLogsRequestRef.current) {
           return;
         }
         setTaskLogsById((current) => ({
           ...current,
-          [taskId]: (payload.logs || []).map((entry) => ({
-            ...entry,
-            audience: entry.audience === "operator" ? "operator" : "raw",
-          })),
+          [taskId]: (() => {
+            const normalizedLogs: TaskLog[] = (payload.logs || []).map((entry) => ({
+              ...entry,
+              audience: entry.audience === "operator" ? ("operator" as const) : ("raw" as const),
+            }));
+            const baseLogs = existingFeed ? (current[taskId]?.logs || []) : [];
+            const mergedLogs = [...baseLogs, ...normalizedLogs].slice(-TASK_LOG_WINDOW_SIZE);
+            const nextCursor = typeof payload.nextCursor === "number"
+              ? payload.nextCursor
+              : (existingFeed ? current[taskId]?.nextCursor || 0 : normalizedLogs.length);
+            return {
+              logs: mergedLogs,
+              total: typeof payload.total === "number" ? payload.total : mergedLogs.length,
+              returned: typeof payload.returned === "number" ? payload.returned : normalizedLogs.length,
+              limit: typeof payload.limit === "number" ? payload.limit : TASK_LOG_WINDOW_SIZE,
+              loadedFrom: Math.max(0, nextCursor - mergedLogs.length),
+              nextCursor,
+              hasMore: Boolean(payload.hasMore),
+              truncated: Math.max(0, nextCursor - mergedLogs.length) > 0 || Boolean(payload.truncated),
+            } satisfies TaskLogFeed;
+          })(),
         }));
         setSelectedTaskLogsLoading(false);
       })
