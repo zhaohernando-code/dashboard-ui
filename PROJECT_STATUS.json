@@ -1,0 +1,42 @@
+{
+  "project": "dashboard-ui",
+  "status": "in_progress",
+  "current_phase": {
+    "id": "maintenance-hardening",
+    "label": "Control-plane UI maintenance and workspace standardization"
+  },
+  "current_milestone": {
+    "id": "workspace-standardization",
+    "label": "Canonical docs, route-aware verification, and closeout workflow hardening"
+  },
+  "updated_at": "2026-04-27T17:30:00+08:00",
+  "progress_summary": "The control-plane UI remains the operator-facing surface for task orchestration, approvals, and runtime visibility. Canonical project docs are now being standardized so new sessions can land on current state quickly and distinguish local preview behavior from served-route verification requirements.",
+  "blockers": [],
+  "next_step": "Keep UI and backend contract changes synchronized, maintain served-route verification for live-facing fixes, and continue moving operator expectations into the fixed entry docs instead of scattered task history.",
+  "linked_docs": [
+    {
+      "path": "/Users/hernando_zhao/codex/projects/dashboard-ui/README.md",
+      "role": "entrypoint"
+    },
+    {
+      "path": "/Users/hernando_zhao/codex/projects/dashboard-ui/PROJECT_RULES.md",
+      "role": "repo_rules"
+    },
+    {
+      "path": "/Users/hernando_zhao/codex/projects/dashboard-ui/DECISIONS.md",
+      "role": "decision_log"
+    },
+    {
+      "path": "/Users/hernando_zhao/codex/projects/dashboard-ui/PROCESS.md",
+      "role": "process_log"
+    },
+    {
+      "path": "/Users/hernando_zhao/codex/projects/dashboard-ui/REQUIREMENTS_COVERAGE.md",
+      "role": "requirements_coverage"
+    },
+    {
+      "path": "/Users/hernando_zhao/codex/projects/dashboard-ui/.codex.deploy.json",
+      "role": "deploy_profile"
+    }
+  ]
+}

@@ -3,6 +3,7 @@
 ## Product Direction
 
 - Preserve the existing control-plane product positioning unless a deliberate redesign is requested.
+- Keep the canonical project entry docs aligned: `PROJECT_STATUS.json`, `README.md`, `PROJECT_RULES.md`, `DECISIONS.md`, `PROCESS.md`, and `REQUIREMENTS_COVERAGE.md` when it is active.
 - The operator-facing dashboard surface is the public control-plane entrypoint; do not document or design around exposing the internal `8787` API port directly.
 - Prefer a structured operations dashboard over experimental custom layouts.
 - Use Ant Design as the default component and layout system for most new UI work.
@@ -67,3 +68,5 @@
 - New UI should prefer existing shared components or Ant Design primitives before adding new custom wrappers.
 - When a new token or pattern is needed, add it to the shared theme/style layer first instead of hardcoding values inline.
 - Avoid reintroducing large custom CSS systems when the same behavior can be expressed with Ant Design theme tokens and component props.
+- Durable product or rollout decisions go to `DECISIONS.md`; reusable UI/process lessons go to `PROCESS.md`; current progress and blockers go to `PROJECT_STATUS.json`.
+- Dashboard changes are not complete until the served `/middle` route reflects the expected behavior.

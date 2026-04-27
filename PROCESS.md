@@ -1,9 +1,15 @@
 # PROCESS
 
+## 2026-04-27
+
+- Problem: dashboard UI docs described topology and design direction, but they did not provide one fixed current-state handoff file, so new sessions still had to guess between README, prior task notes, and backend state.
+- Resolution: standardized this repo on `PROJECT_STATUS.json` + `README.md` + `PROJECT_RULES.md` + `DECISIONS.md` + `PROCESS.md`, and made the workspace route-to-repo path explicit through `~/codex/WORKSPACE_INDEX.json`.
+- Prevention: future dashboard changes must update the canonical entry docs whenever operator workflow, deployment expectations, or backend contract assumptions change; local preview and runtime state are not enough as onboarding context.
+
 ## 2026-04-23
 
-- Problem: active dashboard docs still mixed historical GitHub Pages and release-only wording into the current operator path, even though the live product is now the IP-hosted control plane backed by the local control-server API.
-- Resolution: rewrote the current README and rules around the live topology: public control-plane entrypoint, internal `127.0.0.1:8787` API, `/tools/*` static routes, and `/projects/*` dynamic routes.
+- Problem: active dashboard docs still mixed historical GitHub Pages and release-only wording into the current operator path, even though the live product is now the domain-backed `/middle` control-plane route backed by the local control-server API.
+- Resolution: rewrote the current README and rules around the live topology: unified login at `/`, authenticated control-plane entrypoint at `/middle`, internal `127.0.0.1:8787` API, `/tools/*` static routes, and `/projects/*` dynamic routes.
 - Prevention: dashboard README and rules must always describe the live operator surface, not retired delivery modes.
 - Commit ID: pending
 
