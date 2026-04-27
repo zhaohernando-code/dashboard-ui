@@ -5,6 +5,7 @@
 - Problem: dashboard UI docs described topology and design direction, but they did not provide one fixed current-state handoff file, so new sessions still had to guess between README, prior task notes, and backend state.
 - Resolution: standardized this repo on `PROJECT_STATUS.json` + `README.md` + `PROJECT_RULES.md` + `DECISIONS.md` + `PROCESS.md`, and made the workspace route-to-repo path explicit through `~/codex/WORKSPACE_INDEX.json`.
 - Prevention: future dashboard changes must update the canonical entry docs whenever operator workflow, deployment expectations, or backend contract assumptions change; local preview and runtime state are not enough as onboarding context.
+- Commit ID: `c188904`
 
 ## 2026-04-23
 

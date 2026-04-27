@@ -9,10 +9,10 @@
     "id": "workspace-standardization",
     "label": "Canonical docs, route-aware verification, and closeout workflow hardening"
   },
-  "updated_at": "2026-04-27T17:30:00+08:00",
-  "progress_summary": "The control-plane UI remains the operator-facing surface for task orchestration, approvals, and runtime visibility. Canonical project docs are now being standardized so new sessions can land on current state quickly and distinguish local preview behavior from served-route verification requirements.",
+  "updated_at": "2026-04-27T18:55:00+08:00",
+  "progress_summary": "The control-plane UI remains the operator-facing surface for task orchestration, approvals, and runtime visibility. Canonical project docs, routing entrypoints, and PR closeout template are now standardized so new sessions can recover current context without broad workspace search.",
   "blockers": [],
-  "next_step": "Keep UI and backend contract changes synchronized, maintain served-route verification for live-facing fixes, and continue moving operator expectations into the fixed entry docs instead of scattered task history.",
+  "next_step": "Keep UI and backend contract changes synchronized, maintain served-route verification for live-facing fixes, and continue updating the canonical entry docs whenever operator-visible workflow changes.",
   "linked_docs": [
     {
       "path": "/Users/hernando_zhao/codex/projects/dashboard-ui/README.md",
