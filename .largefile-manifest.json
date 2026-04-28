@@ -1,0 +1,36 @@
+{
+  "threshold": 500,
+  "reviewed_at": "2026-04-28",
+  "files": {
+    "src/dashboardComponents.tsx": {
+      "lines": 1086,
+      "reason": "TaskDetail component with project flow, anomaly detection, verification criteria, and modal dialogs. Extraction planned: header, project-flow, modals.",
+      "status": "accepted",
+      "reviewed_at": "2026-04-28"
+    },
+    "src/dashboardController.tsx": {
+      "lines": 686,
+      "reason": "Central state controller hook with 30+ useState. Extraction planned: sub-hooks for auth, tasks, usage.",
+      "status": "accepted",
+      "reviewed_at": "2026-04-28"
+    },
+    "src/dashboardProjectUtils.ts": {
+      "lines": 561,
+      "reason": "Project metadata utilities: identifier derivation, type parsing, plan form building. Cohesive single-domain utility module.",
+      "status": "accepted",
+      "reviewed_at": "2026-04-28"
+    },
+    "src/dashboardUsageUtils.ts": {
+      "lines": 571,
+      "reason": "Usage data processing pipeline: normalization, formatting, snapshot building. Cohesive single-domain utility module with internal helper chain.",
+      "status": "accepted",
+      "reviewed_at": "2026-04-28"
+    },
+    "src/styles.css": {
+      "lines": 655,
+      "reason": "Global CSS with cascade-dependent order, Ant Design overrides, and responsive breakpoints. CSS splitting carries cascade risk.",
+      "status": "accepted",
+      "reviewed_at": "2026-04-28"
+    }
+  }
+}
