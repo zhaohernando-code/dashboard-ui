@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { Alert, Button, Card, Drawer, Flex, Layout, Segmented, Space, Tabs, Typography } from "antd";
 import { EyeInvisibleOutlined, EyeOutlined, MenuOutlined } from "@ant-design/icons";
 
-import { HeaderLocaleSwitch, HeaderSwitch, SectionHeader } from "./dashboardComponents";
+import { HeaderLocaleSwitch, HeaderSwitch, SectionHeader } from "./components/dashboardHeaderComponents";
 import { tabs, type DashboardShellViewModel } from "./dashboardConstants";
 
 type DashboardShellProps = {

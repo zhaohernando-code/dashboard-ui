@@ -1,6 +1,7 @@
 import { Card, Empty, List, Space, Tag, Typography } from "antd";
 
-import { MetricCard, SectionHeader } from "./dashboardComponents";
+import { MetricCard } from "./components/dashboardMetricComponents";
+import { SectionHeader } from "./components/dashboardHeaderComponents";
 import type { DashboardToolsViewModel } from "./dashboardControlTypes";
 
 type ToolsPageProps = {

@@ -1,14 +1,12 @@
 import { Button, Card, Checkbox, Divider, Empty, Flex, Space, Tag, Typography } from "antd";
 import { PlusOutlined, ReloadOutlined } from "@ant-design/icons";
 
-import {
-  ApprovalCard,
-  CreateDialog,
-  ListPagination,
-  SectionHeader,
-  StatusFilterBar,
-  TaskDetail,
-} from "./dashboardComponents";
+import { TaskDetail } from "./dashboardComponents";
+import { ApprovalCard } from "./components/dashboardApprovalCard";
+import { CreateDialog } from "./components/dashboardCreateDialog";
+import { ListPagination } from "./components/dashboardMetricComponents";
+import { SectionHeader } from "./components/dashboardHeaderComponents";
+import { StatusFilterBar } from "./components/dashboardStatusFilter";
 import {
   AUTO_ROUTE_PROJECT_ID,
   STATUS_FILTER_ALL,

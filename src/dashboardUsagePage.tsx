@@ -1,7 +1,8 @@
 import { ReloadOutlined } from "@ant-design/icons";
 import { Button, Card, Empty, Flex, Progress, Space, Tag, Typography } from "antd";
 
-import { MetricCard, SectionHeader } from "./dashboardComponents";
+import { MetricCard } from "./components/dashboardMetricComponents";
+import { SectionHeader } from "./components/dashboardHeaderComponents";
 import type { DashboardUsageViewModel } from "./dashboardControlTypes";
 
 type UsagePageProps = {

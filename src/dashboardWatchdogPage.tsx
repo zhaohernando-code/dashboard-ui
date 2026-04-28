@@ -1,6 +1,6 @@
 import { Alert, Button, Card, Empty, List, Space, Tag, Typography } from "antd";
 
-import { SectionHeader } from "./dashboardComponents";
+import { SectionHeader } from "./components/dashboardHeaderComponents";
 import type { DashboardWatchdogViewModel } from "./dashboardControlTypes";
 
 type WatchdogPageProps = {
