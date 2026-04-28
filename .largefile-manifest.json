@@ -3,8 +3,8 @@
   "reviewed_at": "2026-04-28",
   "files": {
     "src/dashboardComponents.tsx": {
-      "lines": 1086,
-      "reason": "TaskDetail component with project flow, anomaly detection, verification criteria, and modal dialogs. Extraction planned: header, project-flow, modals.",
+      "lines": 935,
+      "reason": "TaskDetail component (~935 lines): modals extracted to TaskDetailModals.tsx. Remaining body includes tightly coupled state, derived values, action handlers, and JSX for header, description, project flow, and verification sections.",
       "status": "accepted",
       "reviewed_at": "2026-04-28"
     },
