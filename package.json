@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "node ./node_modules/vite/bin/vite.js",
     "build": "node ./node_modules/typescript/bin/tsc --noEmit && node ./node_modules/vite/bin/vite.js build",
+    "deploy": "npm run build && rsync -az --delete dist/ codex-server:/root/codex/dev/dashboard-ui/dist/ && ssh codex-server 'rsync -a --delete /root/codex/dev/dashboard-ui/dist/ /root/codex/release/projects/dashboard-ui/tool/'",
     "preview": "node ./node_modules/vite/bin/vite.js preview",
     "check": "node ./node_modules/typescript/bin/tsc --noEmit"
   },
