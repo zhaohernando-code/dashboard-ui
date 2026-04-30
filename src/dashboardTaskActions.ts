@@ -74,6 +74,8 @@ export function createDashboardTaskActions(input: DashboardTaskActionsInput) {
       const frontendLocalPort = String(values.frontendLocalPort || "").trim();
       const apiLocalPort = String(values.apiLocalPort || "").trim();
       const localProjectPath = String(values.localProjectPath || "").trim();
+      const isDeepSeekProject = String(executionProfile.model || "").toLowerCase().includes("deepseek");
+      const projectProvider = isDeepSeekProject ? "deepseek" : undefined;
 
       await api("/api/projects", {
         method: "POST",
@@ -85,6 +87,7 @@ export function createDashboardTaskActions(input: DashboardTaskActionsInput) {
           autoCreateRepo,
           requestedModel: executionProfile.requestedModel,
           model: executionProfile.model,
+          ...(projectProvider ? { provider: projectProvider } : {}),
           reasoningEffort: executionProfile.reasoningEffort,
           fastMode: executionProfile.fastMode,
           speedTier: executionProfile.speedTier,
@@ -119,6 +122,8 @@ export function createDashboardTaskActions(input: DashboardTaskActionsInput) {
       const description = String(values.description || "").trim();
       const executionProfile = deriveExecutionProfile(values);
       const planMode = type === "task" ? Boolean(values.planMode) : false;
+      const isDeepSeek = String(executionProfile.model || "").toLowerCase().includes("deepseek");
+      const provider = isDeepSeek ? "deepseek" : undefined;
 
       await api("/api/tasks", {
         method: "POST",
@@ -133,6 +138,7 @@ export function createDashboardTaskActions(input: DashboardTaskActionsInput) {
           planMode,
           fastMode: executionProfile.fastMode,
           speedTier: executionProfile.speedTier,
+          ...(provider ? { provider } : {}),
         }),
       });
 
