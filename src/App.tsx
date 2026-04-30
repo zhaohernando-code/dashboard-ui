@@ -3,6 +3,7 @@ import { App as AntApp, ConfigProvider, Flex, Spin, theme as antdTheme } from "a
 
 import { useDashboardController } from "./dashboardController";
 import { DashboardShell } from "./dashboardShell";
+import { DeepSeekTaskPanel } from "./components/DeepSeekTaskPanel";
 
 const WorkspacePage = lazy(() => import("./dashboardWorkspacePage").then((module) => ({ default: module.WorkspacePage })));
 const WatchdogPage = lazy(() => import("./dashboardWatchdogPage").then((module) => ({ default: module.WatchdogPage })));
@@ -38,7 +39,12 @@ export default function App() {
           <Suspense fallback={<PageFallback />}>
             {shell.activeTab === "quest-center" ? <WorkspacePage workspace={workspace} /> : null}
             {shell.activeTab === "watchdog" ? <WatchdogPage watchdogView={watchdog} isMobile={shell.isMobile} /> : null}
-            {shell.activeTab === "tools" ? <ToolsPage toolsView={tools} isMobile={shell.isMobile} /> : null}
+            {shell.activeTab === "tools" ? (
+              <>
+                <DeepSeekTaskPanel isMobile={shell.isMobile} />
+                <ToolsPage toolsView={tools} isMobile={shell.isMobile} />
+              </>
+            ) : null}
             {shell.activeTab === "usage" ? <UsagePage usageView={usage} isMobile={shell.isMobile} /> : null}
           </Suspense>
         </DashboardShell>
