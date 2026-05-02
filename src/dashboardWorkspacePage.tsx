@@ -186,11 +186,13 @@ function WorkspaceMainPane({ workspace }: WorkspaceMainPaneProps) {
                       </Typography.Text>
                       <Typography.Text type="secondary">
                         {locale === "zh-CN" ? "自动接入：" : "Automation: "}
-                        {project.localRuntime.status === "configured"
-                          ? (locale === "zh-CN" ? "已配置" : "Configured")
-                          : project.localRuntime.status === "failed"
-                            ? (locale === "zh-CN" ? "失败" : "Failed")
-                            : (locale === "zh-CN" ? "待本机 worker 同步" : "Waiting for local worker sync")}
+                        {project.localRuntime.status === "healthy"
+                          ? (locale === "zh-CN" ? "运行中" : "Running")
+                          : project.localRuntime.status === "configured"
+                            ? (locale === "zh-CN" ? "已配置" : "Configured")
+                            : project.localRuntime.status === "failed"
+                              ? (locale === "zh-CN" ? "失败" : "Failed")
+                              : (locale === "zh-CN" ? "待本机 worker 同步" : "Waiting for local worker sync")}
                       </Typography.Text>
                     </Space>
                   </>
