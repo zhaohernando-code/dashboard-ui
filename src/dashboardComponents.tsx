@@ -128,6 +128,9 @@ export function TaskDetail({
   const isGateBypassPending = task.pendingAction?.type === "bypass_global_verification";
   const isCancelPending = task.pendingAction?.type === "cancel";
   const isAcceptanceRejectPending = task.pendingAction?.type === "reject";
+  const workflowGates = task.workflowGates;
+  const workflowChecks = workflowGates?.checks ? Object.entries(workflowGates.checks) : [];
+  const workflowMissingEvidence = workflowGates?.missingEvidence || [];
   const trimmedAcceptanceRejectFeedback = acceptanceRejectFeedback.trim();
   const failureDiagnosis = getTaskFailureDiagnosis(task, locale);
   const canTaskBeCancelled = canCancelTask(task);
@@ -777,6 +780,59 @@ export function TaskDetail({
           </Card>
         ) : null}
 
+        {workflowGates ? (
+          <Card size="small">
+            <Space direction="vertical" size={12} className="full-width detail-list">
+              <Flex justify="space-between" align="center" gap={8} wrap>
+                <Typography.Text type="secondary">{locale === "zh-CN" ? "流程门禁" : "Workflow gates"}</Typography.Text>
+                <Tag color={workflowGates.status === "satisfied" ? "success" : workflowMissingEvidence.length ? "warning" : "processing"}>
+                  {workflowGates.status || "active"}
+                </Tag>
+              </Flex>
+              {workflowMissingEvidence.length ? (
+                <Alert
+                  type="warning"
+                  showIcon
+                  message={locale === "zh-CN" ? "仍缺少收尾证据" : "Closeout evidence missing"}
+                  description={workflowMissingEvidence.join(" · ")}
+                />
+              ) : null}
+              <Descriptions
+                size="small"
+                column={1}
+                items={[
+                  workflowGates.expectedResourceLocks?.length
+                    ? { key: "locks", label: locale === "zh-CN" ? "资源锁" : "Locks", children: workflowGates.expectedResourceLocks.join(", ") }
+                    : null,
+                  workflowGates.liveVerificationRequired !== undefined
+                    ? { key: "live", label: locale === "zh-CN" ? "真实验收" : "Live verification", children: workflowGates.liveVerificationRequired ? "required" : "not required" }
+                    : null,
+                  task.workflowRoute?.resolvedProjectId
+                    ? { key: "route", label: locale === "zh-CN" ? "路由项目" : "Routed project", children: task.workflowRoute.resolvedProjectId }
+                    : null,
+                ].filter(Boolean) as Array<{ key: string; label: string; children: ReactNode }>}
+              />
+              {workflowChecks.length ? (
+                <List
+                  className="detail-list"
+                  dataSource={workflowChecks}
+                  renderItem={([key, check]) => (
+                    <List.Item>
+                      <Space direction="vertical" size={4}>
+                        <Space>
+                          <Typography.Text strong>{key}</Typography.Text>
+                          <Tag>{check.status || "pending"}</Tag>
+                        </Space>
+                        {check.detail ? <Typography.Text type="secondary">{check.detail}</Typography.Text> : null}
+                      </Space>
+                    </List.Item>
+                  )}
+                />
+              ) : null}
+            </Space>
+          </Card>
+        ) : null}
+
         {task.acceptanceCriteria?.length ? (
           <Card size="small">
             <Typography.Text type="secondary">{locale === "zh-CN" ? "验收清单" : "Acceptance checklist"}</Typography.Text>
@@ -932,4 +988,3 @@ export function TaskDetail({
     </Space>
   );
 }
-

@@ -360,6 +360,8 @@ export function normalizeApiTask(task: Partial<Task>, locale: Locale): Task {
     nodeStatusSummary: task.nodeStatusSummary || null,
     latestProgress: task.latestProgress || null,
     latestFailure: task.latestFailure || null,
+    workflowGates: task.workflowGates || null,
+    workflowRoute: task.workflowRoute || null,
   };
   if (normalizedTask.status === "waiting") {
     normalizedTask.pendingReason = getTaskPendingReason(normalizedTask) || undefined;
