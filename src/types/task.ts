@@ -22,6 +22,33 @@ export type TaskPendingReason = "plan_feedback" | "manual_intervention" | "user_
 export type TaskReasoningEffort = "low" | "medium" | "high" | "xhigh";
 export type TaskSpeedTier = "fast" | (string & {});
 
+export type WorkflowGateCheck = {
+  status?: string;
+  detail?: string;
+};
+
+export type WorkflowGates = {
+  status?: string;
+  updatedAt?: string;
+  projectId?: string;
+  projectPath?: string;
+  workspaceProjectId?: string;
+  canonicalDocs?: string[];
+  liveVerificationRequired?: boolean;
+  expectedResourceLocks?: string[];
+  expectedPublishLocks?: string[];
+  missingEvidence?: string[];
+  checks?: Record<string, WorkflowGateCheck>;
+};
+
+export type WorkflowRoute = {
+  resolvedProjectId?: string;
+  workspaceProjectId?: string;
+  resolvedProjectPath?: string;
+  reasons?: string[];
+  canonicalDocs?: string[];
+};
+
 export type Project = {
   id: string;
   name: string;
@@ -262,6 +289,8 @@ export type Task = {
   nodeStatusSummary?: Record<string, unknown> | null;
   latestProgress?: Record<string, unknown> | null;
   latestFailure?: Record<string, unknown> | null;
+  workflowGates?: WorkflowGates | null;
+  workflowRoute?: WorkflowRoute | null;
 };
 
 export type Requirement = {
@@ -292,4 +321,3 @@ export type Approval = {
   reason: string;
   task: Task;
 };
-

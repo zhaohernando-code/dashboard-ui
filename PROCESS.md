@@ -1,5 +1,11 @@
 # PROCESS
 
+## 2026-05-04
+
+- Problem: the dashboard could show a task as accepted or near-complete while the backend still lacked workflow evidence such as route, locks, publish, or live browser verification. Operators then had to infer missing closeout state from logs.
+- Resolution: task detail now renders backend-owned workflow gates, including missing evidence, expected locks, live-verification requirement, and route context.
+- Prevention: if backend state can block closeout, the dashboard must expose that state directly in task detail. Do not hide machine-owned gate failures inside worker logs or acceptance prose.
+
 ## 2026-04-27
 
 - Problem: dashboard UI docs described topology and design direction, but they did not provide one fixed current-state handoff file, so new sessions still had to guess between README, prior task notes, and backend state.
