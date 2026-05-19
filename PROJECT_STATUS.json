@@ -9,10 +9,10 @@
     "id": "workspace-standardization",
     "label": "Canonical docs, route-aware verification, and closeout workflow hardening"
   },
-  "updated_at": "2026-05-04T00:10:00+08:00",
-  "progress_summary": "The control-plane UI remains the operator-facing surface for task orchestration, approvals, and runtime visibility. Task detail now shows backend-owned workflow gate state, including missing closeout evidence, expected locks, live-verification requirements, and fuzzy-route context, so the board cannot drift as far from real workflow completion.",
+  "updated_at": "2026-05-19T10:01:30+08:00",
+  "progress_summary": "The control-plane UI remains the operator-facing surface for task orchestration, approvals, and runtime visibility. Task detail shows backend-owned workflow gate state, including missing closeout evidence, expected locks, live-verification requirements, and fuzzy-route context. The task creation model selector now includes `gpt-5.5` alongside the existing default, fast, and DeepSeek options.",
   "blockers": [],
-  "next_step": "Keep dashboard workflow-gate rendering synchronized with backend gate fields, and continue requiring served-route verification for any operator-visible workflow change.",
+  "next_step": "Keep dashboard workflow-gate rendering synchronized with backend gate fields, and verify served `/middle` after every operator-visible model or task-flow change.",
   "linked_docs": [
     {
       "path": "/Users/hernando_zhao/codex/projects/dashboard-ui/README.md",

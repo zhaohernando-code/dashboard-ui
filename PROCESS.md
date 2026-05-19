@@ -1,5 +1,11 @@
 # PROCESS
 
+## 2026-05-19
+
+- Problem: the dashboard task form exposed the previous default and fast Codex models but not `gpt-5.5`, even though operators may need to choose it explicitly for heavier work.
+- Resolution: added `gpt-5.5` to the shared task model options and usage-status model list without changing the default model.
+- Prevention: new Codex-native models should be added through the shared constants so create-task forms and usage displays stay aligned.
+
 ## 2026-05-04
 
 - Problem: the dashboard could show a task as accepted or near-complete while the backend still lacked workflow evidence such as route, locks, publish, or live browser verification. Operators then had to infer missing closeout state from logs.

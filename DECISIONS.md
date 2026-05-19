@@ -1,5 +1,12 @@
 # Dashboard UI Decisions
 
+[2026-05-19T10:01:30+08:00] GPT-5.5 task option decision:
+The task creation model selector includes `gpt-5.5` as a first-class Codex model option. It is offered without changing the default model, so existing task creation behavior remains stable unless the operator explicitly selects GPT-5.5.
+
+补充说明
+- The `/fast` toggle still maps to `gpt-5.3-codex-spark`.
+- DeepSeek options remain explicitly labeled external/provider-backed options.
+
 [2026-05-04T00:10:00+08:00] Workflow gate visibility decision:
 Dashboard task detail now treats `workflowGates` as backend-owned closeout state and displays it beside the acceptance flow. Operators should see missing route, lock, publish, and live-verification evidence directly instead of relying on worker summaries or log scanning.
 

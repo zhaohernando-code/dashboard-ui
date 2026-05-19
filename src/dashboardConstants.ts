@@ -7,6 +7,7 @@ export const AUTO_ROUTE_PROJECT_ID = "__auto_route__";
 export const CLOSED_ANOMALIES_STORAGE_KEY = "codex.dismissedAnomalies";
 export const STATUS_FILTER_ALL = "all";
 export const DEFAULT_TASK_MODEL = "gpt-5.4";
+export const GPT_55_TASK_MODEL = "gpt-5.5";
 export const FAST_TASK_MODEL = "gpt-5.3-codex-spark";
 export const DEEPSEEK_V4_PRO = "deepseek-v4-pro[1m]";
 export const DEEPSEEK_V4_FLASH = "deepseek-v4-flash";
@@ -20,11 +21,12 @@ export const DASHBOARD_EXPEDITED_POLL_INTERVAL_MS = 4_000;
 export const DASHBOARD_EXPEDITED_POLL_DURATION_MS = 15_000;
 export const TASK_MODEL_OPTIONS = [
   { label: DEFAULT_TASK_MODEL, value: DEFAULT_TASK_MODEL },
+  { label: GPT_55_TASK_MODEL, value: GPT_55_TASK_MODEL },
   { label: FAST_TASK_MODEL, value: FAST_TASK_MODEL },
   { label: "DeepSeek V4 Pro", value: DEEPSEEK_V4_PRO },
   { label: "DeepSeek V4 Flash", value: DEEPSEEK_V4_FLASH },
 ] as const;
-export const USAGE_STATUS_MODELS = [DEFAULT_TASK_MODEL, FAST_TASK_MODEL, DEEPSEEK_V4_PRO, DEEPSEEK_V4_FLASH] as const;
+export const USAGE_STATUS_MODELS = [DEFAULT_TASK_MODEL, GPT_55_TASK_MODEL, FAST_TASK_MODEL, DEEPSEEK_V4_PRO, DEEPSEEK_V4_FLASH] as const;
 
 export const REMOTE_PROJECT_CATALOG = [
   {
